@@ -1,0 +1,16 @@
+{
+  "name": "huutopussi",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.29.3",
+  "scripts": {
+    "test": "pnpm -r --workspace-concurrency=1 test",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "sim": "pnpm --filter @hp/bots sim"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.1.2"
+  }
+}

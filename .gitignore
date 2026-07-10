@@ -6,6 +6,7 @@ data/
 *.db
 *.db-*
 coverage/
+packages/bots/failures/
 .env
 playwright-report/
 test-results/

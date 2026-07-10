@@ -1,0 +1,10 @@
+{
+  "name": "@hp/client",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "echo '@hp/client: typecheck skipped (scaffolded in phase P4)'",
+    "test": "echo '@hp/client: tests skipped (scaffolded in phase P4)'"
+  }
+}
