@@ -8,9 +8,11 @@
     "typecheck": "pnpm -r typecheck",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
-    "sim": "pnpm --filter @hp/bots sim"
+    "sim": "pnpm --filter @hp/bots sim",
+    "build:server": "esbuild packages/server/src/index.ts --bundle --platform=node --format=esm --target=node24 --external:better-sqlite3 --banner:js=\"import { createRequire as __createRequire } from 'node:module'; const require = __createRequire(import.meta.url);\" --outfile=packages/server/dist/server.js"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.1.2"
+    "@biomejs/biome": "2.1.2",
+    "esbuild": "^0.25.0"
   }
 }

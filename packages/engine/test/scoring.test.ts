@@ -5,9 +5,11 @@
  * negative score accumulation) driven through validateAction/applyEvent.
  *
  * Pinned ambiguity decisions asserted here (documented in src/config.ts):
- *  - Porvoo applies per SIDE: an opponent side with zero tricks scores
- *    −(final contract); a declarer SIDE with zero tricks scores −2×contract.
- *    A personally trickless declarer whose partner won a trick is NOT Porvoo.
+ *  - Porvoo (architect ruling 2026-07-10, follows rules doc §5.6/§10): based
+ *    on the final BID, not the contract. An opponent SIDE with zero tricks
+ *    scores −bid. The declarer is judged PER SEAT: personally trickless
+ *    ("pelinviejä itse") → declarer side scores −2×bid, replacing contract
+ *    scoring even when the partner won tricks.
  *  - Both sides ≥ winTarget with EQUAL scores → the match continues.
  */
 import { describe, expect, it } from 'vitest';
@@ -174,10 +176,12 @@ function leadDeclareState(cfg: RuleConfig, leader: Seat, leaderHand: Card[]): Ma
 // ── Match-level builder: a deal frozen one card before completion ────────────
 //
 // First 8 tricks (side 0 = 84 card points, side 1 = 36, no marriages):
-//   seat 0: all aces + all tens        (84, 2 tricks)
+//   seat 0: —                          ( 0, 0 tricks)
 //   seat 1: all kings, queens, jacks   (36, 3 tricks)
-//   seat 2: —                          ( 0, 0 tricks)
+//   seat 2: all aces + all tens        (84, 2 tricks)
 //   seat 3: all non-heart 9/8/7/6      ( 0, 3 tricks)
+// (Declarer fixtures use seat 2, which must hold tricks so declarer-personal
+// Porvoo does not fire in these non-Porvoo scenarios.)
 // The 9th trick is the four worthless hearts (H9 H8 H7 H6): whoever wins it
 // adds exactly the last-trick bonus. Seat 0 plays the final card.
 
@@ -229,13 +233,15 @@ function ninthTrickState(opts: NinthTrickOpts): {
   const lastCard: Card = opts.lastTrickTo === 0 ? 'H9' : 'H8';
   const deal: DealState = {
     hands: { 0: [lastCard], 1: [], 2: [], 3: [] },
+    // Declarer tests use seat 2: give it tricks so declarer-personal Porvoo
+    // (scoring.ts ruling 2026-07-10) stays out of these non-Porvoo fixtures.
     captured: {
-      0: [...ACES, ...TENS],
+      0: [],
       1: [...KINGS, ...QUEENS, ...JACKS],
-      2: [],
+      2: [...ACES, ...TENS],
       3: [...NON_HEART_ZEROS],
     },
-    tricksWon: { 0: 2, 1: 3, 2: 0, 3: 3 },
+    tricksWon: { 0: 0, 1: 3, 2: 2, 3: 3 },
     tricksPlayed: 8,
     trump: null,
     declarations: [],
@@ -544,11 +550,11 @@ describe('scoreDeal — Porvoo (trickless sides)', () => {
     tricksWon: { 2: 6, 0: 3 },
   };
 
-  it('charges a trickless opponent side the CONTRACT (not the original bid)', () => {
+  it('charges a trickless opponent side the final BID (not the raised contract)', () => {
     const deal = completedDeal({
       declarer: 2,
       contract: 60,
-      bid: 50, // declarer raised 50 → 60: the penalty follows the contract
+      bid: 50, // declarer raised 50 → 60: the penalty follows the BID (§5.6 "huudon verran")
       ...side0SweepPiles,
       lastWinner: 0,
     });
@@ -565,7 +571,7 @@ describe('scoreDeal — Porvoo (trickless sides)', () => {
           rawTotal: 130,
           tricks: 9,
           porvoo: false,
-          scoreDelta: 60,
+          scoreDelta: 60, // contract clamp is untouched by the Porvoo ruling
         },
         {
           cardPoints: 0,
@@ -574,7 +580,7 @@ describe('scoreDeal — Porvoo (trickless sides)', () => {
           rawTotal: 0,
           tricks: 0,
           porvoo: true,
-          scoreDelta: -60,
+          scoreDelta: -50, // −bid, NOT −contract
         },
       ],
     });
@@ -585,18 +591,19 @@ describe('scoreDeal — Porvoo (trickless sides)', () => {
     const deal = completedDeal({
       declarer: 2,
       contract: 300, // raw 130 < 300 → declarer side fails despite the sweep
+      bid: 250, // raised: fail penalty follows the contract, Porvoo the bid
       ...side0SweepPiles,
       lastWinner: 2,
     });
     const result = scoreDeal(deal, CFG_A);
     expect(result.made).toBe(false);
-    expect(result.sides[0].scoreDelta).toBe(-300);
+    expect(result.sides[0].scoreDelta).toBe(-300); // −contract (declarer fail)
     expect(result.sides[1].porvoo).toBe(true);
-    expect(result.sides[1].scoreDelta).toBe(-300);
+    expect(result.sides[1].scoreDelta).toBe(-250); // −bid (opponent Porvoo)
     expectConservation(result, CFG_A, []);
   });
 
-  it('charges a trickless declarer SIDE twice the contract (replacing −contract)', () => {
+  it('charges a trickless declarer SIDE twice the BID (replacing −contract)', () => {
     const deal = completedDeal({
       declarer: 2,
       contract: 60,
@@ -621,7 +628,7 @@ describe('scoreDeal — Porvoo (trickless sides)', () => {
           rawTotal: 0,
           tricks: 0,
           porvoo: true,
-          scoreDelta: -120, // −2 × contract, not −contract
+          scoreDelta: -100, // −2 × bid (§10 "huutajalle 2 × huuto"), not −2 × contract
         },
         {
           cardPoints: 120,
@@ -637,12 +644,14 @@ describe('scoreDeal — Porvoo (trickless sides)', () => {
     expectConservation(result, CFG_A, []);
   });
 
-  it('is per SIDE: a personally trickless declarer whose partner won is not Porvoo', () => {
-    // Pinned decision (config.ts): Porvoo applies to the side. Declarer seat 0
-    // won nothing but partner seat 2 took 2 tricks → normal −contract, not −2×.
+  it("Porvoo's a personally trickless declarer even when the partner won tricks (−2×bid)", () => {
+    // Ruling 2026-07-10 (rules doc §5.6 "jos pelinviejä itse jää ilman
+    // tikkejä"): declarer seat 0 won nothing; partner seat 2 took 2 tricks.
+    // The declarer side is still Porvoo → −2×bid, replacing contract scoring.
     const deal = completedDeal({
       declarer: 0,
       contract: 60,
+      bid: 50,
       captured: {
         0: [],
         2: [...SEVENS, ...SIXES], // 0 points, 2 tricks
@@ -653,16 +662,42 @@ describe('scoreDeal — Porvoo (trickless sides)', () => {
       lastWinner: 1,
     });
     const result = scoreDeal(deal, CFG_A);
+    expect(result.made).toBe(false);
     expect(result.sides[0]).toEqual({
       cardPoints: 0,
       lastTrickBonus: 0,
       marriagePoints: 0,
       rawTotal: 0,
-      tricks: 2,
-      porvoo: false,
-      scoreDelta: -60, // NOT −120
+      tricks: 2, // the side has tricks — the declarer seat does not
+      porvoo: true,
+      scoreDelta: -100, // −2×bid despite the partner's tricks
     });
     expect(result.sides[1].scoreDelta).toBe(130);
+    expectConservation(result, CFG_A, []);
+  });
+
+  it('made-contract totals are still forfeited by a personally trickless declarer', () => {
+    // Partner sweeps enough to cover the contract, declarer contributes no
+    // trick: the ruling forfeits the whole deal at −2×bid.
+    const deal = completedDeal({
+      declarer: 0,
+      contract: 60,
+      bid: 55,
+      captured: {
+        0: [],
+        2: [...ACES, ...TENS, ...KINGS, ...QUEENS, ...JACKS, ...NINES], // 120
+        1: [...EIGHTS, ...SEVENS], // 0
+        3: [...SIXES], // 0
+      },
+      tricksWon: { 0: 0, 2: 6, 1: 2, 3: 1 },
+      lastWinner: 2,
+    });
+    const result = scoreDeal(deal, CFG_A);
+    expect(result.made).toBe(false); // raw 130 ≥ 60, yet not "made"
+    expect(result.sides[0].porvoo).toBe(true);
+    expect(result.sides[0].scoreDelta).toBe(-110); // −2×55
+    expect(result.sides[1].porvoo).toBe(false);
+    expect(result.sides[1].scoreDelta).toBe(0); // raw total: zero points, has tricks
     expectConservation(result, CFG_A, []);
   });
 });
@@ -845,13 +880,23 @@ describe('scoreDeal — randomized conservation oracle', () => {
     return Math.floor(rnd() * n);
   }
 
-  /** Independent re-derivation of §5.6 for cross-checking scoreDeal. */
+  /**
+   * Independent re-derivation of §5.6 (with the 2026-07-10 Porvoo ruling:
+   * bid-based penalties; declarer judged per seat) for cross-checking scoreDeal.
+   */
   function oracle(deal: DealState, cfg: RuleConfig): DealResult {
-    if (deal.declarer === null || deal.contract === null || deal.lastTrick === null) {
+    if (
+      deal.declarer === null ||
+      deal.contract === null ||
+      deal.bid === null ||
+      deal.lastTrick === null
+    ) {
       throw new Error('test bug: oracle needs a finished deal');
     }
     const { declarer, contract } = deal;
+    const bid = deal.bid.amount;
     const lastSide = sideOf(deal.lastTrick.winner);
+    const declarerPorvoo = deal.tricksWon[declarer] === 0;
     const sides = ([0, 1] as const).map((side): SideBreakdown => {
       const seats: [Seat, Seat] = side === 0 ? [0, 2] : [1, 3];
       const cardPoints =
@@ -862,17 +907,24 @@ describe('scoreDeal — randomized conservation oracle', () => {
         .reduce((acc, d) => acc + d.points, 0);
       const rawTotal = cardPoints + lastTrickBonus + marriagePoints;
       const tricks = deal.tricksWon[seats[0]] + deal.tricksWon[seats[1]];
-      const porvoo = tricks === 0;
-      let scoreDelta: number;
       if (side === sideOf(declarer)) {
-        scoreDelta = porvoo ? -2 * contract : rawTotal >= contract ? contract : -contract;
-      } else {
-        scoreDelta = porvoo ? -contract : rawTotal;
+        const scoreDelta = declarerPorvoo ? -2 * bid : rawTotal >= contract ? contract : -contract;
+        return {
+          cardPoints,
+          lastTrickBonus,
+          marriagePoints,
+          rawTotal,
+          tricks,
+          porvoo: declarerPorvoo,
+          scoreDelta,
+        };
       }
+      const porvoo = tricks === 0;
+      const scoreDelta = porvoo ? -bid : rawTotal;
       return { cardPoints, lastTrickBonus, marriagePoints, rawTotal, tricks, porvoo, scoreDelta };
     }) as [SideBreakdown, SideBreakdown];
     const db = sides[sideOf(declarer)];
-    return { declarer, contract, made: !db.porvoo && db.rawTotal >= contract, sides };
+    return { declarer, contract, made: !declarerPorvoo && db.rawTotal >= contract, sides };
   }
 
   it('conserves points and follows the §5.6 delta laws on 120 random deals', () => {
@@ -900,6 +952,9 @@ describe('scoreDeal — randomized conservation oracle', () => {
         const lastWinner = winners[8] as Seat;
         const declarer = randomInt(rnd, 4) as Seat;
         const contract = 50 + 5 * randomInt(rnd, 31);
+        // Raised contracts are routine (§5.3): keep bid ≤ contract, ≥ minBid,
+        // so the bid-vs-contract Porvoo distinction is actually exercised.
+        const bid = Math.max(50, contract - 5 * randomInt(rnd, 8));
         const seatsWithTricks = SEATS.filter((s) => (tricksWon[s] ?? 0) > 0);
         const declarations: Declaration[] = [];
         const shuffledSuits = [...SUITS].sort(() => rnd() - 0.5);
@@ -911,6 +966,7 @@ describe('scoreDeal — randomized conservation oracle', () => {
         const deal = completedDeal({
           declarer,
           contract,
+          bid,
           captured,
           tricksWon,
           lastWinner,

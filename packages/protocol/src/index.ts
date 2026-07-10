@@ -64,7 +64,7 @@ export const configPatchSchema = z
     cardPoints: z.enum(['A', 'B']),
     lastTrickBonus: z.number().int().min(0).max(50),
     trumpValues: z.enum(['heartsHigh', 'bridge']),
-    minBid: z.number().int().min(0).max(200),
+    minBid: z.number().int().min(0).max(200).multipleOf(5),
     winTarget: z.number().int().min(100).max(2000),
     declareRight: z.enum(['ownLedWonTrick', 'anyWonTrick']),
     showLastTrick: z.boolean(),

@@ -1,0 +1,50 @@
+name: Deploy
+
+# Runs after the CI workflow succeeds on main (workflow_run gives us the
+# "needs ci success" gate across workflow files). Skips gracefully — instead
+# of failing — when the FLY_API_TOKEN secret has not been configured yet.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to Fly.io
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: github.event.workflow_run.conclusion == 'success'
+    steps:
+      # Secrets are not available in `if:` at the job level, so probe in a
+      # step and gate the remaining steps on its output.
+      - name: Check for FLY_API_TOKEN
+        id: fly-token
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          if [ -n "$FLY_API_TOKEN" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "FLY_API_TOKEN secret is not set - skipping deploy (see README.md deploy runbook)." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.fly-token.outputs.present == 'true'
+        with:
+          # Deploy the exact commit CI validated, not whatever main points at now.
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+        if: steps.fly-token.outputs.present == 'true'
+
+      - name: Deploy
+        if: steps.fly-token.outputs.present == 'true'
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: flyctl deploy --remote-only

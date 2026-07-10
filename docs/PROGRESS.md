@@ -7,7 +7,7 @@ Plan: `docs/plan.md`. Rules: `docs/huutopussin-saannot.md`.
 | P0 Scaffolding | in progress | — |
 | P1 Engine: deal/bid/exchange/scoring | pending | — |
 | P2 Engine: tricks/declarations/fuzz | pending | — |
-| P3 Server | pending | — |
+| P3 Server | done | integration+chaos+hidden-info+persistence tests (9) green |
 | P4 Client MVP | pending | — |
 | P5 Reconnect + PWA + i18n | pending | — |
 | P6 Persistence + deploy | pending | — |
@@ -22,7 +22,34 @@ Plan: `docs/plan.md`. Rules: `docs/huutopussin-saannot.md`.
   green, fuzz harness (2k games verified). Protocol package authored by architect
   (snapshot-per-change sync model — supersedes plan's event+gap scheme).
   GitHub repo created: BigTimeSam/huutopussi (private); CI/CD + Fly.io deploy and
-  huutopussi.com domain are the new deployment targets. 50k fuzz gate running.
+  huutopussi.com domain are the new deployment targets.
+- 2026-07-10 20:05: **50k fuzz gate PASSED** — 50,000 games (seed 1000), 558,320
+  deals, 23.9M actions, 30.9M events, zero invariant violations, 50.6 games/s.
+  P2 gate formally satisfied. Full-stack workflow WF-2 running (server, client,
+  bots, infra, engine review lenses in parallel).
+- 2026-07-10: Client foundation (P4 scaffold + P5 tech) delivered in
+  `packages/client`: Vite+React app (routes `/`, `/r/:code`), typed WS client
+  (backoff reconnect, per-room session tokens, uuid actionIds, wake-resync,
+  20 s ping), zustand server/ui slices (snapshot-replace, no optimism),
+  i18next fi+en (all engine `error.*` codes seeded), PWA (prompt updates,
+  generated card-motif icons), felt design tokens, CardFace/CardBack SVG
+  components, crude hint-driven placeholder screens, vitest+jsdom suite
+  (15 tests). Typecheck/lint/test/build all green.
+- 2026-07-10: **P3 server + P6 persistence delivered** in `packages/server`:
+  `createServer(opts)` factory (HTTP static host w/ SPA fallback for `/r/*`,
+  `/healthz`, ws endpoint `/ws`), full protocol handling (zod-parsed, per-seat
+  `redactViewFor`/`redactEventFor`, hints strictly to the acting seat),
+  rooms/sessions (crypto 5-char codes, uuid tokens, last-connect-wins),
+  64-deep per-session actionId LRU with verbatim replay, turn timers
+  (45 s / 10 s awaitWholeAnswer, 30 s disconnect grace, botControlled autoplay,
+  reclaim at turn boundary, 15 min idle → abandoned), bot runner (HeuristicBot
+  runtime-detected, RandomLegalBot fallback, 500–1500 ms, same action
+  pipeline), better-sqlite3 WAL persistence (rooms/sessions/matches/deals/
+  deal_events; events appended in the action transaction; boot-time crash
+  recovery by replaying deal_events; 30-day event pruning). 9 server tests:
+  scripted 4-client full deal, chaos (disconnect/dup-actionId/resync-vs-server
+  -truth), hidden-info regex scan, kill-and-recover mid-deal. Typecheck/lint/
+  tests green.
 
 ## Backlog (post-MVP)
 

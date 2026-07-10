@@ -7,9 +7,12 @@
  *
  *  - One declaration attempt (declareOwn | askWhole | askHalf) per lead
  *    opportunity; playing a card is the implicit skip.
- *  - Porvoo in the 4-player partnership game applies per SIDE: an opponent
- *    side with zero tricks scores −(final contract); a declarer side with zero
- *    tricks scores −2×contract (replacing the normal −contract).
+ *  - Porvoo (revised by architect ruling 2026-07-10 after adversarial review —
+ *    the rules doc is explicit, §5.6 + §10 "huudon verran; huutajalle 2 × huuto"):
+ *    penalties are based on the final BID (huuto), never the raised contract.
+ *    An opponent SIDE with zero tricks scores −bid. The DECLARER is judged
+ *    per seat: personally trickless ("pelinviejä itse") → the declarer side
+ *    scores −2×bid, replacing contract scoring entirely.
  *  - If both sides reach winTarget in the same deal with EQUAL scores, another
  *    deal is played.
  *  - A whole-ask is answered from declarable marriages only (suits not yet

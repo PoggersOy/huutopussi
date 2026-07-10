@@ -44,6 +44,19 @@ function maxBidOf(cfg: RuleConfig): number {
 }
 
 /**
+ * Lowest legal opening bid: config.minBid rounded UP to the next bidStep
+ * multiple. Rules doc §5.2 requires every bid to be a bidStep multiple, but
+ * RuleConfig (and the lobby config patch) admit a minBid that is not one
+ * (e.g. 52 with step 5). Using raw cfg.minBid as the forced-opening amount
+ * would advertise an un-biddable hint minimum and — combined with the bid
+ * ban, whose only exception is the forced opening — soft-lock the deal with
+ * zero legal actions. All forced-opening/hint logic must use this value.
+ */
+function minBidOf(cfg: RuleConfig): number {
+  return Math.ceil(cfg.minBid / cfg.bidStep) * cfg.bidStep;
+}
+
+/**
  * Highest legal contract. Rules doc §5.3 only requires a contract to be a
  * bidStep multiple at least the winning bid, so the cap must track the bid cap
  * (maxBid, or theoreticalMaxPoints when unbounded): any winning bid — e.g. 440
@@ -120,7 +133,7 @@ function validateBidTurn(
   }
 
   if (action.type === 'pass') {
-    if (mustOpen(state, ph, seat)) return err('error.forcedOpening', { min: cfg.minBid });
+    if (mustOpen(state, ph, seat)) return err('error.forcedOpening', { min: minBidOf(cfg) });
     const events: GameEvent[] = [{ type: 'passed', seat }];
     if (ph.highBid !== null && ph.passed.length + 1 >= 3) {
       events.push({
@@ -133,11 +146,11 @@ function validateBidTurn(
   }
 
   const { amount } = action;
-  if (bidBanned(state, seat) && !(mustOpen(state, ph, seat) && amount === cfg.minBid)) {
+  if (bidBanned(state, seat) && !(mustOpen(state, ph, seat) && amount === minBidOf(cfg))) {
     return err('error.bidBanned');
   }
   if (amount % cfg.bidStep !== 0) return err('error.bidNotMultiple', { step: cfg.bidStep });
-  const min = ph.highBid === null ? cfg.minBid : ph.highBid.amount + cfg.bidStep;
+  const min = ph.highBid === null ? minBidOf(cfg) : ph.highBid.amount + cfg.bidStep;
   if (amount < min) return err('error.bidTooLow', { min });
   if (amount > maxBidOf(cfg)) return err('error.bidTooHigh', { max: maxBidOf(cfg) });
 
@@ -301,7 +314,7 @@ export function validateAction(
       if (seat !== deal.declarer) return err('error.notYourTurn');
       const cfg = state.config;
       const { amount } = action;
-      const min = deal.bid?.amount ?? cfg.minBid;
+      const min = deal.bid?.amount ?? minBidOf(cfg);
       if (amount % cfg.bidStep !== 0) {
         return err('error.contractNotMultiple', { step: cfg.bidStep });
       }
@@ -384,14 +397,14 @@ export function allowedActions(state: MatchState, seat: Seat): ActionHint[] {
   switch (ph.name) {
     case 'bidding': {
       const forced = mustOpen(state, ph, seat);
-      let min = ph.highBid === null ? cfg.minBid : ph.highBid.amount + cfg.bidStep;
+      let min = ph.highBid === null ? minBidOf(cfg) : ph.highBid.amount + cfg.bidStep;
       let max = maxBidOf(cfg);
       let canPass = !forced;
       if (bidBanned(state, seat)) {
         if (forced) {
           // The forced opening is the banned side's only legal bid.
-          min = cfg.minBid;
-          max = cfg.minBid;
+          min = minBidOf(cfg);
+          max = minBidOf(cfg);
         } else {
           // No legal bid at all: min > max signals "pass (or redeal) only".
           max = min - cfg.bidStep;
@@ -410,7 +423,7 @@ export function allowedActions(state: MatchState, seat: Seat): ActionHint[] {
       return [
         {
           type: 'setContract',
-          min: deal.bid?.amount ?? cfg.minBid,
+          min: deal.bid?.amount ?? minBidOf(cfg),
           max: maxContractOf(cfg),
           step: cfg.bidStep,
         },

@@ -21,9 +21,13 @@
  *   (i) games terminate (maxDeals cap hits are counted, reported and fatal)
  *
  * Usage: pnpm sim -- --games 50000 --seed 1 [--maxDeals 60] [--offset 0]
+ *                    [--bots random|heuristic|mixed]
  * Game i uses PRNG seed derived from (seed, offset+i); 20% of games run with
  * cardPoints 'B' + lastTrickBonus 20 and 20% with trumpValues 'bridge',
  * derived deterministically from the global game index.
+ * --bots mixed seats HeuristicBots on one side and RandomLegalBots on the
+ * other (the heuristic side alternates by game index) and reports the average
+ * final match score per bot type.
  * On violation the full event log is dumped to packages/bots/failures/ and
  * the process exits 1.
  */
@@ -50,12 +54,17 @@ import {
   redactViewFor,
   SEATS,
   type Seat,
+  type Side,
   SUITS,
+  sideOf,
   totalDealPoints,
   validateAction,
 } from '@hp/engine';
+import { HeuristicBot } from './heuristic.js';
 import { mulberry32, pickIndex, shuffle } from './prng.js';
 import { RandomLegalBot } from './random.js';
+
+type BotsMode = 'random' | 'heuristic' | 'mixed';
 
 class Violation extends Error {}
 
@@ -352,6 +361,7 @@ interface GameStats {
   events: number;
   actions: number;
   hitMaxDeals: boolean;
+  finalScores: [number, number];
 }
 
 interface GameCtx {
@@ -359,6 +369,9 @@ interface GameCtx {
   gameIndex: number;
   gameSeed: number;
   config: RuleConfig;
+  botsMode: BotsMode;
+  /** Side seated with HeuristicBots in --bots mixed (alternates per game). */
+  heurSide: Side;
   firstDealer: Seat;
   log: GameEvent[];
   stats: GameStats;
@@ -376,7 +389,11 @@ function runGame(ctx: GameCtx, maxDeals: number): void {
   const rng = mulberry32(ctx.gameSeed);
   ctx.firstDealer = pickIndex(rng, 4) as Seat;
   let state = initialMatchState(ctx.config, ctx.firstDealer);
-  const bots = SEATS.map(() => new RandomLegalBot(rng));
+  const bots: Array<RandomLegalBot | HeuristicBot> = SEATS.map((s) => {
+    const heuristic =
+      ctx.botsMode === 'heuristic' || (ctx.botsMode === 'mixed' && sideOf(s) === ctx.heurSide);
+    return heuristic ? new HeuristicBot(rng) : new RandomLegalBot(rng);
+  });
 
   while (state.winnerSide === null) {
     invariant(ctx.stats.events < 100_000, 'runaway game: event cap exceeded');
@@ -397,7 +414,7 @@ function runGame(ctx: GameCtx, maxDeals: number): void {
     invariant(hints.length > 0, `no hints for expected actor ${actor}`);
     probeTurn(state, actor, hints);
 
-    const bot = bots[actor] as RandomLegalBot;
+    const bot = bots[actor] as RandomLegalBot | HeuristicBot;
     const action = bot.onTurn(redactViewFor(state, actor), hints);
     const res = validateAction(state, actor, action);
     if (isRuleError(res)) {
@@ -416,6 +433,8 @@ function runGame(ctx: GameCtx, maxDeals: number): void {
     JSON.stringify(replayed) === JSON.stringify(state),
     'replaying the event log did not reproduce the final state',
   );
+
+  ctx.stats.finalScores = [state.scores[0], state.scores[1]];
 }
 
 // ── CLI ───────────────────────────────────────────────────────────────────────
@@ -457,14 +476,22 @@ function main(): void {
       seed: { type: 'string' },
       maxDeals: { type: 'string' },
       offset: { type: 'string' },
+      bots: { type: 'string' },
     },
   });
   const games = intFlag(values.games, 'games', 500);
   const seed = intFlag(values.seed, 'seed', 1);
   const maxDeals = intFlag(values.maxDeals, 'maxDeals', 60);
   const offset = intFlag(values.offset, 'offset', 0);
+  const botsMode = (values.bots ?? 'random') as BotsMode;
+  if (botsMode !== 'random' && botsMode !== 'heuristic' && botsMode !== 'mixed') {
+    console.error(`[sim] --bots must be random | heuristic | mixed, got ${values.bots}`);
+    process.exit(2);
+  }
 
   const totals = { deals: 0, events: 0, actions: 0 };
+  /** Cumulative final match scores per bot type (--bots mixed only). */
+  const mixedScores = { heuristic: 0, random: 0 };
   const maxDealsHits: number[] = [];
   const t0 = performance.now();
 
@@ -475,9 +502,11 @@ function main(): void {
       gameIndex,
       gameSeed: (seed + gameIndex * 0x9e3779b1) >>> 0,
       config: configFor(gameIndex),
+      botsMode,
+      heurSide: (gameIndex % 2) as Side,
       firstDealer: 0,
       log: [],
-      stats: { deals: 0, events: 0, actions: 0, hitMaxDeals: false },
+      stats: { deals: 0, events: 0, actions: 0, hitMaxDeals: false, finalScores: [0, 0] },
     };
     try {
       runGame(ctx, maxDeals);
@@ -494,6 +523,10 @@ function main(): void {
     totals.deals += ctx.stats.deals;
     totals.events += ctx.stats.events;
     totals.actions += ctx.stats.actions;
+    if (botsMode === 'mixed') {
+      mixedScores.heuristic += ctx.stats.finalScores[ctx.heurSide];
+      mixedScores.random += ctx.stats.finalScores[(1 - ctx.heurSide) as Side];
+    }
     if ((i + 1) % 1000 === 0) {
       const rate = (i + 1) / ((performance.now() - t0) / 1000);
       console.error(`[sim] ${i + 1}/${games} games ok (${rate.toFixed(1)} games/s)`);
@@ -502,7 +535,7 @@ function main(): void {
 
   const secs = (performance.now() - t0) / 1000;
   const summary =
-    `games=${games} offset=${offset} seed=${seed} deals=${totals.deals} ` +
+    `games=${games} offset=${offset} seed=${seed} bots=${botsMode} deals=${totals.deals} ` +
     `actions=${totals.actions} events=${totals.events} ` +
     `elapsed=${secs.toFixed(1)}s rate=${(games / secs).toFixed(1)} games/s`;
   if (maxDealsHits.length > 0) {
@@ -511,6 +544,12 @@ function main(): void {
     );
     console.error(`[sim] ${summary}`);
     process.exit(1);
+  }
+  if (botsMode === 'mixed' && games > 0) {
+    console.log(
+      `[sim] mixed avg final score: heuristic=${(mixedScores.heuristic / games).toFixed(1)} ` +
+        `random=${(mixedScores.random / games).toFixed(1)}`,
+    );
   }
   console.log(`[sim] OK: all games clean. ${summary}`);
 }

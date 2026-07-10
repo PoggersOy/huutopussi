@@ -1,0 +1,35 @@
+# Never ship host-installed deps (native binaries are platform-specific);
+# the image installs its own from the lockfile.
+node_modules
+**/node_modules
+
+# VCS / CI
+.git
+.github
+
+# Docs & progress logs (not needed to build or run)
+docs
+
+# Local dev artifacts
+**/dist
+**/*.tsbuildinfo
+*.log
+.DS_Store
+
+# Test / Playwright artifacts
+playwright-report
+test-results
+**/playwright-report
+**/test-results
+coverage
+**/coverage
+
+# Local databases
+*.db
+*.db-wal
+*.db-shm
+
+# Deployment config (not needed inside the image)
+fly.toml
+Dockerfile
+.dockerignore

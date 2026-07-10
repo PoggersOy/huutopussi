@@ -1,0 +1,81 @@
+/*
+ * Design tokens — dark-green felt table aesthetic.
+ * Everything visual hangs off these custom properties; screens agents theme
+ * by token, not by hex.
+ */
+:root {
+  color-scheme: dark;
+
+  /* ── Felt greens ── */
+  --felt-950: #041a12;
+  --felt-900: #07271c;
+  --felt-800: #0b3d2e;
+  --felt-700: #10493a;
+  --felt-600: #165846;
+  --felt-500: #1d6a55;
+
+  /* ── Accents ── */
+  --gold: #d4af37;
+  --gold-soft: #b9975b;
+  --cream: #f6f1e3;
+
+  /* ── Cards ── */
+  --card-face: #fdfbf4;
+  --card-face-muted: #efe9d9;
+  --card-back: var(--felt-800);
+  --card-border: #1a1a24;
+  --card-red: #c8102e;
+  --card-black: #1a1a24;
+
+  /* ── Semantic ── */
+  --bg: var(--felt-900);
+  --surface: rgba(255, 255, 255, 0.06);
+  --surface-strong: rgba(255, 255, 255, 0.12);
+  --line: rgba(255, 255, 255, 0.14);
+  --text: var(--cream);
+  --text-dim: rgba(246, 241, 227, 0.62);
+  --accent: var(--gold);
+  --danger: #e5484d;
+  --ok: #46a758;
+  --info: #4c8dd6;
+
+  /* ── Card sizing (portrait-first; 9-card fan must fit ~390 px width) ── */
+  --card-ratio: 1.4;
+  --card-w: clamp(52px, 17vw, 76px);
+  --card-h: calc(var(--card-w) * var(--card-ratio));
+  --card-w-sm: clamp(36px, 11vw, 52px);
+  --card-h-sm: calc(var(--card-w-sm) * var(--card-ratio));
+  --card-radius: calc(var(--card-w) * 0.09);
+
+  /* ── Touch & spacing ── */
+  --touch-min: 44px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --radius-1: 6px;
+  --radius-2: 10px;
+  --radius-3: 16px;
+
+  /* ── Safe areas (viewport-fit=cover) ── */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+
+  /* ── Type ── */
+  --font-ui: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, system-ui, sans-serif;
+  --font-display: Georgia, "Times New Roman", serif;
+  --fs-xs: 0.75rem;
+  --fs-sm: 0.875rem;
+  --fs-md: 1rem;
+  --fs-lg: 1.25rem;
+  --fs-xl: 1.6rem;
+
+  /* ── Z layers ── */
+  --z-sheet: 40;
+  --z-banner: 50;
+  --z-toast: 60;
+}

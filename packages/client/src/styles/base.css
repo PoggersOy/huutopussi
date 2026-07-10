@@ -1,0 +1,263 @@
+/* Base styles: reset, felt table ground, portrait-first layout primitives. */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: var(--fs-md);
+  color: var(--text);
+  background: radial-gradient(
+      120vw 90vh at 50% 30%,
+      var(--felt-700) 0%,
+      var(--felt-900) 62%,
+      var(--felt-950) 100%
+    )
+    var(--felt-900);
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+h1,
+h2 {
+  font-family: var(--font-display);
+  font-weight: 600;
+}
+
+/* ── Portrait-first screen grid: header / scrollable main / action bar ── */
+
+.screen {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  height: 100%;
+  padding: var(--safe-top) var(--safe-right) 0 var(--safe-left);
+}
+
+.screen__top {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.screen__main {
+  overflow-y: auto;
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.screen__bottom {
+  padding: var(--space-3) var(--space-4) calc(var(--space-3) + var(--safe-bottom));
+  border-top: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.24);
+}
+
+/* ── Controls: everything tappable is at least 44px ── */
+
+button,
+.btn {
+  min-height: var(--touch-min);
+  min-width: var(--touch-min);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-2);
+  background: var(--surface-strong);
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.btn--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--felt-950);
+}
+
+.btn--danger {
+  background: transparent;
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.btn--ghost {
+  background: transparent;
+}
+
+input,
+select {
+  min-height: var(--touch-min);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-2);
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--text);
+  font: inherit;
+  width: 100%;
+}
+
+input::placeholder {
+  color: var(--text-dim);
+}
+
+/* ── Surfaces ── */
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-3);
+  padding: var(--space-4);
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.dim {
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+}
+
+/* ── Card fan (bottom of the table) ── */
+
+.hand {
+  display: flex;
+  justify-content: center;
+  padding: var(--space-2) 0;
+}
+
+.hand__card {
+  /* Overlap so 9 cards fit portrait width; the tap target stays ≥44px wide. */
+  margin-left: calc(var(--card-w) * -0.45);
+  border: none;
+  background: none;
+  padding: 0;
+  min-width: 0;
+  min-height: 0;
+  transition: transform 120ms ease-out;
+}
+
+.hand__card:first-child {
+  margin-left: 0;
+}
+
+.hand__card--raised {
+  transform: translateY(calc(var(--card-h) * -0.22));
+}
+
+.hand__card--dim svg {
+  filter: brightness(0.55) saturate(0.6);
+}
+
+/* ── Connection banner & toasts ── */
+
+.banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: var(--z-banner);
+  padding: calc(var(--space-2) + var(--safe-top)) var(--space-4) var(--space-2);
+  text-align: center;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  background: var(--danger);
+  color: #fff;
+}
+
+.toasts {
+  position: fixed;
+  left: var(--space-4);
+  right: var(--space-4);
+  bottom: calc(var(--space-4) + var(--safe-bottom));
+  z-index: var(--z-toast);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-2);
+  background: rgba(0, 0, 0, 0.82);
+  border: 1px solid var(--line);
+  font-size: var(--fs-sm);
+}
+
+.toast--error {
+  border-color: var(--danger);
+}
+
+.toast--update {
+  border-color: var(--accent);
+}
+
+/* ── Bottom sheet shell (screens agents will build the real ones) ── */
+
+.sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: var(--z-sheet);
+  background: var(--felt-800);
+  border-radius: var(--radius-3) var(--radius-3) 0 0;
+  border-top: 1px solid var(--line);
+  padding: var(--space-4) var(--space-4) calc(var(--space-4) + var(--safe-bottom));
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+/* ── Debug raw view ── */
+
+.raw {
+  font-size: var(--fs-xs);
+  overflow-x: auto;
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: var(--radius-1);
+  padding: var(--space-3);
+  -webkit-user-select: text;
+  user-select: text;
+}

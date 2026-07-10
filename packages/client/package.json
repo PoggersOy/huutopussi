@@ -4,7 +4,33 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "typecheck": "echo '@hp/client: typecheck skipped (scaffolded in phase P4)'",
-    "test": "echo '@hp/client: tests skipped (scaffolded in phase P4)'"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "icons": "node scripts/generate-icons.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@hp/engine": "workspace:*",
+    "@hp/protocol": "workspace:*",
+    "i18next": "^25.3.2",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-i18next": "^15.6.0",
+    "react-router-dom": "^7.7.0",
+    "zustand": "^5.0.6"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.3.0",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@vitejs/plugin-react": "^5.0.0",
+    "jsdom": "^26.1.0",
+    "typescript": "^5.8.3",
+    "vite": "^7.0.0",
+    "vite-plugin-pwa": "^1.0.1",
+    "vitest": "^3.2.4",
+    "workbox-window": "^7.3.0"
   }
 }
