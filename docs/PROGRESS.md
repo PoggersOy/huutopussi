@@ -50,6 +50,45 @@ Plan: `docs/plan.md`. Rules: `docs/huutopussin-saannot.md`.
   scripted 4-client full deal, chaos (disconnect/dup-actionId/resync-vs-server
   -truth), hidden-info regex scan, kill-and-recover mid-deal. Typecheck/lint/
   tests green.
+- 2026-07-10: **Home + Lobby + History screens delivered** (placeholders
+  replaced) in `packages/client`: Home (persisted nickname, create/join,
+  localStorage recent-rooms list, deferred `beforeinstallprompt` install
+  button, history link), Lobby (4 seat cards rotated around a mini felt table
+  with avatar initials/host/bot/disconnect badges, take-seat/stand-up,
+  host add/remove bot, share block with room link + clipboard copy + native
+  share, host-editable rules panel bound to `configPatchSchema` — cardPoints,
+  trumpValues, minBid, winTarget, declareRight, showLastTrick — read-only for
+  guests, 4-seat-gated Start), History screen (`/history`, per-room
+  `history` messages persisted to localStorage, aggregated newest-first),
+  shared ConnectionPill, `ui.history` store slice + socket `history` wiring,
+  ~45 new fi/en i18n keys incl. all server lobby `error.*` codes. 31 client
+  tests green; typecheck/lint/build green. NOTE: protocol has no "kick human"
+  lobby command, so host kick is bots-only (`removeBot`).
+
+- **P4 — Table screen (core game UI)**: replaced the placeholder Table with the
+  plan §6 layout — top bar (side scores, contract/bid + declarer, suit-colored
+  trump, deal number), three opponent panels (partner top, left/right relative
+  to viewer seat; CardBack count-fans, connection/bot/away badges, dealer +
+  declarer chips), center trick positioned per relative seat with entry
+  animation, trick-winner flash + brief completed-trick linger, last-trick
+  peek. Own hand fan with two-step play (raise → confirm; illegal cards greyed
+  + disabled from hints; spinner on the raised card until the confirming
+  update). Hint-driven bottom sheets rendered in-flow above the hand: bidding
+  (high bid, +5/+10/+25 stepper, forced-bid notice, redeal demand), exchange
+  give/return (tap-select N in the fan, exact-count confirm), contract
+  stepper, declaration (own suits w/ marriage values, whole-ask, half-ask
+  sub-picker, "just lead" dismiss + reopen chip), answer-whole suit choice.
+  Deal-scored overlay (per-side breakdown incl. Porvoo + running totals) and
+  match-ended overlay (winners, host rematch / waiting note). Speech bubbles
+  for bids/declarations/asks derived in the store from update.event + snapshot
+  diffs (the server only sends the first event of each chain), auto-dismissed
+  ~4 s. New `ui` store fields: `selectedCards`, `bubbles`, `completedTrick`.
+  10 new Table tests (41 client tests green). Adapted to the widened engine
+  contract (sideOf/nextSeat players arg, scores: number[], nullable
+  DealResult). NOTE: client typecheck currently fails ONLY in socket.ts —
+  engine PlayerAction gained 'discardCards' which @hp/protocol's
+  playerActionSchema does not carry yet (in-flight 2-3p migration, not a
+  Table issue).
 
 ## Backlog (post-MVP)
 

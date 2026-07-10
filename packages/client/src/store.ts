@@ -8,8 +8,18 @@
  *  - `ui`: ephemeral client-only state (card selection, open bottom sheet,
  *    pending action spinner, toast queue).
  */
-import type { Card, GameEvent, PlayerView, Seat } from '@hp/engine';
-import type { RoomStatePublic, ServerMsg, TurnInfo } from '@hp/protocol';
+import {
+  type Card,
+  type GameEvent,
+  type PlayerView,
+  partnerOf,
+  type Rank,
+  SEATS,
+  type Seat,
+  type Suit,
+  type TrickPlay,
+} from '@hp/engine';
+import type { MatchSummary, RoomStatePublic, ServerMsg, TurnInfo } from '@hp/protocol';
 import { create } from 'zustand';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -40,9 +50,31 @@ export interface Toast {
   params?: Record<string, string | number>;
 }
 
+/** Transient speech bubble rendered next to a seat's panel on the table. */
+export interface SpeechBubble {
+  id: number;
+  seat: Seat;
+  /** i18n key, e.g. 'bubble.bid'. */
+  code: string;
+  params?: Record<string, string | number>;
+}
+
+/**
+ * The just-completed trick, kept around briefly so the table can show the
+ * fourth card + flash the winner before the felt clears (the server snapshot
+ * has already moved on to the next lead).
+ */
+export interface CompletedTrick {
+  id: number;
+  plays: TrickPlay[];
+  winner: Seat;
+}
+
 export interface UiSlice {
   /** Card highlighted for a multi-card flow (exchange give/return). */
   selectedCard: Card | null;
+  /** Multi-card selection for exchange give/return (tap-select N cards). */
+  selectedCards: Card[];
   /** Two-step play: first tap raises, second tap plays. */
   raisedCard: Card | null;
   /** Which bottom sheet is open ('bid' | 'exchange' | 'contract' | ...). */
@@ -50,6 +82,12 @@ export interface UiSlice {
   /** actionId of the in-flight action (spinner until server confirms). */
   pendingActionId: string | null;
   toasts: Toast[];
+  /** Speech bubbles derived from update events; at most one per seat. */
+  bubbles: SpeechBubble[];
+  /** Winner flash / trick linger state (see CompletedTrick). */
+  completedTrick: CompletedTrick | null;
+  /** Latest match summaries for the current room ('history' messages). */
+  history: MatchSummary[] | null;
 }
 
 interface Store {
@@ -57,11 +95,16 @@ interface Store {
   ui: UiSlice;
   // ui actions (safe to call from components)
   selectCard(card: Card | null): void;
+  toggleSelectedCard(card: Card, max: number): void;
+  clearSelectedCards(): void;
   raiseCard(card: Card | null): void;
   setOpenSheet(sheet: string | null): void;
   setPendingAction(actionId: string | null): void;
   pushToast(toast: Omit<Toast, 'id'>): void;
   dismissToast(id: number): void;
+  dismissBubble(id: number): void;
+  clearCompletedTrick(id: number): void;
+  setHistory(matches: MatchSummary[]): void;
 }
 
 const initialServer: ServerSlice = {
@@ -76,13 +119,19 @@ const initialServer: ServerSlice = {
 
 const initialUi: UiSlice = {
   selectedCard: null,
+  selectedCards: [],
   raisedCard: null,
   openSheet: null,
   pendingActionId: null,
   toasts: [],
+  bubbles: [],
+  completedTrick: null,
+  history: null,
 };
 
 let toastSeq = 0;
+let bubbleSeq = 0;
+let trickFlashSeq = 0;
 const TOAST_LIMIT = 5;
 
 export const useStore = create<Store>()((set) => ({
@@ -90,6 +139,17 @@ export const useStore = create<Store>()((set) => ({
   ui: initialUi,
 
   selectCard: (card) => set((s) => ({ ui: { ...s.ui, selectedCard: card } })),
+  toggleSelectedCard: (card, max) =>
+    set((s) => {
+      const has = s.ui.selectedCards.includes(card);
+      const selectedCards = has
+        ? s.ui.selectedCards.filter((c) => c !== card)
+        : s.ui.selectedCards.length < max
+          ? [...s.ui.selectedCards, card]
+          : s.ui.selectedCards;
+      return { ui: { ...s.ui, selectedCards } };
+    }),
+  clearSelectedCards: () => set((s) => ({ ui: { ...s.ui, selectedCards: [] } })),
   raiseCard: (card) => set((s) => ({ ui: { ...s.ui, raisedCard: card } })),
   setOpenSheet: (sheet) => set((s) => ({ ui: { ...s.ui, openSheet: sheet } })),
   setPendingAction: (actionId) => set((s) => ({ ui: { ...s.ui, pendingActionId: actionId } })),
@@ -99,6 +159,11 @@ export const useStore = create<Store>()((set) => ({
     })),
   dismissToast: (id) =>
     set((s) => ({ ui: { ...s.ui, toasts: s.ui.toasts.filter((t) => t.id !== id) } })),
+  dismissBubble: (id) =>
+    set((s) => ({ ui: { ...s.ui, bubbles: s.ui.bubbles.filter((b) => b.id !== id) } })),
+  clearCompletedTrick: (id) =>
+    set((s) => (s.ui.completedTrick?.id === id ? { ui: { ...s.ui, completedTrick: null } } : s)),
+  setHistory: (matches) => set((s) => ({ ui: { ...s.ui, history: matches } })),
 }));
 
 // ── Server-slice writers (socket layer ONLY — see module doc) ───────────────
@@ -116,6 +181,103 @@ function eventToast(event: GameEvent): Omit<Toast, 'id'> | null {
   const toast: Omit<Toast, 'id'> = { kind: 'info', code: `event.${event.type}` };
   if (event.type === 'trumpSet') toast.params = { suit: event.suit, points: event.points };
   return toast;
+}
+
+// ── Table-UI derivations (speech bubbles + trick flash) ──────────────────────
+//
+// The server sends ONE update per accepted action carrying only the FIRST
+// event of the resulting chain (e.g. the 4th `cardPlayed` of a trick arrives
+// with a view that is already past `trickWon`). Consequence events are
+// therefore derived by diffing the previous snapshot against the new one.
+
+const BUBBLE_GLYPH: Record<Suit, string> = { H: '♥', D: '♦', C: '♣', S: '♠' };
+
+type NewBubble = Omit<SpeechBubble, 'id'>;
+
+function deriveBubbles(
+  event: GameEvent | null,
+  prev: PlayerView | null,
+  next: PlayerView,
+): NewBubble[] {
+  const out: NewBubble[] = [];
+  const nextDeal = next.deal;
+  const sameDeal = prev !== null && prev.deal !== null && prev.dealIndex === next.dealIndex;
+  const prevDeclCount = sameDeal && prev.deal !== null ? prev.deal.declarations.length : 0;
+  const declGrew = nextDeal !== null && nextDeal.declarations.length > prevDeclCount;
+
+  switch (event?.type) {
+    case 'bidPlaced':
+      out.push({ seat: event.seat, code: 'bubble.bid', params: { amount: event.amount } });
+      break;
+    case 'passed':
+      out.push({ seat: event.seat, code: 'bubble.pass' });
+      break;
+    case 'redealDemanded':
+      out.push({ seat: event.seat, code: 'bubble.redeal' });
+      break;
+    case 'contractSet':
+      out.push({ seat: event.seat, code: 'bubble.contract', params: { amount: event.amount } });
+      break;
+    case 'askedWhole': {
+      out.push({ seat: event.seat, code: 'bubble.askWhole' });
+      // 0 declarable marriages → the engine auto-answered "no" in the same chain.
+      const stillAnswering = nextDeal?.phase.name === 'awaitWholeAnswer';
+      if (!stillAnswering && !declGrew) {
+        out.push({ seat: partnerOf(event.seat), code: 'bubble.noMarriage' });
+      }
+      break;
+    }
+    case 'answeredWhole':
+      if (event.suit === null) out.push({ seat: event.seat, code: 'bubble.noMarriage' });
+      break;
+    case 'askedHalf': {
+      const asked: Rank = event.rankHeld === 'K' ? 'Q' : 'K';
+      out.push({
+        seat: event.seat,
+        code: 'bubble.askHalf',
+        params: { card: `${BUBBLE_GLYPH[event.suit]}${asked}` },
+      });
+      // The truthful auto-answer is in the same chain; "yes" shows up as a new
+      // declaration (trump bubble below), "no" as an explicit denial.
+      if (!declGrew) out.push({ seat: partnerOf(event.seat), code: 'bubble.answerNo' });
+      break;
+    }
+    default:
+      break;
+  }
+
+  if (nextDeal !== null && declGrew) {
+    for (const d of nextDeal.declarations.slice(prevDeclCount)) {
+      // `d.seat` is the asker for asks; the reveal comes from the partner.
+      const at = d.how === 'own' ? d.seat : partnerOf(d.seat);
+      out.push({
+        seat: at,
+        code: 'bubble.trump',
+        params: { suit: BUBBLE_GLYPH[d.suit], points: d.points },
+      });
+    }
+  }
+  return out;
+}
+
+function deriveCompletedTrick(
+  event: GameEvent | null,
+  prev: PlayerView | null,
+  next: PlayerView,
+): Omit<CompletedTrick, 'id'> | null {
+  const prevDeal = prev?.deal ?? null;
+  const nextDeal = next.deal;
+  if (prevDeal === null || nextDeal === null || prev?.dealIndex !== next.dealIndex) return null;
+  if (nextDeal.tricksPlayed !== prevDeal.tricksPlayed + 1) return null;
+  const winner = SEATS.find((s) => nextDeal.tricksWon[s] === prevDeal.tricksWon[s] + 1);
+  if (winner === undefined) return null;
+  let plays: TrickPlay[] | null = null;
+  if (event?.type === 'cardPlayed' && prevDeal.phase.name === 'follow') {
+    plays = [...prevDeal.phase.plays, { seat: event.seat, card: event.card }];
+  } else if (nextDeal.lastTrick !== null) {
+    plays = nextDeal.lastTrick.plays;
+  }
+  return plays === null ? null : { winner, plays };
 }
 
 export const serverApply = {
@@ -137,7 +299,15 @@ export const serverApply = {
         lastError: null,
       },
       // A fresh snapshot invalidates all ephemeral interaction state.
-      ui: { ...s.ui, selectedCard: null, raisedCard: null, pendingActionId: null },
+      ui: {
+        ...s.ui,
+        selectedCard: null,
+        selectedCards: [],
+        raisedCard: null,
+        pendingActionId: null,
+        bubbles: [],
+        completedTrick: null,
+      },
     }));
   },
 
@@ -152,6 +322,26 @@ export const serverApply = {
   update(msg: Extract<ServerMsg, { t: 'update' }>): void {
     useStore.setState((s) => {
       const toast = msg.event ? eventToast(msg.event) : null;
+      const prevView = s.server.view;
+      const dealBoundary =
+        msg.event?.type === 'dealStarted' ||
+        prevView === null ||
+        prevView.dealIndex !== msg.view.dealIndex;
+      const incoming = deriveBubbles(msg.event, prevView, msg.view).map((b) => ({
+        ...b,
+        id: ++bubbleSeq,
+      }));
+      // One bubble per seat: a newer line replaces the older one.
+      const kept = dealBoundary
+        ? []
+        : s.ui.bubbles.filter((b) => !incoming.some((n) => n.seat === b.seat));
+      const completed = dealBoundary ? null : deriveCompletedTrick(msg.event, prevView, msg.view);
+      const completedTrick =
+        completed !== null
+          ? { ...completed, id: ++trickFlashSeq }
+          : dealBoundary || msg.event?.type === 'cardPlayed'
+            ? null
+            : s.ui.completedTrick;
       return {
         server: {
           ...s.server,
@@ -167,6 +357,9 @@ export const serverApply = {
           pendingActionId: null,
           raisedCard: null,
           selectedCard: null,
+          selectedCards: [],
+          bubbles: [...kept, ...incoming],
+          completedTrick,
           toasts: toast
             ? [...s.ui.toasts, { ...toast, id: ++toastSeq }].slice(-TOAST_LIMIT)
             : s.ui.toasts,

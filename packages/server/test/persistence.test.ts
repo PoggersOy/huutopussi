@@ -16,7 +16,7 @@ import { attachDriver, sleep, TestClient, waitForDealScored } from './helpers.js
 async function addBots(host: TestClient): Promise<void> {
   for (const seat of [1, 2, 3] as Seat[]) {
     const ack = host.next(
-      (m) => m.t === 'room' && m.room.seats[seat].kind === 'bot',
+      (m) => m.t === 'room' && m.room.seats[seat]?.kind === 'bot',
       10_000,
       `bot at seat ${seat}`,
     );

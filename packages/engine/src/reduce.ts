@@ -8,7 +8,7 @@
 import type { RuleConfig } from './config.js';
 import { declarableSuits } from './legality.js';
 import type { Card, DealPhase, DealState, GameEvent, MatchState, Seat } from './types.js';
-import { nextSeat, partnerOf } from './types.js';
+import { activeSeats, nextSeat, partnerOf, sideCount, sideOf, tricksPerDeal } from './types.js';
 
 function assert(cond: unknown, msg: string): asserts cond {
   if (!cond) throw new Error(`engine bug: ${msg}`);
@@ -18,7 +18,7 @@ function assert(cond: unknown, msg: string): asserts cond {
 export function initialMatchState(config: RuleConfig, firstDealer: Seat): MatchState {
   return {
     config,
-    scores: [0, 0],
+    scores: new Array<number>(sideCount(config)).fill(0),
     dealer: firstDealer,
     dealIndex: 0,
     deal: null,
@@ -28,21 +28,42 @@ export function initialMatchState(config: RuleConfig, firstDealer: Seat): MatchS
 
 /** The seat that opens the bidding for a deal dealt by `dealer`. */
 export function firstBidderOf(dealer: Seat, config: RuleConfig): Seat {
-  return config.firstBidder === 'dealer' ? dealer : nextSeat(dealer);
+  return config.firstBidder === 'dealer' ? dealer : nextSeat(dealer, config.players);
 }
 
 function bySeat<T>(make: (seat: Seat) => T): Record<Seat, T> {
   return { 0: make(0), 1: make(1), 2: make(2), 3: make(3) };
 }
 
-/** Clockwise from `from`, the first seat not in `passed`; `from` if none. */
-function nextUnpassed(from: Seat, passed: readonly Seat[]): Seat {
+/** Clockwise from `from`, the first seat not in `skip`; `from` if none. */
+function nextEligible(from: Seat, players: 2 | 3 | 4, skip: readonly Seat[]): Seat {
   let s = from;
-  for (let i = 0; i < 3; i++) {
-    s = nextSeat(s);
-    if (!passed.includes(s)) return s;
+  for (let i = 0; i < players - 1; i++) {
+    s = nextSeat(s, players);
+    if (!skip.includes(s)) return s;
   }
   return from;
+}
+
+/** `from` itself if not in `skip`, else the next such seat clockwise. */
+function firstEligibleFrom(from: Seat, players: 2 | 3 | 4, skip: readonly Seat[]): Seat {
+  let s = from;
+  for (let i = 0; i < players && skip.includes(s); i++) s = nextSeat(s, players);
+  assert(!skip.includes(s), 'no eligible bidding seat');
+  return s;
+}
+
+/**
+ * Seats excluded from the opening bidding round by the illisoft bid ban
+ * (config.bidBanReopen). When every active seat would be banned, nobody is
+ * excluded — everyone bids normally from the start.
+ */
+function bannedSeats(config: RuleConfig, scores: readonly number[]): Seat[] {
+  const t = config.bidBanThreshold;
+  if (!config.bidBanReopen || t === null) return [];
+  const active = activeSeats(config.players);
+  const banned = active.filter((s) => (scores[sideOf(s, config.players)] ?? 0) <= t);
+  return banned.length >= active.length ? [] : banned;
 }
 
 function addUnique(seats: readonly Seat[], seat: Seat): Seat[] {
@@ -77,38 +98,65 @@ function requirePhase<N extends DealPhase['name']>(
   return deal.phase as Extract<DealPhase, { name: N }>;
 }
 
+const EXCHANGE_PHASES: readonly DealPhase['name'][] = [
+  'exchangeGive',
+  'exchangeDiscard',
+  'exchangeContract',
+  'exchangeReturn',
+];
+
 /** Pure reducer. Throws only on impossible states (engine-bug assertions). */
 export function applyEvent(state: MatchState, event: GameEvent): MatchState {
+  const players = state.config.players;
   switch (event.type) {
     case 'dealStarted': {
+      const cfg = state.config;
       assert(event.deck.length === 36, 'dealStarted deck must contain 36 cards');
+      // Layout: active hands seat-major, then the dummy hand (2p), then the talon (2-3p).
+      const handSize = tricksPerDeal(cfg);
+      const hands = bySeat<Card[]>((s) =>
+        s < players ? event.deck.slice(s * handSize, (s + 1) * handSize) : [],
+      );
+      const dummyHand = players === 2 ? event.deck.slice(2 * handSize, 3 * handSize) : null;
+      const talon = players === 4 ? null : event.deck.slice(36 - cfg.talonSize);
+      const excluded = bannedSeats(cfg, state.scores);
       const deal: DealState = {
-        hands: bySeat((s) => event.deck.slice(s * 9, s * 9 + 9)),
+        hands,
         captured: bySeat<Card[]>(() => []),
         tricksWon: bySeat(() => 0),
         tricksPlayed: 0,
         trump: null,
         declarations: [],
         askedWhole: bySeat(() => false),
+        askedHalf: bySeat(() => false),
         bidLog: [],
         bid: null,
         declarer: null,
         contract: null,
         exchange: { given: null, returned: null },
+        talon,
+        talonTakenBy: null,
+        dummyHand,
+        discarded: null,
         lastTrick: null,
         phase: {
           name: 'bidding',
-          turn: firstBidderOf(event.dealer, state.config),
+          turn: firstEligibleFrom(firstBidderOf(event.dealer, cfg), players, excluded),
           highBid: null,
           passed: [],
           firstTurnTaken: [],
+          excluded,
         },
       };
       return { ...state, dealer: event.dealer, dealIndex: event.dealIndex, deal };
     }
 
     case 'redealDemanded': {
-      requirePhase(requireDeal(state), 'bidding');
+      const deal = requireDeal(state);
+      assert(
+        deal.phase.name === 'bidding' || EXCHANGE_PHASES.includes(deal.phase.name),
+        'redealDemanded outside bidding/exchange',
+      );
       return { ...state, deal: null };
     }
 
@@ -120,7 +168,7 @@ export function applyEvent(state: MatchState, event: GameEvent): MatchState {
         bidLog: [...deal.bidLog, { seat: event.seat, kind: 'bid', amount: event.amount }],
         phase: {
           ...ph,
-          turn: nextUnpassed(event.seat, ph.passed),
+          turn: nextEligible(event.seat, players, [...ph.passed, ...ph.excluded]),
           highBid: { seat: event.seat, amount: event.amount },
           firstTurnTaken: addUnique(ph.firstTurnTaken, event.seat),
         },
@@ -136,10 +184,34 @@ export function applyEvent(state: MatchState, event: GameEvent): MatchState {
         bidLog: [...deal.bidLog, { seat: event.seat, kind: 'pass' }],
         phase: {
           ...ph,
-          turn: nextUnpassed(event.seat, passed),
+          turn: nextEligible(event.seat, players, [...passed, ...ph.excluded]),
           passed,
           firstTurnTaken: addUnique(ph.firstTurnTaken, event.seat),
         },
+      });
+    }
+
+    case 'biddingReopened': {
+      const deal = requireDeal(state);
+      const ph = requirePhase(deal, 'bidding');
+      assert(ph.highBid === null, 'biddingReopened with a standing bid');
+      assert(event.seats.length > 0, 'biddingReopened without seats');
+      // Pinned: the reopened round starts clockwise from left of dealer.
+      const turn = firstEligibleFrom(
+        nextSeat(state.dealer, players),
+        players,
+        activeSeats(players).filter((s) => !event.seats.includes(s)),
+      );
+      return withDeal(state, { ...deal, phase: { ...ph, turn, excluded: [] } });
+    }
+
+    case 'allPassed': {
+      const deal = requireDeal(state);
+      requirePhase(deal, 'bidding');
+      // Contract-less deal: no declarer/exchange; left of dealer leads trick 1.
+      return withDeal(state, {
+        ...deal,
+        phase: { name: 'lead', leader: nextSeat(state.dealer, players), canDeclare: false },
       });
     }
 
@@ -150,7 +222,33 @@ export function applyEvent(state: MatchState, event: GameEvent): MatchState {
         ...deal,
         bid: { seat: event.declarer, amount: event.amount },
         declarer: event.declarer,
-        phase: { name: 'exchangeGive' },
+        // 2-3p: an automatic talonTaken follows and opens the discard phase.
+        phase: players === 4 ? { name: 'exchangeGive' } : { name: 'exchangeDiscard' },
+      });
+    }
+
+    case 'talonTaken': {
+      const deal = requireDeal(state);
+      requirePhase(deal, 'exchangeDiscard');
+      assert(deal.talon !== null, 'talonTaken without a talon');
+      assert(deal.talonTakenBy === null, 'talon already taken');
+      assert(event.seat === deal.declarer, 'talonTaken by a non-declarer');
+      return withDeal(state, {
+        ...deal,
+        hands: { ...deal.hands, [event.seat]: [...deal.hands[event.seat], ...deal.talon] },
+        talonTakenBy: event.seat,
+      });
+    }
+
+    case 'cardsDiscarded': {
+      const deal = requireDeal(state);
+      requirePhase(deal, 'exchangeDiscard');
+      assert(deal.talonTakenBy === event.seat, 'cardsDiscarded before talonTaken');
+      return withDeal(state, {
+        ...deal,
+        hands: { ...deal.hands, [event.seat]: removeCards(deal.hands[event.seat], event.cards) },
+        discarded: [...event.cards],
+        phase: { name: 'exchangeContract' },
       });
     }
 
@@ -165,17 +263,25 @@ export function applyEvent(state: MatchState, event: GameEvent): MatchState {
           [event.to]: [...deal.hands[event.to], ...event.cards],
         },
         exchange: { ...deal.exchange, given: [...event.cards] },
-        phase: { name: 'exchangeContract' },
+        phase:
+          state.config.contractTiming === 'beforeReturn'
+            ? { name: 'exchangeContract' }
+            : { name: 'exchangeReturn' },
       });
     }
 
     case 'contractSet': {
       const deal = requireDeal(state);
       requirePhase(deal, 'exchangeContract');
+      assert(event.seat === deal.declarer, 'contractSet by a non-declarer');
+      const contractDone: DealPhase =
+        players === 4 && state.config.contractTiming === 'beforeReturn'
+          ? { name: 'exchangeReturn' }
+          : { name: 'lead', leader: event.seat, canDeclare: false };
       return withDeal(state, {
         ...deal,
         contract: event.amount,
-        phase: { name: 'exchangeReturn' },
+        phase: contractDone,
       });
     }
 
@@ -191,12 +297,14 @@ export function applyEvent(state: MatchState, event: GameEvent): MatchState {
           [event.to]: [...deal.hands[event.to], ...event.cards],
         },
         exchange: { ...deal.exchange, returned: [...event.cards] },
-        phase: { name: 'lead', leader: event.from, canDeclare: false },
+        phase:
+          state.config.contractTiming === 'beforeReturn'
+            ? { name: 'lead', leader: event.from, canDeclare: false }
+            : { name: 'exchangeContract' },
       });
     }
 
-    case 'declaredOwn':
-    case 'askedHalf': {
+    case 'declaredOwn': {
       const deal = requireDeal(state);
       const ph = requirePhase(deal, 'lead');
       assert(ph.canDeclare, 'declaration outside a declaration window');
@@ -207,10 +315,22 @@ export function applyEvent(state: MatchState, event: GameEvent): MatchState {
       });
     }
 
+    case 'askedHalf': {
+      const deal = requireDeal(state);
+      const ph = requirePhase(deal, 'lead');
+      assert(ph.canDeclare, 'askedHalf outside a declaration window');
+      return withDeal(state, {
+        ...deal,
+        askedHalf: { ...deal.askedHalf, [event.seat]: true },
+        phase: { name: 'lead', leader: ph.leader, canDeclare: false },
+      });
+    }
+
     case 'askedWhole': {
       const deal = requireDeal(state);
       const ph = requirePhase(deal, 'lead');
       assert(ph.canDeclare, 'askedWhole outside a declaration window');
+      assert(players === 4, 'askedWhole without a partner');
       const partner = partnerOf(event.seat);
       const options = declarableSuits(
         deal.hands[partner],
@@ -288,8 +408,8 @@ export function applyEvent(state: MatchState, event: GameEvent): MatchState {
       }
       const ph = requirePhase(deal, 'follow');
       const last = ph.plays[ph.plays.length - 1];
-      assert(last && event.seat === nextSeat(last.seat), 'cardPlayed out of turn order');
-      assert(ph.plays.length < 4, 'trick already has 4 cards');
+      assert(last && event.seat === nextSeat(last.seat, players), 'cardPlayed out of turn order');
+      assert(ph.plays.length < players, 'trick already has all cards');
       return withDeal(state, {
         ...deal,
         hands,
@@ -300,7 +420,7 @@ export function applyEvent(state: MatchState, event: GameEvent): MatchState {
     case 'trickWon': {
       const deal = requireDeal(state);
       const ph = requirePhase(deal, 'follow');
-      assert(ph.plays.length === 4, 'trickWon on an incomplete trick');
+      assert(ph.plays.length === players, 'trickWon on an incomplete trick');
       assert(event.trickIndex === deal.tricksPlayed, 'trickWon index mismatch');
       const winner = event.seat;
       return withDeal(state, {
@@ -318,14 +438,12 @@ export function applyEvent(state: MatchState, event: GameEvent): MatchState {
 
     case 'dealScored': {
       const deal = requireDeal(state);
-      assert(deal.tricksPlayed === 9, 'dealScored before 9 tricks');
+      assert(deal.tricksPlayed === tricksPerDeal(state.config), 'dealScored before the last trick');
       const { result } = event;
+      assert(result.sides.length === state.scores.length, 'dealScored sides/scores mismatch');
       return {
         ...state,
-        scores: [
-          state.scores[0] + result.sides[0].scoreDelta,
-          state.scores[1] + result.sides[1].scoreDelta,
-        ],
+        scores: state.scores.map((s, i) => s + (result.sides[i]?.scoreDelta ?? 0)),
         deal: { ...deal, phase: { name: 'scored', result } },
       };
     }
@@ -357,7 +475,7 @@ export function nextDealEvent(state: MatchState, shuffledDeck: Card[]): GameEven
   return {
     type: 'dealStarted',
     dealIndex: state.dealIndex + 1,
-    dealer: nextSeat(state.dealer),
+    dealer: nextSeat(state.dealer, state.config.players),
     deck: [...shuffledDeck],
   };
 }

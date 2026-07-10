@@ -93,13 +93,16 @@ function legalOf(ctx: Ctx, seat: Seat): Card[] {
 const EXPECTED_RESULT: DealResult = {
   declarer: 2,
   contract: 60,
+  bid: 55,
   made: true,
   sides: [
     {
       cardPoints: 56,
       lastTrickBonus: 0,
       marriagePoints: 40,
+      discardPoints: 0,
       rawTotal: 96,
+      roundedTotal: 96,
       tricks: 4,
       porvoo: false,
       scoreDelta: 60,
@@ -108,7 +111,9 @@ const EXPECTED_RESULT: DealResult = {
       cardPoints: 64,
       lastTrickBonus: 10,
       marriagePoints: 100,
+      discardPoints: 0,
       rawTotal: 174,
+      roundedTotal: 174,
       tricks: 5,
       porvoo: false,
       scoreDelta: 174,
@@ -458,11 +463,16 @@ function leadState(opts: {
     trump: opts.trump ?? null,
     declarations: opts.declarations ?? [],
     askedWhole: { 0: false, 1: false, 2: false, 3: false, ...opts.askedWhole },
+    askedHalf: { 0: false, 1: false, 2: false, 3: false },
     bidLog: [],
     bid: { seat: 2, amount: 55 },
     declarer: 2,
     contract: 60,
     exchange: { given: null, returned: null },
+    talon: null,
+    talonTakenBy: null,
+    dummyHand: null,
+    discarded: null,
     lastTrick: null,
     phase: { name: 'lead', leader: opts.leader, canDeclare: true },
   };
@@ -484,11 +494,16 @@ function scoredDealState(opts: {
     trump: null,
     declarations: [],
     askedWhole: { 0: false, 1: false, 2: false, 3: false },
+    askedHalf: { 0: false, 1: false, 2: false, 3: false },
     bidLog: [],
     bid: { seat: opts.declarer, amount: opts.contract },
     declarer: opts.declarer,
     contract: opts.contract,
     exchange: { given: null, returned: null },
+    talon: null,
+    talonTakenBy: null,
+    dummyHand: null,
+    discarded: null,
     lastTrick: { plays: [], winner: opts.lastWinner },
     phase: { name: 'lead', leader: opts.lastWinner, canDeclare: false },
   };
@@ -546,6 +561,7 @@ describe('scripted deal', () => {
       highBid: null,
       passed: [],
       firstTurnTaken: [],
+      excluded: [],
     });
   });
 
@@ -687,8 +703,8 @@ describe('redeal demand', () => {
     expectRuleError(ctx, 1, { type: 'demandRedeal' }, 'error.redealNotEligible');
   });
 
-  it('is disabled entirely when config.redealRule is false', () => {
-    const config = { ...DEFAULT_RULES, redealRule: false };
+  it('is disabled entirely when config.redealCondition is null', () => {
+    const config = { ...DEFAULT_RULES, redealCondition: null };
     const ctx: Ctx = { state: initialMatchState(config, 0), log: [] };
     ctx.state = applyEvent(ctx.state, nextDealEvent(ctx.state, REDEAL_DECK));
     expect(allowedActions(ctx.state, 1)[0]).toMatchObject({ canDemandRedeal: false });
@@ -793,13 +809,16 @@ describe('scoring edge cases', () => {
     expect(scoreDeal(deal, DEFAULT_RULES)).toEqual({
       declarer: 2,
       contract: 60,
+      bid: 60,
       made: true,
       sides: [
         {
           cardPoints: 120,
           lastTrickBonus: 10,
           marriagePoints: 0,
+          discardPoints: 0,
           rawTotal: 130,
+          roundedTotal: 130,
           tricks: 9,
           porvoo: false,
           scoreDelta: 60,
@@ -808,7 +827,9 @@ describe('scoring edge cases', () => {
           cardPoints: 0,
           lastTrickBonus: 0,
           marriagePoints: 0,
+          discardPoints: 0,
           rawTotal: 0,
+          roundedTotal: 0,
           tricks: 0,
           porvoo: true,
           scoreDelta: -60,
@@ -831,12 +852,14 @@ describe('scoring edge cases', () => {
       cardPoints: 0,
       lastTrickBonus: 0,
       marriagePoints: 0,
+      discardPoints: 0,
       rawTotal: 0,
+      roundedTotal: 0,
       tricks: 0,
       porvoo: true,
       scoreDelta: -120,
     });
-    expect(result.sides[1].scoreDelta).toBe(130);
+    expect(result.sides[1]?.scoreDelta).toBe(130);
   });
 
   it('a failed contract costs the declarer side the full contract', () => {
@@ -853,7 +876,9 @@ describe('scoring edge cases', () => {
       cardPoints: 60,
       lastTrickBonus: 0,
       marriagePoints: 0,
+      discardPoints: 0,
       rawTotal: 60,
+      roundedTotal: 60,
       tricks: 4,
       porvoo: false,
       scoreDelta: -200,
@@ -862,7 +887,9 @@ describe('scoring edge cases', () => {
       cardPoints: 60,
       lastTrickBonus: 10,
       marriagePoints: 0,
+      discardPoints: 0,
       rawTotal: 70,
+      roundedTotal: 70,
       tricks: 5,
       porvoo: false,
       scoreDelta: 70,

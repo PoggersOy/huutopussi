@@ -56,7 +56,7 @@ test('chaos match completes with consistent views', async () => {
   }
   for (const seat of [1, 2, 3] as Seat[]) {
     const ack = host.next(
-      (m) => m.t === 'room' && m.room.seats[seat].kind === 'bot',
+      (m) => m.t === 'room' && m.room.seats[seat]?.kind === 'bot',
       10_000,
       `bot at ${seat}`,
     );

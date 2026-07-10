@@ -17,6 +17,7 @@
  */
 import type { PlayerAction } from '@hp/engine';
 import { type ClientMsg, type LobbyCmd, PROTOCOL_VERSION, type ServerMsg } from '@hp/protocol';
+import { recordRoomHistory } from './history';
 import { serverApply, useStore } from './store';
 
 // ── Tunables (exported for tests) ────────────────────────────────────────────
@@ -179,9 +180,15 @@ function handleMessage(msg: ServerMsg): void {
     case 'error':
       serverApply.error(msg);
       break;
-    case 'history':
+    case 'history': {
+      // Room-scoped match summaries; persisted locally for the History screen.
+      const code = useStore.getState().server.room?.code ?? desired?.roomCode;
+      if (code !== undefined) recordRoomHistory(code, msg.matches);
+      useStore.getState().setHistory(msg.matches);
+      break;
+    }
     case 'pong':
-      break; // history UI lands in P6; pong only feeds the watchdog above
+      break; // pong only feeds the watchdog above
   }
 }
 

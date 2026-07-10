@@ -217,7 +217,7 @@ export async function seatFourHumans(port: number): Promise<TestClient[]> {
     const w = await c.hello({ roomCode: host.roomCode, nickname: `p${seat}` });
     if (w.t !== 'welcome') throw new Error(`guest ${seat} hello failed`);
     const confirmed = c.next(
-      (m) => m.t === 'room' && m.room.seats[seat].kind === 'human',
+      (m) => m.t === 'room' && m.room.seats[seat]?.kind === 'human',
       10_000,
       `seat ${seat} taken`,
     );

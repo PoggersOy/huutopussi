@@ -44,11 +44,16 @@ function makeView(hand: Card[], phase: DealPhase, over: Partial<DealView> = {}):
       trump: null,
       declarations: [],
       askedWhole: { 0: false, 1: false, 2: false, 3: false },
+      askedHalf: { 0: false, 1: false, 2: false, 3: false },
       bidLog: [],
       bid: { seat: 0, amount: 50 },
       declarer: 0,
       contract: null,
       exchangeSeen: null,
+      talonCount: null,
+      talonSeen: null,
+      dummyHandCount: null,
+      discardedCount: null,
       lastTrick: null,
       phase,
       ...over,
@@ -139,6 +144,7 @@ describe('HeuristicBot bidding', () => {
     highBid: { seat: 1, amount: 50 },
     passed: [],
     firstTurnTaken: [1],
+    excluded: [],
   };
   const bidHint = (over: Partial<Extract<ActionHint, { type: 'bid' }>> = {}): ActionHint[] => [
     {

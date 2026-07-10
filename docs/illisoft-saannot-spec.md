@@ -112,20 +112,29 @@ Trick size = number of active players (2/3/4). Winner leads next.
 Card points: A=11, 10=10, K=4, Q=3, J=2; **last trick +20** ⇒ 140 card points/deal.
 
 - **Declarer side** (raw = captured card points + last-trick bonus + own marriage
-  points + koini discards if the side won ≥1 trick):
+  points + koini-discard points if the side won ≥1 trick):
   - raw ≥ contract (**unrounded** comparison, "ilman pyöristyksiä") ⇒ **exactly
     +contract**.
-  - raw < contract ⇒ **−contract**; if the side won **zero tricks** (discards don't
-    count as tricks) ⇒ **−2×contract**.
+  - raw < contract ⇒ **−contract** (the raised contract: "tai korotuksen verran,
+    jos hän korotti huutoaan"); if the **side** won **zero tricks** (discards don't
+    count as tricks) ⇒ **−2×contract** (illisoft judges the declarer's Porvoo at
+    SIDE scope with CONTRACT basis — note this differs from the päämuoto architect
+    ruling of 2026-07-10, which uses seat scope and bid basis; both are expressible,
+    see §11 `declarerPorvooScope`/`declarerPorvooBasis`).
 - **Every other side**: raw **rounded to the nearest 5** ⇒ that many points.
   If the side won zero tricks ⇒ **−bid** (the winning bid, NOT the raised contract:
-  "tässä mahdollisella korotuksella ei ole vaikutusta").
+  "tässä mahdollisella korotuksella ei ole vaikutusta"). This matches the revised
+  päämuoto ruling — opponent trickless penalty is always bid-based, no field needed.
 - **Contract-less deal** (everyone passed): every side scores its rounded raw points;
   **no trickless penalties** (pinned — there is no huuto to deduct). With open talon
   the talon is shown during trick 1 but its cards score to nobody.
-- **2p slam (läpäri)**: a player winning **every trick** scores raw = **140 + own
-  marriage points** regardless of what the dummy/talon held ("läpäristä saa aina 140
-  pistettä"); no double-count of discards. 3p has no such top-up.
+- **2p slam (läpäri)**: a player winning **every trick** scores raw =
+  **totalDealPoints (140) + own marriage points** regardless of what the dummy/talon
+  held ("läpäristä saa aina 140 pistettä"); discard points are NOT added on top
+  (they are inside the notional 140). 3p has no such top-up.
+- `SideBreakdown` gains `discardPoints` (declarer's counted koini discards) and
+  `roundedTotal` (rawTotal after `opponentRounding`; equals rawTotal when 'none')
+  so the sim's scoring identities stay checkable.
 
 ## 9. Match end (pelin voittaminen)
 
@@ -157,45 +166,83 @@ Card points: A=11, 10=10, K=4, Q=3, J=2; **last trick +20** ⇒ 140 card points/
 New/changed fields (`packages/engine/src/config.ts`):
 
 ```ts
-players: 2 | 3 | 4;                    // was: 4
-talonSize: 3 | 6;                       // NEW, 2-3p only
-openTalon: boolean;                     // NEW, 2-3p only (avoin/salainen koini)
-firstTrickRules: 'aceShow' | 'free';    // NEW  (illisoft: 'aceShow')
-opponentRounding: 'nearest5' | 'none';  // NEW  (illisoft: 'nearest5')
-opponentPorvooBasis: 'bid' | 'contract';// NEW  (illisoft: 'bid')
-bidBanReopen: boolean;                  // NEW  (illisoft: true)
-redealCondition: 'fourSixes' | 'threeSixesOrNoneAboveJack' | null; // replaces redealRule
+players: 2 | 3 | 4;                       // was: literal 4
+talonSize: 3 | 6;                          // NEW, 2-3p only (koinipakka)
+openTalon: boolean;                        // NEW, 2-3p only (avoin/salainen koini)
+contractTiming: 'beforeReturn' | 'afterExchange'; // NEW — päämuoto sets the
+    // contract between give and return (rules doc §5.3); illisoft raises AFTER the
+    // full exchange ("korotus koinimisen jälkeen"). 2-3p is always take→discard→raise.
+allPassOutcome: 'forceLastSeat' | 'contractlessDeal'; // NEW — only reachable when
+    // forcedOpening=false. 'forceLastSeat' preserves the current engine behavior
+    // (last unpassed seat must open); 'contractlessDeal' is illisoft's all-pass deal.
+firstTrickRules: 'aceShow' | 'free';       // NEW  (illisoft: 'aceShow')
+opponentRounding: 'nearest5' | 'none';     // NEW  (illisoft: 'nearest5')
+declarerPorvooBasis: 'bid' | 'contract';   // NEW  (päämuoto 'bid' per architect
+                                           //  ruling 2026-07-10; illisoft 'contract')
+declarerPorvooScope: 'seat' | 'side';      // NEW  (päämuoto 'seat'; illisoft 'side')
+bidBanReopen: boolean;                     // NEW  (illisoft: true)
+redealCondition: 'fourSixes' | 'threeSixesOrNoneAboveJack' | null; // replaces
+                                           // redealRule: boolean (4p fourSixes:
+                                           // pair's combined hands)
 redealWindow: 'firstBidTurn' | 'bidAndExchange';                   // NEW
-winCondition: 'exceed' | 'reach';       // NEW  (illisoft: 'exceed')
-winTiebreak: 'declarer' | 'higher';     // NEW  (illisoft: 'declarer')
-askLockouts: 'illisoft' | 'basic';      // NEW  (basic = current §5.4 behavior)
+winCondition: 'exceed' | 'reach';          // NEW  (illisoft: 'exceed')
+winTiebreak: 'declarer' | 'higher';        // NEW  (illisoft: 'declarer'; falls back
+                                           //  to 'higher' when no declarer exists)
+askLockouts: 'illisoft' | 'basic';         // NEW  (basic = current askedWhole
+                                           //  semantics; illisoft adds §7 lockouts)
 ```
 
-Presets: `ILLISOFT_RULES` (players 4, talonSize 3, openTalon true, cardPoints 'A',
-lastTrickBonus 20, trumpValues 'heartsHigh', minBid 60, bidStep 5, maxBid 420,
-firstBidder 'leftOfDealer', forcedOpening false, exchangeCount 4, declareRight
-'anyWonTrick', bidBanThreshold −1, bidBanReopen true, winTarget 500, winCondition
-'exceed', winTiebreak 'declarer', firstTrickRules 'aceShow', opponentRounding
-'nearest5', opponentPorvooBasis 'bid', redealCondition 'fourSixes', redealWindow
-'bidAndExchange', askLockouts 'illisoft', askHalfMustHoldCard true, showLastTrick
-true). `PAAMUOTO_RULES` keeps the previous defaults (with redealCondition
-'threeSixesOrNoneAboveJack', redealWindow 'firstBidTurn', firstTrickRules 'free',
-opponentRounding 'none', opponentPorvooBasis 'contract', bidBanReopen false,
-winCondition 'reach', winTiebreak 'higher', askLockouts 'basic', players 4,
-talonSize 3, openTalon true).
-**`DEFAULT_RULES = ILLISOFT_RULES`** — the product plays illisoft rules.
+Opponent trickless penalty is **always −bid** (both rulesets agree after the
+2026-07-10 architect ruling) — no field.
 
-Type changes (`types.ts`): `Side = 0 | 1 | 2`; `sideOf(seat, players)`;
-`partnerOf` only valid for 4p; `nextSeat(seat, players)`; `activeSeats(players)`;
-`MatchState.scores: number[]`; `DealResult { declarer: Seat|null; contract:
-number|null; made: boolean|null; sides: SideBreakdown[] }`; `DealState` gains
-`talon: Card[]|null`, `dummyHand: Card[]|null`, `discarded: Card[]|null`,
-`askedHalf: Record<Seat, boolean>`; new phases `exchangeDiscard` (2-3p) and the 4p
-order becomes give→return→contract; new events `talonTaken`, `cardsDiscarded`,
-`allPassed`, `biddingReopened`; new action `discardCards`; new hint
-`{ type: 'discardCards'; count; forbiddenRanks: ['A','10'] }`; `DealView` gains
-`talonCount`, `talonSeen: Card[]|null` (open talon during trick 1 / declarer),
-`dummyHandCount`.
+Presets:
+- **`DEFAULT_RULES` stays päämuoto** (existing literals + new fields at:
+  players 4, talonSize 3, openTalon true, contractTiming 'beforeReturn',
+  allPassOutcome 'forceLastSeat', firstTrickRules 'free', opponentRounding 'none',
+  declarerPorvooBasis 'bid', declarerPorvooScope 'seat', bidBanReopen false,
+  redealCondition 'threeSixesOrNoneAboveJack', redealWindow 'firstBidTurn',
+  winCondition 'reach', winTiebreak 'higher', askLockouts 'basic') — this keeps the
+  existing 225-test suite meaningful and CLAUDE.md's engine statement true.
+- **`ILLISOFT_RULES`** (new export): players 4 (lobby default mode), talonSize 3,
+  openTalon true, cardPoints 'A', lastTrickBonus 20, trumpValues 'heartsHigh',
+  minBid 60, bidStep 5, maxBid 420, firstBidder 'leftOfDealer', forcedOpening false,
+  allPassOutcome 'contractlessDeal', contractTiming 'afterExchange', exchangeCount 4,
+  declareRight 'anyWonTrick', bidBanThreshold −1, bidBanReopen true, winTarget 500,
+  winCondition 'exceed', winTiebreak 'declarer', firstTrickRules 'aceShow',
+  opponentRounding 'nearest5', declarerPorvooBasis 'contract', declarerPorvooScope
+  'side', redealCondition 'fourSixes', redealWindow 'bidAndExchange', askLockouts
+  'illisoft', askHalfMustHoldCard true, showLastTrick true.
+- **The server creates rooms with `ILLISOFT_RULES` by default** — the product plays
+  illisoft rules; päämuoto remains selectable via lobby config.
+
+Type changes (`types.ts`):
+- `Side = 0 | 1 | 2`; `sideCount(config) = players === 4 ? 2 : players`;
+  `sideOf(seat, players)` (4p: seat%2; 2-3p: seat itself); `partnerOf` meaningful
+  only in 4p; `nextSeat(seat, players) = (seat+1) % players`;
+  `activeSeats(players)`; `tricksPerDeal(config)` (4p: 9; 2-3p: talonSize 3 → 11,
+  talonSize 6 → 10). Seat literal type stays 0|1|2|3.
+- `MatchState.scores: number[]` (length = sideCount).
+- `DealResult { declarer: Seat|null; contract: number|null; bid: number|null;
+  made: boolean|null; sides: SideBreakdown[] }` (nulls = contract-less deal).
+- `SideBreakdown` gains `discardPoints: number` and `roundedTotal: number`.
+- `DealState` gains `talon: Card[] | null` (original talon, immutable after deal),
+  `talonTakenBy: Seat | null`, `dummyHand: Card[] | null` (2p),
+  `discarded: Card[] | null`, `askedHalf: Record<Seat, boolean>`.
+- `dealStarted.deck` layout (documented on the event): active hands seat-major
+  (handSize each), then dummy hand (2p only), then talon (2-3p). 4p: 9×4 as today.
+- New phases: `exchangeDiscard` (2-3p: declarer holds hand+talon, discards
+  talonSize). 4p phase order becomes config-driven via `contractTiming`.
+- New events: `talonTaken { seat }`, `cardsDiscarded { seat; cards }` (seat-only
+  visibility), `allPassed {}`, `biddingReopened { seats: Seat[] }`.
+- New action: `discardCards { cards }`; new hint `{ type: 'discardCards';
+  count: number; legal: Card[] }` (legal = hand minus aces and tens).
+- `DealView` gains `talonCount: number | null`, `talonSeen: Card[] | null`
+  (populated for ALL viewers when openTalon && tricksPlayed === 0 && phase is
+  lead/follow; declarer additionally sees talon cards in hand normally),
+  `dummyHandCount: number | null`, `discardedCount: number | null`.
+- New error codes (i18n keys): `error.mustLeadAce`, `error.mustLeadSpade`,
+  `error.aceMustShow`, `error.cannotDiscardAceOrTen`, `error.noPartner`,
+  `error.declarationLocked`.
 
 ## 12. Terminology (i18n — Finnish terms must match the illisoft ohje)
 

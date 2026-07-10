@@ -1,0 +1,655 @@
+/*
+ * Table screen styles (docs/plan.md §6): top bar / felt / bottom sheet / hand.
+ * Everything hangs off the tokens in tokens.css; portrait-first (~390×844).
+ */
+
+/* ── Screen grid: top bar / felt / (sheet) / hand ── */
+
+.screen--table {
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+}
+
+/* ── Top bar ── */
+
+.ttop {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.18);
+  font-size: var(--fs-sm);
+}
+
+.ttop__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.ttop__row > span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ttop__trump {
+  font-weight: 700;
+}
+
+.ttop__me {
+  color: var(--gold);
+  font-weight: 700;
+}
+
+.suit--H,
+.suit--D {
+  color: var(--suit-red);
+}
+
+.suit--C,
+.suit--S {
+  color: var(--suit-black);
+}
+
+/* Suit glyphs sit on the gold primary buttons in sheets. */
+.btn--primary .suit--C,
+.btn--primary .suit--S {
+  color: var(--felt-950);
+}
+
+.btn--primary .suit--H,
+.btn--primary .suit--D {
+  color: var(--card-red);
+}
+
+/* ── Felt (center play area) ── */
+
+.felt {
+  position: relative;
+  overflow: hidden;
+  min-height: 150px;
+}
+
+.felt__idle {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+}
+
+/* ── Opponent panels ── */
+
+.opp {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  max-width: 31vw;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-2);
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.opp--top {
+  top: var(--space-2);
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.opp--left {
+  left: var(--space-2);
+  top: 21%;
+}
+
+.opp--right {
+  right: var(--space-2);
+  top: 21%;
+}
+
+.opp--turn {
+  border-color: var(--gold);
+  box-shadow: 0 0 10px rgba(212, 175, 55, 0.4);
+}
+
+.opp__name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  max-width: 100%;
+}
+
+.opp__nick {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+
+.dot--off {
+  background: var(--danger);
+}
+
+.chip {
+  font-size: 0.625rem;
+  line-height: 1.4;
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.chip--gold {
+  border-color: var(--gold-soft);
+  color: var(--gold);
+}
+
+.chip--warn {
+  border-color: var(--info);
+  color: var(--info);
+}
+
+.chip--off {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.opp__fan {
+  display: flex;
+  align-items: center;
+}
+
+.opp__fan > * + * {
+  margin-left: -9px;
+}
+
+.opp__count {
+  font-size: 0.625rem;
+  margin-left: var(--space-1);
+}
+
+.opp__badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 3px;
+}
+
+/* ── Speech bubbles ── */
+
+.bubble {
+  position: absolute;
+  z-index: 5;
+  max-width: 40vw;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-2);
+  background: var(--cream);
+  color: var(--felt-950);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  text-align: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  animation: bubble-in 160ms ease-out;
+  pointer-events: none;
+}
+
+.bubble::after {
+  content: "";
+  position: absolute;
+  top: -4px;
+  left: calc(50% - 5px);
+  width: 10px;
+  height: 10px;
+  background: inherit;
+  transform: rotate(45deg);
+}
+
+.opp .bubble {
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.opp--left .bubble {
+  left: 0;
+  transform: none;
+}
+
+.opp--left .bubble::after {
+  left: 14px;
+}
+
+.opp--right .bubble {
+  left: auto;
+  right: 0;
+  transform: none;
+}
+
+.opp--right .bubble::after {
+  left: auto;
+  right: 14px;
+}
+
+.bubble--me {
+  bottom: 16%;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.bubble--me::after {
+  top: auto;
+  bottom: -4px;
+}
+
+@keyframes bubble-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* ── Current trick ── */
+
+.trick {
+  position: absolute;
+  z-index: 1;
+  left: 50%;
+  top: 55%;
+  transform: translate(-50%, -50%);
+  width: min(76vw, 300px);
+  height: min(42vh, 250px);
+}
+
+.trick__card {
+  --ox: 0px;
+  --oy: 0px;
+  --rot: 0deg;
+  --dx: 0px;
+  --dy: 0px;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  margin-left: calc(var(--card-w-md) / -2);
+  margin-top: calc(var(--card-w-md) * var(--card-ratio) / -2);
+  transform: translate(var(--ox), var(--oy)) rotate(var(--rot));
+  animation: trick-in 220ms ease-out backwards;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.45));
+}
+
+.trick__card--p0 {
+  --oy: 42%;
+  --rot: 2deg;
+  --dy: 130px;
+}
+
+.trick__card--p1 {
+  --ox: -72%;
+  --rot: -7deg;
+  --dx: -130px;
+}
+
+.trick__card--p2 {
+  --oy: -42%;
+  --rot: 1deg;
+  --dy: -130px;
+}
+
+.trick__card--p3 {
+  --ox: 72%;
+  --rot: 7deg;
+  --dx: 130px;
+}
+
+@keyframes trick-in {
+  from {
+    transform: translate(calc(var(--ox) + var(--dx)), calc(var(--oy) + var(--dy)))
+      rotate(var(--rot));
+    opacity: 0.25;
+  }
+}
+
+.trick__card--win {
+  z-index: 2;
+  animation: win-pulse 650ms ease-in-out;
+  filter: drop-shadow(0 0 10px var(--gold));
+}
+
+@keyframes win-pulse {
+  50% {
+    transform: translate(var(--ox), var(--oy)) rotate(var(--rot)) scale(1.12);
+  }
+}
+
+.trick__label {
+  position: absolute;
+  left: 50%;
+  bottom: -4px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+/* ── Last-trick peek ── */
+
+.peek {
+  position: absolute;
+  z-index: 3;
+  right: var(--space-2);
+  bottom: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.peek__panel {
+  position: absolute;
+  z-index: 6;
+  left: var(--space-2);
+  right: var(--space-2);
+  bottom: calc(var(--touch-min) + var(--space-4));
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-2);
+  background: rgba(0, 0, 0, 0.88);
+}
+
+.peek__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  font-size: var(--fs-xs);
+}
+
+.peek__win {
+  color: var(--gold);
+  font-weight: 700;
+  font-size: var(--fs-xs);
+}
+
+/* Reopen chip after "Just lead" dismissed the declaration sheet. */
+.decl-chip {
+  position: absolute;
+  z-index: 4;
+  left: var(--space-2);
+  bottom: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  border-color: var(--gold-soft);
+  color: var(--gold);
+  background: rgba(0, 0, 0, 0.35);
+}
+
+/* ── Bottom sheets (in-flow above the hand so the fan stays visible) ── */
+
+.tsheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-height: 42vh;
+  overflow-y: auto;
+  padding: var(--space-2) var(--space-4) var(--space-3);
+  border-top: 1px solid var(--line);
+  border-radius: var(--radius-3) var(--radius-3) 0 0;
+  background: var(--felt-800);
+  animation: sheet-up 200ms ease-out;
+}
+
+@keyframes sheet-up {
+  from {
+    transform: translateY(35%);
+    opacity: 0;
+  }
+}
+
+.tsheet__handle {
+  width: 36px;
+  height: 4px;
+  margin: 0 auto;
+  border-radius: 2px;
+  background: var(--line);
+}
+
+.tsheet__title {
+  font-size: var(--fs-md);
+  text-align: center;
+}
+
+.tsheet__center {
+  text-align: center;
+}
+
+.tsheet__waiting {
+  text-align: center;
+  padding: var(--space-2) 0;
+}
+
+.tsheet__notice {
+  color: var(--gold);
+  font-size: var(--fs-sm);
+  text-align: center;
+}
+
+.tsheet__stepper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.tsheet__amount {
+  min-width: 2.2em;
+  text-align: center;
+  font-size: var(--fs-xl);
+  font-family: var(--font-display);
+}
+
+.tsheet__actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.tsheet__big {
+  flex: 1;
+  min-height: 52px;
+  font-size: var(--fs-lg);
+}
+
+.tsheet__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+}
+
+.tsheet__glyph {
+  font-size: 1.25em;
+  margin-right: var(--space-1);
+}
+
+.tsheet__picked {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-1);
+  min-height: var(--card-h-sm);
+}
+
+/* ── Own hand footer ── */
+
+.thand {
+  padding: var(--space-2) var(--space-2) calc(var(--space-2) + var(--safe-bottom));
+  border-top: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.24);
+}
+
+.thand--turn {
+  border-top-color: var(--gold-soft);
+}
+
+.thand__hint {
+  text-align: center;
+  margin-bottom: var(--space-1);
+}
+
+.hand__card {
+  position: relative;
+}
+
+/* 12-card fan during the declarer's exchange still fits portrait width. */
+.hand--dense .hand__card {
+  margin-left: calc(var(--card-w) * -0.62);
+}
+
+.hand--dense .hand__card:first-child {
+  margin-left: 0;
+}
+
+.hand__card--picked {
+  transform: translateY(calc(var(--card-h) * -0.14));
+}
+
+.hand__card--picked svg {
+  outline: 3px solid var(--gold);
+  border-radius: var(--card-radius);
+}
+
+.hand__spinner {
+  position: absolute;
+  top: 30%;
+  left: 50%;
+  width: 24px;
+  height: 24px;
+  margin: -12px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 3px solid rgba(26, 26, 36, 0.25);
+  border-top-color: var(--gold);
+  background: rgba(253, 251, 244, 0.6);
+  animation: spin 700ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ── Full-screen overlays (deal scored / match ended) ── */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  background: rgba(4, 26, 18, 0.72);
+}
+
+.overlay__panel {
+  width: 100%;
+  max-width: 360px;
+  max-height: 86vh;
+  overflow-y: auto;
+  padding: var(--space-5);
+  border: 1px solid var(--gold-soft);
+  border-radius: var(--radius-3);
+  background: var(--felt-800);
+  animation: overlay-in 200ms ease-out;
+}
+
+.overlay__panel h2 {
+  text-align: center;
+}
+
+@keyframes overlay-in {
+  from {
+    transform: scale(0.92);
+    opacity: 0;
+  }
+}
+
+.overlay__made {
+  color: var(--ok);
+  text-align: center;
+  font-weight: 600;
+}
+
+.overlay__failed {
+  color: var(--danger);
+  text-align: center;
+  font-weight: 600;
+}
+
+.overlay__win {
+  color: var(--gold);
+}
+
+.overlay__final {
+  text-align: center;
+  font-size: var(--fs-xl);
+  font-family: var(--font-display);
+}
+
+.score {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+}
+
+.score th,
+.score td {
+  padding: var(--space-1) var(--space-2);
+  text-align: right;
+}
+
+.score th:first-child {
+  text-align: left;
+  color: var(--text-dim);
+  font-weight: 400;
+}
+
+.score thead th {
+  color: var(--text-dim);
+  font-weight: 600;
+  border-bottom: 1px solid var(--line);
+}
+
+.score__delta th,
+.score__delta td {
+  border-top: 1px solid var(--line);
+  font-weight: 700;
+}
+
+.score__porvoo {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+.delta--pos {
+  color: var(--ok);
+}
+
+.delta--neg {
+  color: var(--danger);
+}

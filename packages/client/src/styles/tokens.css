@@ -39,10 +39,15 @@
   --ok: #46a758;
   --info: #4c8dd6;
 
+  /* ── Suit colors on dark felt (indicators/labels, not card faces) ── */
+  --suit-red: #ff7080;
+  --suit-black: var(--cream);
+
   /* ── Card sizing (portrait-first; 9-card fan must fit ~390 px width) ── */
   --card-ratio: 1.4;
   --card-w: clamp(52px, 17vw, 76px);
   --card-h: calc(var(--card-w) * var(--card-ratio));
+  --card-w-md: clamp(44px, 14vw, 62px);
   --card-w-sm: clamp(36px, 11vw, 52px);
   --card-h-sm: calc(var(--card-w-sm) * var(--card-ratio));
   --card-radius: calc(var(--card-w) * 0.09);
@@ -77,5 +82,6 @@
   /* ── Z layers ── */
   --z-sheet: 40;
   --z-banner: 50;
+  --z-overlay: 55;
   --z-toast: 60;
 }

@@ -54,7 +54,6 @@ import {
   redactViewFor,
   SEATS,
   type Seat,
-  type Side,
   SUITS,
   sideOf,
   totalDealPoints,
@@ -173,26 +172,31 @@ function checkAfterEvent(before: MatchState, event: GameEvent, after: MatchState
   // (e) Only dealScored moves the scores, and exactly by the reported deltas.
   if (event.type === 'dealScored') {
     const { sides } = event.result;
-    const pointSum =
-      sides[0].cardPoints + sides[1].cardPoints + sides[0].lastTrickBonus + sides[1].lastTrickBonus;
+    const pointSum = sides.reduce((acc, b) => acc + b.cardPoints + b.lastTrickBonus, 0);
     invariant(
       pointSum === totalDealPoints(config),
       `dealScored cardPoints+lastTrickBonus ${pointSum} != totalDealPoints ${totalDealPoints(config)}`,
     );
-    for (const side of [0, 1] as const) {
-      const b = sides[side];
+    sides.forEach((b, side) => {
       invariant(
-        b.rawTotal === b.cardPoints + b.lastTrickBonus + b.marriagePoints,
+        b.rawTotal === b.cardPoints + b.lastTrickBonus + b.marriagePoints + b.discardPoints,
         `side ${side} rawTotal ${b.rawTotal} inconsistent with its parts`,
       );
+      const beforeScore = before.scores[side];
+      const afterScore = after.scores[side];
       invariant(
-        after.scores[side] === before.scores[side] + b.scoreDelta,
-        `side ${side} score moved ${after.scores[side] - before.scores[side]}, reported delta ${b.scoreDelta}`,
+        beforeScore !== undefined && afterScore !== undefined,
+        `side ${side} missing from the match scores array`,
       );
-    }
+      invariant(
+        afterScore === beforeScore + b.scoreDelta,
+        `side ${side} score moved ${afterScore - beforeScore}, reported delta ${b.scoreDelta}`,
+      );
+    });
   } else {
     invariant(
-      after.scores[0] === before.scores[0] && after.scores[1] === before.scores[1],
+      after.scores.length === before.scores.length &&
+        after.scores.every((v, i) => v === before.scores[i]),
       `scores changed on ${event.type}`,
     );
   }
@@ -371,7 +375,7 @@ interface GameCtx {
   config: RuleConfig;
   botsMode: BotsMode;
   /** Side seated with HeuristicBots in --bots mixed (alternates per game). */
-  heurSide: Side;
+  heurSide: 0 | 1;
   firstDealer: Seat;
   log: GameEvent[];
   stats: GameStats;
@@ -391,7 +395,8 @@ function runGame(ctx: GameCtx, maxDeals: number): void {
   let state = initialMatchState(ctx.config, ctx.firstDealer);
   const bots: Array<RandomLegalBot | HeuristicBot> = SEATS.map((s) => {
     const heuristic =
-      ctx.botsMode === 'heuristic' || (ctx.botsMode === 'mixed' && sideOf(s) === ctx.heurSide);
+      ctx.botsMode === 'heuristic' ||
+      (ctx.botsMode === 'mixed' && sideOf(s, ctx.config.players) === ctx.heurSide);
     return heuristic ? new HeuristicBot(rng) : new RandomLegalBot(rng);
   });
 
@@ -434,7 +439,7 @@ function runGame(ctx: GameCtx, maxDeals: number): void {
     'replaying the event log did not reproduce the final state',
   );
 
-  ctx.stats.finalScores = [state.scores[0], state.scores[1]];
+  ctx.stats.finalScores = [state.scores[0] ?? 0, state.scores[1] ?? 0];
 }
 
 // ── CLI ───────────────────────────────────────────────────────────────────────
@@ -503,7 +508,7 @@ function main(): void {
       gameSeed: (seed + gameIndex * 0x9e3779b1) >>> 0,
       config: configFor(gameIndex),
       botsMode,
-      heurSide: (gameIndex % 2) as Side,
+      heurSide: (gameIndex % 2) as 0 | 1,
       firstDealer: 0,
       log: [],
       stats: { deals: 0, events: 0, actions: 0, hitMaxDeals: false, finalScores: [0, 0] },
@@ -525,7 +530,7 @@ function main(): void {
     totals.actions += ctx.stats.actions;
     if (botsMode === 'mixed') {
       mixedScores.heuristic += ctx.stats.finalScores[ctx.heurSide];
-      mixedScores.random += ctx.stats.finalScores[(1 - ctx.heurSide) as Side];
+      mixedScores.random += ctx.stats.finalScores[(1 - ctx.heurSide) as 0 | 1];
     }
     if ((i + 1) % 1000 === 0) {
       const rate = (i + 1) / ((performance.now() - t0) / 1000);

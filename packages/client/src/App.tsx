@@ -1,6 +1,7 @@
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import { ConnectionBanner } from './components/ConnectionBanner';
 import { Toasts } from './components/Toasts';
+import { History } from './screens/History';
 import { Home } from './screens/Home';
 import { Room } from './screens/Room';
 
@@ -11,6 +12,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/r/:code" element={<Room />} />
+        <Route path="/history" element={<History />} />
       </Routes>
       <Toasts />
     </BrowserRouter>

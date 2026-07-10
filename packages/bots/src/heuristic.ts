@@ -229,7 +229,7 @@ export class HeuristicBot implements Actor {
     const trump = deal.trump;
     if (
       trump !== null &&
-      deal.declarations.some((d) => d.suit === trump && d.side === sideOf(me))
+      deal.declarations.some((d) => d.suit === trump && d.side === sideOf(me, config.players))
     ) {
       const high = pool.filter(
         (c) => suitOf(c) === trump && rankIndex(rankOf(c)) <= rankIndex('10'),

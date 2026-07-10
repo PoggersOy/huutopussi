@@ -371,7 +371,7 @@ export function createServer(opts: ServerOpts = {}): HpServer {
           db.recordDealResult(matchId, state.dealIndex, state.dealer, e.result);
         }
         if (e.type === 'matchEnded') {
-          db.finishMatch(matchId, e.winnerSide, [state.scores[0], state.scores[1]]);
+          db.finishMatch(matchId, e.winnerSide, state.scores);
         }
       });
     });
@@ -973,7 +973,7 @@ export function createServer(opts: ServerOpts = {}): HpServer {
       }
       if (state.winnerSide !== null) {
         // Crash happened after the final event but before finalize: finish now.
-        db.finishMatch(rec.matchId, state.winnerSide, [state.scores[0], state.scores[1]]);
+        db.finishMatch(rec.matchId, state.winnerSide, state.scores);
         room.status = 'finished';
         db.setRoomStatus(room.id, 'finished');
       }

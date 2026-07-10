@@ -865,13 +865,16 @@ function playLifecycleDeal(): Ctx {
       result: {
         declarer: 1,
         contract: 50,
+        bid: 50,
         made: true,
         sides: [
           {
             cardPoints: 43,
             lastTrickBonus: 10,
             marriagePoints: 0,
+            discardPoints: 0,
             rawTotal: 53,
+            roundedTotal: 53,
             tricks: 2,
             porvoo: false,
             scoreDelta: 53,
@@ -880,7 +883,9 @@ function playLifecycleDeal(): Ctx {
             cardPoints: 77,
             lastTrickBonus: 0,
             marriagePoints: 140, // ♣60 + ♦80, both to side 1
+            discardPoints: 0,
             rawTotal: 217,
+            roundedTotal: 217,
             tricks: 7,
             porvoo: false,
             scoreDelta: 50, // clamped to the contract

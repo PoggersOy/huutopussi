@@ -103,8 +103,8 @@ test('four scripted clients complete a full deal over WS', async () => {
   // Scores moved exactly by the reported deltas (from 0).
   const phase = first?.view.deal?.phase;
   if (!phase || phase.name !== 'scored') throw new Error('expected scored phase');
-  expect(first?.view.scores[0]).toBe(phase.result.sides[0].scoreDelta);
-  expect(first?.view.scores[1]).toBe(phase.result.sides[1].scoreDelta);
+  expect(first?.view.scores[0]).toBe(phase.result.sides[0]?.scoreDelta);
+  expect(first?.view.scores[1]).toBe(phase.result.sides[1]?.scoreDelta);
 
   expect(hintViolations).toEqual([]);
 

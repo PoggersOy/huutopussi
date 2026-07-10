@@ -1,0 +1,367 @@
+/**
+ * Bottom sheets for the Table screen — one per acting phase, driven purely by
+ * the phase + server-sent ActionHints (UI legality NEVER recomputed locally).
+ * Sheets render in-flow above the hand fan so the player's cards stay visible
+ * and tappable (the exchange sheets confirm a selection made in the fan).
+ */
+import {
+  type ActionHint,
+  type DealPhase,
+  marriageValue,
+  type RuleConfig,
+  type Seat,
+} from '@hp/engine';
+import { type ReactNode, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { CardFace } from '../../components/CardFace';
+import { sendAction } from '../../socket';
+import { useStore } from '../../store';
+import { SUIT_GLYPH } from './tableUtils';
+
+export type BidHint = Extract<ActionHint, { type: 'bid' }>;
+export type ContractHint = Extract<ActionHint, { type: 'setContract' }>;
+export type DeclHint = Extract<ActionHint, { type: 'declaration' }>;
+export type AnswerWholeHint = Extract<ActionHint, { type: 'answerWhole' }>;
+export type PlayHint = Extract<ActionHint, { type: 'playCard' }>;
+
+function usePending(): boolean {
+  return useStore((s) => s.ui.pendingActionId) !== null;
+}
+
+function SheetShell({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="tsheet">
+      <div className="tsheet__handle" aria-hidden="true" />
+      <h2 className="tsheet__title">{title}</h2>
+      {children}
+    </section>
+  );
+}
+
+function WaitingNote({ name }: { name: string }) {
+  const { t } = useTranslation();
+  return <p className="dim tsheet__waiting">{t('sheet.waiting', { name })}</p>;
+}
+
+/** Stepper with quick-add buttons (+step / +2·step / +5·step, i.e. +5/+10/+25). */
+function AmountStepper({
+  min,
+  max,
+  step,
+  value,
+  onChange,
+}: {
+  min: number;
+  max: number;
+  step: number;
+  value: number;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <div className="tsheet__stepper">
+      <button type="button" disabled={value - step < min} onClick={() => onChange(value - step)}>
+        −{step}
+      </button>
+      <strong className="tsheet__amount">{value}</strong>
+      {[1, 2, 5].map((m) => (
+        <button
+          type="button"
+          key={m}
+          disabled={value + step * m > max}
+          onClick={() => onChange(value + step * m)}
+        >
+          +{step * m}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ── Bidding ──────────────────────────────────────────────────────────────────
+
+export function BiddingSheet({
+  phase,
+  hint,
+  actorName,
+  nameOf,
+}: {
+  phase: Extract<DealPhase, { name: 'bidding' }>;
+  hint: BidHint | null;
+  actorName: string;
+  nameOf: (seat: Seat) => string;
+}) {
+  const { t } = useTranslation();
+  const pending = usePending();
+  const min = hint?.min ?? 0;
+  const [amount, setAmount] = useState(min);
+  useEffect(() => setAmount(min), [min]);
+
+  return (
+    <SheetShell title={t('phase.bidding')}>
+      <p className="dim tsheet__center">
+        {phase.highBid !== null
+          ? t('sheet.highBid', { amount: phase.highBid.amount, name: nameOf(phase.highBid.seat) })
+          : t('sheet.noBids')}
+      </p>
+      {hint !== null ? (
+        <>
+          {hint.forced && (
+            <p className="tsheet__notice">{t('sheet.forcedBid', { min: hint.min })}</p>
+          )}
+          <AmountStepper
+            min={hint.min}
+            max={hint.max}
+            step={hint.step}
+            value={amount}
+            onChange={setAmount}
+          />
+          <div className="tsheet__actions">
+            <button
+              type="button"
+              className="btn--primary tsheet__big"
+              disabled={pending}
+              onClick={() => sendAction({ type: 'bid', amount })}
+            >
+              {t('action.bid')} {amount}
+            </button>
+            {hint.canPass && (
+              <button
+                type="button"
+                className="tsheet__big"
+                disabled={pending}
+                onClick={() => sendAction({ type: 'pass' })}
+              >
+                {t('action.pass')}
+              </button>
+            )}
+          </div>
+          {hint.canDemandRedeal && (
+            <button
+              type="button"
+              className="btn--danger"
+              disabled={pending}
+              onClick={() => sendAction({ type: 'demandRedeal' })}
+            >
+              {t('action.demandRedeal')}
+            </button>
+          )}
+        </>
+      ) : (
+        <WaitingNote name={actorName} />
+      )}
+    </SheetShell>
+  );
+}
+
+// ── Exchange give / return ───────────────────────────────────────────────────
+
+export function ExchangeSheet({
+  mode,
+  count,
+  targetName,
+  actorName,
+}: {
+  mode: 'give' | 'return';
+  /** Exact number of cards to select; null when the viewer is not the actor. */
+  count: number | null;
+  targetName: string;
+  actorName: string;
+}) {
+  const { t } = useTranslation();
+  const pending = usePending();
+  const selected = useStore((s) => s.ui.selectedCards);
+
+  return (
+    <SheetShell title={t(mode === 'give' ? 'phase.exchangeGive' : 'phase.exchangeReturn')}>
+      {count !== null ? (
+        <>
+          <p className="dim tsheet__center">
+            {t(mode === 'give' ? 'sheet.give' : 'sheet.return', { count, name: targetName })}
+          </p>
+          <div className="tsheet__picked">
+            {selected.map((card) => (
+              <CardFace key={card} card={card} width="var(--card-w-sm)" />
+            ))}
+          </div>
+          <button
+            type="button"
+            className="btn--primary tsheet__big"
+            disabled={pending || selected.length !== count}
+            onClick={() =>
+              sendAction({
+                type: mode === 'give' ? 'giveCards' : 'returnCards',
+                cards: selected,
+              })
+            }
+          >
+            {t('common.confirm')} · {t('sheet.selectedCount', { n: selected.length, count })}
+          </button>
+        </>
+      ) : (
+        <WaitingNote name={actorName} />
+      )}
+    </SheetShell>
+  );
+}
+
+// ── Contract ─────────────────────────────────────────────────────────────────
+
+export function ContractSheet({
+  hint,
+  actorName,
+}: {
+  hint: ContractHint | null;
+  actorName: string;
+}) {
+  const { t } = useTranslation();
+  const pending = usePending();
+  const min = hint?.min ?? 0;
+  const [amount, setAmount] = useState(min);
+  useEffect(() => setAmount(min), [min]);
+
+  return (
+    <SheetShell title={t('action.setContract')}>
+      {hint !== null ? (
+        <>
+          <p className="dim tsheet__center">{t('sheet.contractMin', { min: hint.min })}</p>
+          <AmountStepper
+            min={hint.min}
+            max={hint.max}
+            step={hint.step}
+            value={amount}
+            onChange={setAmount}
+          />
+          <button
+            type="button"
+            className="btn--primary tsheet__big"
+            disabled={pending}
+            onClick={() => sendAction({ type: 'setContract', amount })}
+          >
+            {t('action.setContract')} {amount}
+          </button>
+        </>
+      ) : (
+        <WaitingNote name={actorName} />
+      )}
+    </SheetShell>
+  );
+}
+
+// ── Declaration (lead with canDeclare) ───────────────────────────────────────
+
+export function DeclarationSheet({
+  hint,
+  config,
+  onDismiss,
+}: {
+  hint: DeclHint;
+  config: RuleConfig;
+  onDismiss: () => void;
+}) {
+  const { t } = useTranslation();
+  const pending = usePending();
+  const [halfPicker, setHalfPicker] = useState(false);
+
+  return (
+    <SheetShell title={t('sheet.declTitle')}>
+      {halfPicker ? (
+        <>
+          <p className="dim tsheet__center">{t('sheet.halfPrompt')}</p>
+          <div className="tsheet__grid">
+            {hint.halfAsks.map((ask) => {
+              const asked = ask.rankHeld === 'K' ? 'Q' : 'K';
+              return (
+                <button
+                  type="button"
+                  key={`${ask.suit}${ask.rankHeld}`}
+                  className="btn--primary"
+                  disabled={pending}
+                  onClick={() =>
+                    sendAction({ type: 'askHalf', suit: ask.suit, rankHeld: ask.rankHeld })
+                  }
+                >
+                  {t('bubble.askHalf', { card: `${SUIT_GLYPH[ask.suit]}${asked}` })}
+                </button>
+              );
+            })}
+          </div>
+          <button type="button" className="btn--ghost" onClick={() => setHalfPicker(false)}>
+            {t('common.cancel')}
+          </button>
+        </>
+      ) : (
+        <>
+          <div className="tsheet__grid">
+            {hint.ownSuits.map((suit) => (
+              <button
+                type="button"
+                key={suit}
+                className="btn--primary"
+                disabled={pending}
+                onClick={() => sendAction({ type: 'declareOwn', suit })}
+              >
+                <span className={`suit--${suit} tsheet__glyph`}>{SUIT_GLYPH[suit]}</span>
+                {t(`suit.${suit}`)} +{marriageValue(suit, config)}
+              </button>
+            ))}
+            {hint.canAskWhole && (
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() => sendAction({ type: 'askWhole' })}
+              >
+                {t('sheet.askWholeBtn')}
+              </button>
+            )}
+            {hint.halfAsks.length > 0 && (
+              <button type="button" disabled={pending} onClick={() => setHalfPicker(true)}>
+                {t('action.askHalf')}…
+              </button>
+            )}
+          </div>
+          <button type="button" className="btn--ghost tsheet__big" onClick={onDismiss}>
+            {t('sheet.justLead')}
+          </button>
+        </>
+      )}
+    </SheetShell>
+  );
+}
+
+// ── Answer a whole-marriage ask ──────────────────────────────────────────────
+
+export function AnswerWholeSheet({
+  hint,
+  actorName,
+  config,
+}: {
+  hint: AnswerWholeHint | null;
+  actorName: string;
+  config: RuleConfig;
+}) {
+  const { t } = useTranslation();
+  const pending = usePending();
+
+  return (
+    <SheetShell title={t(hint !== null ? 'sheet.answerTitle' : 'phase.awaitWholeAnswer')}>
+      {hint !== null ? (
+        <div className="tsheet__grid">
+          {hint.suits.map((suit) => (
+            <button
+              type="button"
+              key={suit}
+              className="btn--primary"
+              disabled={pending}
+              onClick={() => sendAction({ type: 'answerWhole', suit })}
+            >
+              <span className={`suit--${suit} tsheet__glyph`}>{SUIT_GLYPH[suit]}</span>
+              {t(`suit.${suit}`)} +{marriageValue(suit, config)}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <WaitingNote name={actorName} />
+      )}
+    </SheetShell>
+  );
+}

@@ -650,10 +650,10 @@ describe('redeal demand', () => {
     expect(act(ctx, 1, { type: 'demandRedeal' })).toEqual([{ type: 'redealDemanded', seat: 1 }]);
   });
 
-  it('is disabled entirely by config.redealRule=false', () => {
+  it('is disabled entirely by config.redealCondition=null', () => {
     const ctx = freshBidding({
       deck: REDEAL_DECK,
-      config: { ...DEFAULT_RULES, redealRule: false },
+      config: { ...DEFAULT_RULES, redealCondition: null },
     });
     expect(allowedActions(ctx.state, 1)[0]).toMatchObject({ canDemandRedeal: false });
     expectError(ctx, 1, { type: 'demandRedeal' }, 'error.redealNotEligible');
@@ -710,7 +710,13 @@ describe('wrong turn and wrong phase', () => {
 
 describe('forcedOpening=false (engine-pinned fallback)', () => {
   it('everyone may pass until the last unpassed seat, who must open', () => {
-    const config: RuleConfig = { ...DEFAULT_RULES, forcedOpening: false };
+    // Pin the päämuoto all-pass outcome explicitly: this suite specifies the
+    // forceLastSeat fallback, not the illisoft contract-less deal.
+    const config: RuleConfig = {
+      ...DEFAULT_RULES,
+      forcedOpening: false,
+      allPassOutcome: 'forceLastSeat',
+    };
     const ctx = freshBidding({ config });
     expect(allowedActions(ctx.state, 1)).toEqual([
       {
@@ -748,7 +754,11 @@ describe('forcedOpening=false (engine-pinned fallback)', () => {
   });
 
   it('a banned seat forced open by three passes must bid exactly minBid', () => {
-    const config: RuleConfig = { ...DEFAULT_RULES, forcedOpening: false };
+    const config: RuleConfig = {
+      ...DEFAULT_RULES,
+      forcedOpening: false,
+      allPassOutcome: 'forceLastSeat',
+    };
     const ctx = freshBidding({ config, scores: [-500, -500] });
     // banned non-forced opener: no legal bid at all, pass allowed
     expect(allowedActions(ctx.state, 1)).toEqual([
@@ -868,7 +878,9 @@ describe('allowedActions hints exactly match validateAction', () => {
   });
 
   it('with forcedOpening=false through an all-pass sequence', () => {
-    const ctx = freshBidding({ config: { ...DEFAULT_RULES, forcedOpening: false } });
+    const ctx = freshBidding({
+      config: { ...DEFAULT_RULES, forcedOpening: false, allPassOutcome: 'forceLastSeat' },
+    });
     probeAllSeats(ctx.state);
     act(ctx, 1, { type: 'pass' });
     probeAllSeats(ctx.state);

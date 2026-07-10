@@ -67,7 +67,7 @@ function decl(
   how: DeclarationHow = 'own',
   trickIndex = 1,
 ): Declaration {
-  return { suit, seat, side: sideOf(seat), how, trickIndex, points };
+  return { suit, seat, side: sideOf(seat, 4), how, trickIndex, points };
 }
 
 interface CompletedDealOpts {
@@ -123,11 +123,16 @@ function completedDeal(opts: CompletedDealOpts): DealState {
     trump: opts.trump ?? null,
     declarations: opts.declarations ?? [],
     askedWhole: { 0: false, 1: false, 2: false, 3: false },
+    askedHalf: { 0: false, 1: false, 2: false, 3: false },
     bidLog: [],
     bid: { seat: opts.declarer, amount: opts.bid ?? opts.contract },
     declarer: opts.declarer,
     contract: opts.contract,
     exchange: { given: null, returned: null },
+    talon: null,
+    talonTakenBy: null,
+    dummyHand: null,
+    discarded: null,
     lastTrick: { plays: [], winner: opts.lastWinner },
     phase: { name: 'lead', leader: opts.lastWinner, canDeclare: false },
   };
@@ -140,6 +145,7 @@ function expectConservation(
   declarations: readonly Declaration[],
 ): void {
   const [a, b] = result.sides;
+  if (!a || !b) throw new Error('test bug: a 4p result must have exactly two sides');
   expect(a.cardPoints + b.cardPoints).toBe(cfg.cardPoints === 'A' ? 120 : 140);
   expect(a.lastTrickBonus + b.lastTrickBonus).toBe(cfg.lastTrickBonus);
   expect(a.cardPoints + a.lastTrickBonus + b.cardPoints + b.lastTrickBonus).toBe(
@@ -162,11 +168,16 @@ function leadDeclareState(cfg: RuleConfig, leader: Seat, leaderHand: Card[]): Ma
     trump: null,
     declarations: [],
     askedWhole: { 0: false, 1: false, 2: false, 3: false },
+    askedHalf: { 0: false, 1: false, 2: false, 3: false },
     bidLog: [],
     bid: { seat: 2, amount: 55 },
     declarer: 2,
     contract: 60,
     exchange: { given: null, returned: null },
+    talon: null,
+    talonTakenBy: null,
+    dummyHand: null,
+    discarded: null,
     lastTrick: { plays: [], winner: leader },
     phase: { name: 'lead', leader, canDeclare: true },
   };
@@ -246,11 +257,16 @@ function ninthTrickState(opts: NinthTrickOpts): {
     trump: null,
     declarations: [],
     askedWhole: { 0: false, 1: false, 2: false, 3: false },
+    askedHalf: { 0: false, 1: false, 2: false, 3: false },
     bidLog: [],
     bid: { seat: opts.declarer, amount: opts.bid ?? opts.contract },
     declarer: opts.declarer,
     contract: opts.contract,
     exchange: { given: null, returned: null },
+    talon: null,
+    talonTakenBy: null,
+    dummyHand: null,
+    discarded: null,
     // Trick 7 went to seat 1, who therefore leads the final trick.
     lastTrick: {
       plays: [
@@ -273,22 +289,29 @@ function ninthTrickState(opts: NinthTrickOpts): {
 }
 
 /** Expected DealResult for the ninthTrickState fixture (independent oracle). */
-function ninthTrickResult(declarer: Seat, contract: number, lastTrickTo: Side): DealResult {
+function ninthTrickResult(
+  declarer: Seat,
+  contract: number,
+  lastTrickTo: Side,
+  bid = contract,
+): DealResult {
   const bonus: [number, number] = lastTrickTo === 0 ? [10, 0] : [0, 10];
   const raw: [number, number] = [84 + bonus[0], 36 + bonus[1]];
   const tricks: [number, number] = lastTrickTo === 0 ? [3, 6] : [2, 7];
-  const declarerSide = sideOf(declarer);
+  const declarerSide = sideOf(declarer, 4) as 0 | 1;
   const made = raw[declarerSide] >= contract;
-  const side = (s: Side): SideBreakdown => ({
+  const side = (s: 0 | 1): SideBreakdown => ({
     cardPoints: s === 0 ? 84 : 36,
     lastTrickBonus: bonus[s],
     marriagePoints: 0,
+    discardPoints: 0,
     rawTotal: raw[s],
+    roundedTotal: raw[s],
     tricks: tricks[s],
     porvoo: false,
     scoreDelta: s === declarerSide ? (made ? contract : -contract) : raw[s],
   });
-  return { declarer, contract, made, sides: [side(0), side(1)] };
+  return { declarer, contract, bid, made, sides: [side(0), side(1)] };
 }
 
 function playFinalCard(built: { state: MatchState; lastSeat: Seat; lastCard: Card }): {
@@ -330,13 +353,16 @@ describe('scoreDeal — contract resolution', () => {
     expect(result).toEqual({
       declarer: 2,
       contract: 60,
+      bid: 55,
       made: true,
       sides: [
         {
           cardPoints: 92,
           lastTrickBonus: 10,
           marriagePoints: 0,
+          discardPoints: 0,
           rawTotal: 102,
+          roundedTotal: 102,
           tricks: 5,
           porvoo: false,
           scoreDelta: 60, // NOT 102: clamped to the contract
@@ -345,7 +371,9 @@ describe('scoreDeal — contract resolution', () => {
           cardPoints: 28,
           lastTrickBonus: 0,
           marriagePoints: 0,
+          discardPoints: 0,
           rawTotal: 28,
+          roundedTotal: 28,
           tricks: 4,
           porvoo: false,
           scoreDelta: 28, // opponents keep their raw points as-is
@@ -374,13 +402,16 @@ describe('scoreDeal — contract resolution', () => {
     expect(result).toEqual({
       declarer: 1,
       contract: 70,
+      bid: 70,
       made: true,
       sides: [
         {
           cardPoints: 60,
           lastTrickBonus: 0,
           marriagePoints: 0,
+          discardPoints: 0,
           rawTotal: 60,
+          roundedTotal: 60,
           tricks: 6,
           porvoo: false,
           scoreDelta: 60,
@@ -389,7 +420,9 @@ describe('scoreDeal — contract resolution', () => {
           cardPoints: 60,
           lastTrickBonus: 10,
           marriagePoints: 0,
+          discardPoints: 0,
           rawTotal: 70,
+          roundedTotal: 70,
           tricks: 3,
           porvoo: false,
           scoreDelta: 70,
@@ -412,12 +445,14 @@ describe('scoreDeal — contract resolution', () => {
       cardPoints: 92,
       lastTrickBonus: 10,
       marriagePoints: 0,
+      discardPoints: 0,
       rawTotal: 102,
+      roundedTotal: 102,
       tricks: 5,
       porvoo: false,
       scoreDelta: -200, // −contract, regardless of how close raw came
     });
-    expect(result.sides[1].scoreDelta).toBe(28); // opponents unaffected by the failure
+    expect(result.sides[1]?.scoreDelta).toBe(28); // opponents unaffected by the failure
     expectConservation(result, CFG_A, []);
   });
 
@@ -430,17 +465,17 @@ describe('scoreDeal — contract resolution', () => {
       completedDeal({ declarer: 2, contract: 60, ...clampPiles, lastWinner: 3 }),
       CFG_A,
     );
-    expect([toSide0.sides[0].lastTrickBonus, toSide0.sides[1].lastTrickBonus]).toEqual([10, 0]);
-    expect([toSide1.sides[0].lastTrickBonus, toSide1.sides[1].lastTrickBonus]).toEqual([0, 10]);
-    expect(toSide0.sides[0].rawTotal).toBe(102);
-    expect(toSide1.sides[0].rawTotal).toBe(92);
-    expect(toSide0.sides[1].rawTotal).toBe(28);
-    expect(toSide1.sides[1].rawTotal).toBe(38);
+    expect([toSide0.sides[0]?.lastTrickBonus, toSide0.sides[1]?.lastTrickBonus]).toEqual([10, 0]);
+    expect([toSide1.sides[0]?.lastTrickBonus, toSide1.sides[1]?.lastTrickBonus]).toEqual([0, 10]);
+    expect(toSide0.sides[0]?.rawTotal).toBe(102);
+    expect(toSide1.sides[0]?.rawTotal).toBe(92);
+    expect(toSide0.sides[1]?.rawTotal).toBe(28);
+    expect(toSide1.sides[1]?.rawTotal).toBe(38);
     // Opponent deltas track their raw totals; the made contract stays clamped.
-    expect(toSide0.sides[1].scoreDelta).toBe(28);
-    expect(toSide1.sides[1].scoreDelta).toBe(38);
-    expect(toSide0.sides[0].scoreDelta).toBe(60);
-    expect(toSide1.sides[0].scoreDelta).toBe(60);
+    expect(toSide0.sides[1]?.scoreDelta).toBe(28);
+    expect(toSide1.sides[1]?.scoreDelta).toBe(38);
+    expect(toSide0.sides[0]?.scoreDelta).toBe(60);
+    expect(toSide1.sides[0]?.scoreDelta).toBe(60);
     expectConservation(toSide0, CFG_A, []);
     expectConservation(toSide1, CFG_A, []);
   });
@@ -472,13 +507,16 @@ describe('scoreDeal — marriage points', () => {
     expect(result).toEqual({
       declarer: 1,
       contract: 100,
+      bid: 90,
       made: true,
       sides: [
         {
           cardPoints: 28,
           lastTrickBonus: 0,
           marriagePoints: 100,
+          discardPoints: 0,
           rawTotal: 128,
+          roundedTotal: 128,
           tricks: 2,
           porvoo: false,
           scoreDelta: 128, // opponents: raw total incl. marriage, unclamped
@@ -487,7 +525,9 @@ describe('scoreDeal — marriage points', () => {
           cardPoints: 92,
           lastTrickBonus: 10,
           marriagePoints: 0,
+          discardPoints: 0,
           rawTotal: 102,
+          roundedTotal: 102,
           tricks: 7,
           porvoo: false,
           scoreDelta: 100, // 102 ≥ 100 → made, clamped
@@ -521,7 +561,9 @@ describe('scoreDeal — marriage points', () => {
       cardPoints: 56,
       lastTrickBonus: 10,
       marriagePoints: 80,
+      discardPoints: 0,
       rawTotal: 146,
+      roundedTotal: 146,
       tricks: 4,
       porvoo: false,
       scoreDelta: 140,
@@ -530,7 +572,9 @@ describe('scoreDeal — marriage points', () => {
       cardPoints: 64,
       lastTrickBonus: 0,
       marriagePoints: 0,
+      discardPoints: 0,
       rawTotal: 64,
+      roundedTotal: 64,
       tricks: 5,
       porvoo: false,
       scoreDelta: 64,
@@ -562,13 +606,16 @@ describe('scoreDeal — Porvoo (trickless sides)', () => {
     expect(result).toEqual({
       declarer: 2,
       contract: 60,
+      bid: 50,
       made: true,
       sides: [
         {
           cardPoints: 120,
           lastTrickBonus: 10,
           marriagePoints: 0,
+          discardPoints: 0,
           rawTotal: 130,
+          roundedTotal: 130,
           tricks: 9,
           porvoo: false,
           scoreDelta: 60, // contract clamp is untouched by the Porvoo ruling
@@ -577,7 +624,9 @@ describe('scoreDeal — Porvoo (trickless sides)', () => {
           cardPoints: 0,
           lastTrickBonus: 0,
           marriagePoints: 0,
+          discardPoints: 0,
           rawTotal: 0,
+          roundedTotal: 0,
           tricks: 0,
           porvoo: true,
           scoreDelta: -50, // −bid, NOT −contract
@@ -597,9 +646,9 @@ describe('scoreDeal — Porvoo (trickless sides)', () => {
     });
     const result = scoreDeal(deal, CFG_A);
     expect(result.made).toBe(false);
-    expect(result.sides[0].scoreDelta).toBe(-300); // −contract (declarer fail)
-    expect(result.sides[1].porvoo).toBe(true);
-    expect(result.sides[1].scoreDelta).toBe(-250); // −bid (opponent Porvoo)
+    expect(result.sides[0]?.scoreDelta).toBe(-300); // −contract (declarer fail)
+    expect(result.sides[1]?.porvoo).toBe(true);
+    expect(result.sides[1]?.scoreDelta).toBe(-250); // −bid (opponent Porvoo)
     expectConservation(result, CFG_A, []);
   });
 
@@ -619,13 +668,16 @@ describe('scoreDeal — Porvoo (trickless sides)', () => {
     expect(result).toEqual({
       declarer: 2,
       contract: 60,
+      bid: 50,
       made: false,
       sides: [
         {
           cardPoints: 0,
           lastTrickBonus: 0,
           marriagePoints: 0,
+          discardPoints: 0,
           rawTotal: 0,
+          roundedTotal: 0,
           tricks: 0,
           porvoo: true,
           scoreDelta: -100, // −2 × bid (§10 "huutajalle 2 × huuto"), not −2 × contract
@@ -634,7 +686,9 @@ describe('scoreDeal — Porvoo (trickless sides)', () => {
           cardPoints: 120,
           lastTrickBonus: 10,
           marriagePoints: 0,
+          discardPoints: 0,
           rawTotal: 130,
+          roundedTotal: 130,
           tricks: 9,
           porvoo: false,
           scoreDelta: 130,
@@ -667,12 +721,14 @@ describe('scoreDeal — Porvoo (trickless sides)', () => {
       cardPoints: 0,
       lastTrickBonus: 0,
       marriagePoints: 0,
+      discardPoints: 0,
       rawTotal: 0,
+      roundedTotal: 0,
       tricks: 2, // the side has tricks — the declarer seat does not
       porvoo: true,
       scoreDelta: -100, // −2×bid despite the partner's tricks
     });
-    expect(result.sides[1].scoreDelta).toBe(130);
+    expect(result.sides[1]?.scoreDelta).toBe(130);
     expectConservation(result, CFG_A, []);
   });
 
@@ -694,10 +750,10 @@ describe('scoreDeal — Porvoo (trickless sides)', () => {
     });
     const result = scoreDeal(deal, CFG_A);
     expect(result.made).toBe(false); // raw 130 ≥ 60, yet not "made"
-    expect(result.sides[0].porvoo).toBe(true);
-    expect(result.sides[0].scoreDelta).toBe(-110); // −2×55
-    expect(result.sides[1].porvoo).toBe(false);
-    expect(result.sides[1].scoreDelta).toBe(0); // raw total: zero points, has tricks
+    expect(result.sides[0]?.porvoo).toBe(true);
+    expect(result.sides[0]?.scoreDelta).toBe(-110); // −2×55
+    expect(result.sides[1]?.porvoo).toBe(false);
+    expect(result.sides[1]?.scoreDelta).toBe(0); // raw total: zero points, has tricks
     expectConservation(result, CFG_A, []);
   });
 });
@@ -724,13 +780,16 @@ describe('scoreDeal — point system B (A/10=10, K/Q/J=5, last trick 20)', () =>
     expect(result).toEqual({
       declarer: 0,
       contract: 110,
+      bid: 100,
       made: true,
       sides: [
         {
           cardPoints: 100,
           lastTrickBonus: 20,
           marriagePoints: 0,
+          discardPoints: 0,
           rawTotal: 120,
+          roundedTotal: 120,
           tricks: 4,
           porvoo: false,
           scoreDelta: 110,
@@ -739,7 +798,9 @@ describe('scoreDeal — point system B (A/10=10, K/Q/J=5, last trick 20)', () =>
           cardPoints: 40, // queens+jacks are 5 each under B (20 under A)
           lastTrickBonus: 0,
           marriagePoints: 0,
+          discardPoints: 0,
           rawTotal: 40,
+          roundedTotal: 40,
           tricks: 5,
           porvoo: false,
           scoreDelta: 40,
@@ -763,9 +824,9 @@ describe('scoreDeal — point system B (A/10=10, K/Q/J=5, last trick 20)', () =>
       completedDeal({ declarer: 0, contract: 110, ...piles, lastWinner: 0 }),
       CFG_A,
     );
-    expect(a.sides[0].cardPoints).toBe(100); // 44+40+16
-    expect(a.sides[1].cardPoints).toBe(20); // 12+8
-    expect(a.sides[0].rawTotal).toBe(110); // bonus 10 under A
+    expect(a.sides[0]?.cardPoints).toBe(100); // 44+40+16
+    expect(a.sides[1]?.cardPoints).toBe(20); // 12+8
+    expect(a.sides[0]?.rawTotal).toBe(110); // bonus 10 under A
     expect(a.made).toBe(true); // exactly on the contract
     expectConservation(a, CFG_A, []);
   });
@@ -833,13 +894,16 @@ describe('trump value tables', () => {
     expect(result).toEqual({
       declarer: 2,
       contract: 160,
+      bid: 150,
       made: true,
       sides: [
         {
           cardPoints: 92,
           lastTrickBonus: 10,
           marriagePoints: 100,
+          discardPoints: 0,
           rawTotal: 202,
+          roundedTotal: 202,
           tricks: 5,
           porvoo: false,
           scoreDelta: 160,
@@ -848,7 +912,9 @@ describe('trump value tables', () => {
           cardPoints: 28,
           lastTrickBonus: 0,
           marriagePoints: 40,
+          discardPoints: 0,
           rawTotal: 68,
+          roundedTotal: 68,
           tricks: 4,
           porvoo: false,
           scoreDelta: 68,
@@ -895,7 +961,7 @@ describe('scoreDeal — randomized conservation oracle', () => {
     }
     const { declarer, contract } = deal;
     const bid = deal.bid.amount;
-    const lastSide = sideOf(deal.lastTrick.winner);
+    const lastSide = sideOf(deal.lastTrick.winner, 4);
     const declarerPorvoo = deal.tricksWon[declarer] === 0;
     const sides = ([0, 1] as const).map((side): SideBreakdown => {
       const seats: [Seat, Seat] = side === 0 ? [0, 2] : [1, 3];
@@ -907,13 +973,15 @@ describe('scoreDeal — randomized conservation oracle', () => {
         .reduce((acc, d) => acc + d.points, 0);
       const rawTotal = cardPoints + lastTrickBonus + marriagePoints;
       const tricks = deal.tricksWon[seats[0]] + deal.tricksWon[seats[1]];
-      if (side === sideOf(declarer)) {
+      if (side === sideOf(declarer, 4)) {
         const scoreDelta = declarerPorvoo ? -2 * bid : rawTotal >= contract ? contract : -contract;
         return {
           cardPoints,
           lastTrickBonus,
           marriagePoints,
+          discardPoints: 0,
           rawTotal,
+          roundedTotal: rawTotal, // opponentRounding 'none' in every cfg under test
           tricks,
           porvoo: declarerPorvoo,
           scoreDelta,
@@ -921,10 +989,20 @@ describe('scoreDeal — randomized conservation oracle', () => {
       }
       const porvoo = tricks === 0;
       const scoreDelta = porvoo ? -bid : rawTotal;
-      return { cardPoints, lastTrickBonus, marriagePoints, rawTotal, tricks, porvoo, scoreDelta };
+      return {
+        cardPoints,
+        lastTrickBonus,
+        marriagePoints,
+        discardPoints: 0,
+        rawTotal,
+        roundedTotal: rawTotal,
+        tricks,
+        porvoo,
+        scoreDelta,
+      };
     }) as [SideBreakdown, SideBreakdown];
-    const db = sides[sideOf(declarer)];
-    return { declarer, contract, made: !declarerPorvoo && db.rawTotal >= contract, sides };
+    const db = sides[sideOf(declarer, 4) as 0 | 1];
+    return { declarer, contract, bid, made: !declarerPorvoo && db.rawTotal >= contract, sides };
   }
 
   it('conserves points and follows the §5.6 delta laws on 120 random deals', () => {
@@ -1065,9 +1143,9 @@ describe('match progression — matchEnded rules', () => {
       lastTrickTo: 0,
     });
     const { events, state } = playFinalCard(built);
-    const result = ninthTrickResult(2, 60, 0);
-    expect(result.sides[0].scoreDelta).toBe(60);
-    expect(result.sides[1].scoreDelta).toBe(36);
+    const result = ninthTrickResult(2, 60, 0, 55);
+    expect(result.sides[0]?.scoreDelta).toBe(60);
+    expect(result.sides[1]?.scoreDelta).toBe(36);
     expect(events).toEqual([
       { type: 'cardPlayed', seat: 0, card: 'H9' },
       { type: 'trickWon', seat: 0, trickIndex: 8, canDeclareNext: false },
@@ -1123,6 +1201,7 @@ describe('match progression — matchEnded rules', () => {
       highBid: null,
       passed: [],
       firstTurnTaken: [],
+      excluded: [],
     });
   });
 
@@ -1137,7 +1216,7 @@ describe('match progression — matchEnded rules', () => {
     const { events, state } = playFinalCard(built);
     const result = ninthTrickResult(1, 200, 0);
     expect(result.made).toBe(false);
-    expect(result.sides[1].scoreDelta).toBe(-200);
+    expect(result.sides[1]?.scoreDelta).toBe(-200);
     expect(events[2]).toEqual({ type: 'dealScored', result });
     expect(events[3]).toEqual({ type: 'matchEnded', winnerSide: 0 });
     expect(state.scores).toEqual([514, 100]);
