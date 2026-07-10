@@ -1,36 +1,36 @@
-# Fly.io config for Huutopussi Online.
-# Single machine + SQLite on a volume: keep exactly one machine running
-# (auto_stop_machines = false, min_machines_running = 1) — rooms live in
-# process memory and the DB is a local file, so scaling out is NOT supported.
+# fly.toml app configuration file generated for huutopussi on 2026-07-10T22:02:15Z
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
 
-app = "huutopussi"
-primary_region = "arn"
+app = 'huutopussi'
+primary_region = 'arn'
 
 [build]
-  dockerfile = "Dockerfile"
+  dockerfile = 'Dockerfile'
 
 [env]
-  PORT = "8080"
-  DB_PATH = "/data/hp.db"
+  DB_PATH = '/data/hp.db'
+  PORT = '8080'
 
-[mounts]
-  source = "hp_data"
-  destination = "/data"
+[[mounts]]
+  source = 'hp_data'
+  destination = '/data'
 
 [http_service]
   internal_port = 8080
   force_https = true
-  auto_stop_machines = false
+  auto_stop_machines = 'off'
   auto_start_machines = true
   min_machines_running = 1
 
   [[http_service.checks]]
-    method = "GET"
-    path = "/healthz"
-    interval = "15s"
-    timeout = "5s"
-    grace_period = "10s"
+    interval = '15s'
+    timeout = '5s'
+    grace_period = '10s'
+    method = 'GET'
+    path = '/healthz'
 
 [[vm]]
-  size = "shared-cpu-1x"
-  memory = "512mb"
+  size = 'shared-cpu-1x'
+  memory = '512mb'
