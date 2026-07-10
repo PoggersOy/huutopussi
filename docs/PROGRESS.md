@@ -23,7 +23,7 @@ Plan: `docs/plan.md`. Rules: `docs/huutopussin-saannot.md`.
   green, fuzz harness (2k games verified). Protocol package authored by architect
   (snapshot-per-change sync model — supersedes plan's event+gap scheme).
   GitHub repo created: BigTimeSam/huutopussi (private); CI/CD + Fly.io deploy and
-  huutopussi.online domain are the new deployment targets.
+  huutopussi.com domain are the new deployment targets.
 - 2026-07-10 20:05: **50k fuzz gate PASSED** — 50,000 games (seed 1000), 558,320
   deals, 23.9M actions, 30.9M events, zero invariant violations, 50.6 games/s.
   P2 gate formally satisfied. Full-stack workflow WF-2 running (server, client,
@@ -138,10 +138,37 @@ Plan: `docs/plan.md`. Rules: `docs/huutopussin-saannot.md`.
   illisoft config by the sim's 4p `cardPoints+lastTrickBonus == totalDealPoints`
   invariant (line 451) over all 36,306 deals.
 
-  Remaining low-severity finding (1): no E2E asserts the illisoft **default's**
-  scoring specifics (last-trick 20, nearest-5 opponent rounding, contract-less
-  all-pass deals) — full-game's point-arithmetic assertions now run only under
-  the pinned päämuoto preset. Consider an illisoft-scoped scoring spec post-MVP.
+- 2026-07-11 (early): **Final review panel (5 lenses) + gate green on Opus.**
+  After the Fable 5 quota was exhausted mid-panel, the workflow was resumed under
+  Opus 4.8 (workflow agents inherit the session model; completed agents replayed
+  from cache). Adversarial panel across security, mobile-UX, resilience,
+  code-quality, plan-compliance: 9 confirmed high/medium findings fixed, low ones
+  triaged below. Architect re-verified everything independently: `pnpm typecheck`
+  + `pnpm lint` (106 files) clean, **406 unit tests** green (engine 320, client 52,
+  server 19, bots 15), `pnpm sim --games 5000 --seed 31337 --bots mixed` clean
+  (73 games/s, 1.88M events, 0 violations), `docker build` → image serves
+  SPA+WS+`/healthz`, Playwright 5/5. **GitHub Actions CI green** (typecheck/lint/
+  test/sim + Playwright e2e jobs). Domain corrected to **huutopussi.com** across
+  README/PROGRESS (an infra agent had guessed `.online`); deploy runbook in README.
+
+  Open low-severity polish (non-blocking, deferred to P7):
+  1. `error.declarationUsed` is a misleading code when a declaration is attempted
+     at the first lead (no declaration window ever existed) — cosmetic i18n key.
+  2. Overlapping hand fan gives interior cards a <44px hit area at 320px width
+     (edges fine); consider spreading the fan or a tap-to-front affordance.
+  3. `--text-dim` over the brightest point of the felt gradient is ~4:1 (below
+     WCAG AA 4.5 for small text); darken the dim token or the gradient center.
+  4. `rooms`/`sessions` SQLite rows are never pruned (only `deal_events` age out)
+     — slow disk growth over months; add a closed-room reaper.
+  5. Mid-turn-disconnect grace extension isn't broadcast, so other clients' turn
+     countdown drifts until the next update (cosmetic timer skew).
+  6. Erlangen bluff half-ask (`askHalfMustHoldCard=false`, not in any default
+     preset) can award marriage points for a marriage the side doesn't hold —
+     revisit if/when an Erlangen preset ships.
+  7. No E2E asserts the illisoft **default's** scoring specifics (last-trick 20,
+     nearest-5 rounding, contract-less all-pass); add an illisoft-scoped spec.
+  8. Minor dead code (`Db.setRoomHost` unused; client `actorOf` re-derives the
+     server-sent acting seat as a fallback).
 
 ## Backlog (post-MVP)
 

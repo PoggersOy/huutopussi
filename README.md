@@ -50,7 +50,7 @@ seeded simulation on every push and PR.
 1. Open the deployed site and enter a nickname (no account needed — a session
    token in localStorage identifies you).
 2. Create a room; you get a 5-character code and a shareable link
-   (`https://huutopussi.online/r/CODE`).
+   (`https://huutopussi.com/r/CODE`).
 3. Send the link to friends; anyone opening it joins the room lobby. Fill
    empty seats with bots if you are fewer than four.
 4. The host starts the match. If someone drops (phone locked, tunnel, …) the
@@ -96,53 +96,40 @@ fly tokens create deploy --app huutopussi
 # New repository secret, name: FLY_API_TOKEN, value: the token (FlyV1 …)
 ```
 
-### Custom domain: huutopussi.online (Cloudflare, proxied)
+### Custom domain: huutopussi.com
 
-DNS is managed at **Cloudflare with the records proxied** (orange cloud), so
-Cloudflare sits in front of Fly. Because the proxy terminates TLS, Fly cannot
-validate its certificate over HTTP — issuance uses **DNS-01** instead, and an
-ownership record is required because traffic is routed through a CDN/proxy.
+Point the domain straight at Fly (DNS-only, no proxy) so Fly can issue and
+renew a Let's Encrypt cert over HTTP-01. The IPs below are **examples** — read
+your app's real ones from `fly ips list`.
 
 ```sh
-# 1. Origin addresses Cloudflare proxies to, and the app id used in cert records
+# 1. Get the app's public IPs (allocate a dedicated IPv4 if you want one)
 fly ips list --app huutopussi
-#   shared    IPv4  66.241.124.180
-#   dedicated IPv6  2a09:8280:1::147:cb69:0
+#   v4  66.241.xxx.xxx   (shared)
+#   v6  2a09:8280:...    (dedicated)
 
-# 2. Register the hostnames with Fly
-fly certs add huutopussi.online --app huutopussi
-fly certs add www.huutopussi.online --app huutopussi
+# 2. Register the hostnames with Fly (this prints the exact DNS records to add)
+fly certs add huutopussi.com --app huutopussi
+fly certs add www.huutopussi.com --app huutopussi
 
-# 3. Print the exact DNS records Fly needs (ACME-challenge + ownership targets)
-fly certs setup huutopussi.online --app huutopussi
-fly certs setup www.huutopussi.online --app huutopussi
+# 3. At your DNS registrar for the zone huutopussi.com, add (DNS-only, NOT proxied):
+#      A     huutopussi.com      -> <v4 from step 1>
+#      AAAA  huutopussi.com      -> <v6 from step 1>
+#      CNAME www.huutopussi.com  -> huutopussi.com
+#    (fly certs add in step 2 may instead ask for an _acme-challenge CNAME —
+#     use whatever that command prints; it is authoritative.)
 
-# 4. In Cloudflare (zone huutopussi.online) add:
-#    PROXIED (orange) — route traffic through Cloudflare to Fly:
-#      A     huutopussi.online       -> 66.241.124.180
-#      AAAA  huutopussi.online       -> 2a09:8280:1::147:cb69:0
-#      A     www.huutopussi.online   -> 66.241.124.180
-#      AAAA  www.huutopussi.online   -> 2a09:8280:1::147:cb69:0
-#    DNS-ONLY (grey) — let Fly issue certs behind the proxy (values from step 3):
-#      CNAME _acme-challenge.huutopussi.online     -> huutopussi.online.<id>.flydns.net
-#      CNAME _acme-challenge.www.huutopussi.online -> www.huutopussi.online.<id>.flydns.net
-#      TXT   _fly-ownership.huutopussi.online      -> app-<id>   # e.g. app-jql0800
-#      TXT   _fly-ownership.www.huutopussi.online  -> app-<id>
+# 4. Watch until issued, then verify HTTPS + health through the domain
+fly certs check huutopussi.com --app huutopussi     # Status = Issued (a few min)
+curl -sI https://huutopussi.com/healthz             # HTTP/2 200
 
-# 5. Cloudflare -> SSL/TLS -> Overview: set the mode to "Full (strict)".
-#    REQUIRED: the server sets force_https, so "Flexible"/"Off" causes an
-#    infinite redirect loop. "Full (strict)" works because Fly holds a valid
-#    Let's Encrypt cert for the domain. NB: a Cloudflare API token scoped to
-#    "Edit zone DNS" CANNOT change this (needs Zone Settings/SSL edit scope) —
-#    set it in the dashboard or with a broader token.
-
-# 6. Watch until issued, then verify HTTPS + WebSocket through the proxy
-fly certs check huutopussi.online --app huutopussi         # Status = Issued
-curl -sI https://huutopussi.online/healthz                 # 200; server: cloudflare, via: fly.io
+# 5. Share https://huutopussi.com — create a room, send friends the /r/CODE link.
 ```
 
-The DNS-only `_acme-challenge` CNAMEs and `_fly-ownership` TXT records must stay
-in place for future cert renewals while the A/AAAA records remain proxied.
+If you front the domain with Cloudflare, set the records **DNS-only** (grey
+cloud) for `fly certs` HTTP-01 to succeed; if you proxy them (orange cloud),
+switch SSL/TLS mode to **Full (strict)** — the server sets `force_https`, so
+"Flexible"/"Off" causes a redirect loop.
 
 ### Operations notes
 
