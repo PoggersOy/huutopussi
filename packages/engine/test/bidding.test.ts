@@ -408,15 +408,16 @@ describe('maxBid', () => {
   });
 
   /**
-   * SUSPECTED ENGINE BUG (reported): with DEFAULT_RULES, maxBid (440) exceeds
-   * theoreticalMaxPoints (410), and validate.ts caps contracts at
+   * ENGINE BUG (fixed): with DEFAULT_RULES, maxBid (440) exceeds
+   * theoreticalMaxPoints (410), and validate.ts used to cap contracts at
    * min(maxBid, theoreticalMax) = 410 while allowing winning bids up to 440.
-   * A declarer who wins the auction at 415–440 then has NO legal setContract
-   * amount (min = winning bid > max = 410) and the deal soft-locks in
+   * A declarer who won the auction at 415–440 then had NO legal setContract
+   * amount (min = winning bid > max = 410) and the deal soft-locked in
    * exchangeContract. Rules doc §5.3 only requires the contract to be a
-   * multiple of 5 at least the size of the winning bid, so 440 should stand.
+   * multiple of 5 at least the size of the winning bid, so 440 stands:
+   * maxContractOf now tracks maxBidOf. See also test/regressions.test.ts.
    */
-  it.fails('a declarer who won at maxBid 440 can set a 440 contract (engine soft-locks)', () => {
+  it('a declarer who won at maxBid 440 can set a 440 contract (no soft-lock)', () => {
     const ctx = freshBidding();
     act(ctx, 1, { type: 'bid', amount: 440 });
     act(ctx, 3, { type: 'giveCards', cards: ['SA', 'S10', 'SK'] });

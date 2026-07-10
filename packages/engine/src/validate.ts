@@ -43,8 +43,15 @@ function maxBidOf(cfg: RuleConfig): number {
   return cfg.maxBid ?? theoreticalMaxPoints(cfg);
 }
 
+/**
+ * Highest legal contract. Rules doc §5.3 only requires a contract to be a
+ * bidStep multiple at least the winning bid, so the cap must track the bid cap
+ * (maxBid, or theoreticalMaxPoints when unbounded): any winning bid — e.g. 440
+ * under cardPoints 'A', where theoreticalMaxPoints is only 410 — must always
+ * admit a legal contract, else the deal soft-locks in exchangeContract.
+ */
 function maxContractOf(cfg: RuleConfig): number {
-  return Math.min(cfg.maxBid ?? Number.POSITIVE_INFINITY, theoreticalMaxPoints(cfg));
+  return maxBidOf(cfg);
 }
 
 function bidBanned(state: MatchState, seat: Seat): boolean {

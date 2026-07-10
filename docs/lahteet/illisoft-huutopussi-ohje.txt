@@ -1,0 +1,734 @@
+
+
+============================================================
+## pelaajan lisääminen
+============================================================
+Pelaajan lisääminen
+Pelaaja lisätään peliin painamalla pelin aloitusikkunassa painiketta “Lisää pelaaja” tai valitsemalla “Pelaajat”-valikosta “Lisää pelaaja”. Pelissä voi olla enintään neljä pelaajaa.
+Pelaajan nimi –ruutuun kirjoitetaan lisättävän pelaajan nimi. Pelaajan nimessä saa olla korkeintaan 10 merkkiä.
+Pelaajaa ohjaa –kohdassa valitaan onko lisättävä pelaaja ihmis- vai tietokonepelaaja.
+Kun pelaajan nimi ja tyyppi on valittu, pelaaja lisätään pelaajien listaan painamalla OK-painiketta.
+Peruuta-painikkeesta pelaajan lisääminen pelaajalistaan voidaan peruuttaa.
+Loput valinnat liittyvät tietokonepelaajien tekoälyyn. Niistä on lisätietoja kohdassa 
+Tekoälyohjelmat
+.
+Kun lisätty pelaaja ilmestyy pelaajalistalle, pelaajan nimen edessä on kuva joka kertoo pelaajan tyypin:
+Ihmispelaaja
+Tietokoneen ohjaama pelaaja
+Toisesta lähiverkon koneesta kytkeytynyt ihmispelaaja
+
+
+============================================================
+## nimen/tyypin vaihtaminen
+============================================================
+Pelaajan nimen ja/tai tyypin vaihtaminen
+Pelaajan nimi ja/tai tyyppi voidaan vaihtaa ensin 
+valitsemalla pelaaja
+, jonka nimi ja/tai tyyppi halutaan vaihtaa, ja painamalla sitten painiketta “Vaihda nimi” tai valitsemalla “Pelaajat”-valikosta “Vaihda nimi”. Verkkopelissä client-koneista voidaan vaihtaa vain niiden pelaajien nimi ja/tai tyyppi, jotka ovat kytkeytyneet peliin ko. tietokoneesta.
+Pelaajan nimi –ruutuun kirjoitetaan pelaajan uusi nimi, jos nimi halutaan vaihtaa. Pelaajan nimessä saa olla korkeintaan 10 merkkiä.
+Pelaajaa ohjaa –kohdassa valitaan uusi 
+pelaajan tyyppi
+: ihmis- vai tietokonepelaaja.
+Kun pelaajan nimi ja/tai tyyppi on vaihdettu, muutos asetetaan voimaan painamalla OK-painiketta.
+Peruuta-painikkeesta tehdyt muutokset peruuntuvat.
+Loput valinnat liittyvät tietokonepelaajien tekoälyyn. Niistä on lisätietoja kohdassa 
+Tekoälyohjelmat
+.
+
+
+============================================================
+## pelaajan valitseminen
+============================================================
+Pelaajan valitseminen/
+pelaajan siirtäminen pelaajalistalla
+Pelaaja valitaan hiirellä klikkaamalla halutun pelaajan nimeä pelaajalistalla. Valitun pelaajan nimen ympärille ilmestyy suorakaide merkiksi siitä, että ko. pelaaja on valittuna. Verkkopelissä client-koneesta voidaan valita ainoastaan pelaajia, jotka ovat liittyneet pelaajalistaan ko. tietokoneesta. Isäntäkoneesta voidaan valita mikä tahansa pelaajalistalla oleva pelaaja.
+Valittua pelaajaa voidaan siirtää pelaajalistalla ylös- ja alaspäin vastaavista nuolipainikkeista tai “Pelaajat”-valikosta (“Siirrä ylös”/”Siirrä alas”). Verkkopelissä pelaajia voidaan siirrellä ainoastaan isäntäkoneesta.
+
+
+============================================================
+## pelin aloittaminen
+============================================================
+Pelin aloittaminen
+Kun pelaajalistalla on vähintään kaksi pelaajaa, peli voidaan aloittaa painamalla “Aloita peli”-painiketta tai painamalla F2. Verkkopelissä peli voidaan aloittaa vain isäntäkoneesta.
+
+
+============================================================
+## peliasetukset
+============================================================
+Peliasetukset
+Aloitusikkunan vasemmassa reunassa on joukko valintoja, joilla voidaan valita miten peliä halutaan pelata. Verkkopelissä näitä vaihtoehtoja voidaan vaihtaa ainoastaan isäntäkoneesta.
+Pelissä on keskusteluikkuna:
+Kyllä: pelissä on mukana keskusteluikkuna, jossa pelaajat voivat lähettää toisilleen viestejä.
+Ei: keskusteluikkunaa ei ole.
+Koinipakassa on:
+6 korttia: Pelataan kuuden kortin koinipakalla.
+3 korttia: Pelataan kolmen kortin koinipakalla.
+Tällä valinnalla on vaikutusta vain kun pelissä on mukana kaksi tai kolme pelaajaa. Neljän pelaajan pelissä huudon voittanut pari koinii vaihtamalla neljä korttia keskenään. Pelaajat 1 ja 3 muodostavat keskenään parin (punainen) ja pelaajat 2 ja 4 muodostavat keskenään parin (sininen).
+Koiniminen tapahtuu:
+Avoimesti: Kaikki pelaajat saavat ensimmäisen pelikierroksen aikana nähdä mitä kortteja koinipakassa oli. Näin myös siinä tapauksessa, että kukaan ei saa koinipakassa olevia kortteja, eli ei huuda edes minimihuutoa 60 pistettä.
+Salaisesti: Ainoastaan 
+jakokierroksen huutaja
+ näkee koinipakassa olevat kortit.
+
+
+============================================================
+## pelaajan poistaminen
+============================================================
+Pelaajan poistaminen
+Valittu pelaaja
+ voidaan poistaa pelaajalistalta painamalla painiketta “Poista pelaaja” tai valitsemalla “Pelaajat”-valikosta “Poista pelaaja”. Verkkopelissä client-koneesta voidaan poistaa vain ko. tietokoneesta pelaajalistalla mukana olevat pelaajat. Isäntäkoneesta voidaan poistaa mikä tahansa pelaajalistalla oleva pelaaja.
+“Poista pelaaja”-painikkeen painamisen jälkeen ohjelma varmistaa vielä, haluatko varmasti poistaa valittuna olevan pelaajan. Vastaamalla “Kyllä” pelaaja poistetaan pelaajalistalta.
+
+
+============================================================
+## verkossa pelaaminen
+============================================================
+Verkkopeli
+Huutopussia voidaan pelata lähiverkossa siten, että peliin osallistuu pelaajia eri tietokoneista. Peliin osallistuvissa tietokoneissa pitää olla verkkokortit asennettuina ja näille määriteltyinä TCP/IP-protokolla.
+Huutopussia pelataan lähiverkossa seuraavasti:
+1)
+Valitaan yksi peliin osallistuvista tietokoneista pelin isäntäkoneeksi. Isäntäkoneesta valitaan “Yhteys”-valikosta toiminto “Kuuntele porttia”.
+Kohtaan “Kuunneltavan portin numero:” valitaan sen IP-portin numero, jota isäntäkoneen halutaan kuunneltavan. Oletuksena on portti 1050. Käytä porttien numeroita, jotka ovat suurempia kuin 1025. Paina OK. Näytölle ilmestyy teksti “Kuuntelen porttia xx”, jossa xx on valitun portin numero. Nyt muut tietokoneet voivat ottaa yhteyden isäntäkoneeseen tämän portin kautta.
+1)
+Valitse kytkeytyvästä koneesta (client-koneesta) valikosta “Yhteys” toiminto “Yhdistä”.
+Kohtaan “Pelin isäntäkoneen nimi tai IP-osoite:” kirjoitetaan porttia kuuntelevan isäntäkoneen host-nimi tai IP-osoite (jos et tiedä mitä nämä termit tarkoittavat tai et tiedä isäntäkoneen host-nimeä etkä IP-osoitetta, ota yhteyttä verkon ylläpitäjään).
+0
+Kohtaan “Portin numero:” kirjoitetaan sama portin numero, jota isäntäkone kuuntelee (ks. kohta 1).
+1
+Paina OK. Jos yhteyden muodostaminen isäntäkoneeseen valitun portin kautta onnistuu, näytölle ilmestyy teksti “Yhteys xxx.xxx.xxx.xxx portissa yy”, jossa x:t ovat isäntäkoneen IP-osoite ja y:t portin numero, jonka kautta yhteys on muodostettu.
+2
+Kytkeytyneen koneen pelaajalistalle ilmestyvät automaattisesti pelaajat, jotka olivat isäntäkoneen pelaajalistalla. Jos isäntäkoneen pelaajalistalla oli jo aiemmin saman nimisiä pelaajia kuin kytkeytyneen koneen pelaajalistalla, kytkeytyneen koneen pelaajalistalla olevien pelaajien nimet muuttuvat siten, että niiden nimen loppuun ilmestyy numero, joka erottaa ne isäntäkoneen pelaajalistalla olleiden pelaajien nimistä.
+3
+Jos yhteyden muodostaminen ei onnistu, ja olet varma että IP-asetuksissasi ei ole vikaa, se saattaa johtua siitä, että jokin toinen sovellus käyttää valitsemaasi porttia. Kokeile tällöin laittaa isäntäkone kuuntelemaan jotakin toista porttia ja yritä sitten kytkeytyä tähän uuteen porttiin client-koneista.
+1)
+Toista vaihe 2 kaikista client-koneista, joista haluat kytkeytyä mukaan peliin.
+Halutessasi kytkeytyä irti isäntäkoneesta (client-kone), valitse “Yhteys”-valikosta toiminto “Katkaise yhteys”. Kaikki isäntäkoneen kautta pelaajalistalla olleet pelaajat poistetaan client-koneen listalta. Isäntäkoneen pelaajalistalta poistuvat pelaajat, jotka olivat mukana irtikytkeytyneestä client-koneesta.
+Halutessasi lopettaa portin kuuntelun (isäntäkone), valitse “Yhteys”-valikosta toiminto “Lopeta kuuntelu”. Kaikkien client-koneiden yhteys isäntäkoneeseen katkeaa ja vain itse kustakin koneesta pelaajalistalla mukana olleet pelaajat jäävät kunkin koneen pelaajalistalle.
+
+
+============================================================
+## (untitled)
+============================================================
+Jakokierros on se, kun yhden kerran joku pelaaja jakaa kortit, minkä jälkeen suoritetaan huutaminen sekä mahdollinen koiniminen ja korottaminen. Kaikki jaetut kortit pelataan, minkä jälkeen lasketaan pelaajien pisteet. Jakokierroksia pelataan niin monta, kunnes joku pelaaja (nelinpelissä pelaajapari) saa niin paljon pisteitä, että voittaa pelin.
+
+
+============================================================
+## (untitled)
+============================================================
+Pelikierros on se, kun yksi pelaaja pelaa kortin ja sen jälkeen muut pelaajat pelaavat oman korttinsa. Parhaan kortin pelannut pelaaja saa pelikierroksella pelatut kortit itselleen käännöksi. Pelikierroksia on yhdellä jakokierroksella niin monta, kuin kortteja pelaajille jakokierroksella jaetaan (riippuu pelaajien määrästä ja koinipakkaan jaettavien korttien määrästä).
+
+
+============================================================
+## (untitled)
+============================================================
+Pelikierroksen parhaan kortin pelannut pelaaja saa kierroksella pelatut kortit itselleen nk. käännöksi. Viimeisimmän käännön kortit näkyvät pelialueen oikeassa reunassa.
+
+
+============================================================
+## (untitled)
+============================================================
+Kun pelaajalla on kädessään saman maan rouva ja kuningas silloin kun hän on juuri saanut käännön, hän voi tehdä tästä maasta valtin valitsemalla ko. maa “Pelitoiminnot”-valikon “Tee valtti”-alivalikosta. Tämän jälkeen ko. maa on valttia, kunnes joku muu (tai sama) pelaaja tekee jostakin muusta maasta valtin. Yhdestä maasta voi tehdä valtin yhdellä jakokierroksella vain yhden kerran. Nykyistä valttimaata olevat kortit ovat aina paremmuusjärjestyksessä muiden maiden kortteja vahvempia.
+
+
+============================================================
+## numeroiden järjestys
+============================================================
+Korttien numeroiden paremmuusjärjestys:
+Korttien numeroiden paremmuusjärjestys menee seuraavasti (paras ensin):
+Ässä (14)
+10
+Kuningas (13)
+Rouva (12)
+Jätkä (11)
+9
+8
+7
+6
+Huomaa kympin paikka heti ässän jälkeen! Kuutosta pienemmät kortit sekä jokerit eivät ole pelissä mukana.
+Korttien numeroiden paremmuusjärjestys vaikuttaa paitsi siihen, mikä kortti voittaa pelikierroksen, myös siihen, mikä kortti pelaajan on pelattava, mikäli pelikierroksella on pelattu useita sen maan kortteja, jolla pelikierroksen aloittanut pelaaja on pelikierroksen aloittanut.
+
+
+============================================================
+## pelin aloitus
+============================================================
+Pelin aloitus:
+Yksi pelaaja toimii jakokierroksen jakajana. Jakaja vaihtuu joka jakokierroksella myötäpäivään. Jakaja jakaa kortit seuraavasti:
+- Jos pelaajia on neljä, kaikki kortit jaetaan pelaajille.
+- Jos pelaajia on kolme, kaikki kortit jaetaan myöskin pelaajille, paitsi kolme tai kuusi korttia (
+peliasetuksista
+ riippuen), jotka jätetään ns. koinipakaksi.
+- Jos pelaajia on kaksi, jaetaan täsmälleen samalla tavalla kuin jos pelaajia olisi 3, eli kolmelle pelaajalle (yhden pelaajan kortit jäävät ylimääräisiksi, jotta toisen pelaajan ei olisi niin helppo arvata mitä kortteja toisella pelaajalla on) ja lisäksi kolmen tai kuuden kortin koinipakka.
+Jos jollakin pelaajalla (tai nelinpelissä jommankumman parin pelaajilla yhdessä) sattuu olemaan kaikki neljä kuutosta joko tässä vaiheessa tai koinimisen jälkeen, hän (he) voi(vat) halutessaan vaatia jakamisen suorittamista uudelleen “Pelitoiminnot”-valikon “Vaadi uusi jako”-toiminnolla.
+
+
+============================================================
+## pisteet
+============================================================
+Pisteet:
+Jokaisen 
+jakokierroksen
+ päätteeksi lasketaan pelaajien (nelinpelissä pelaajaparien) pisteet. Pisteet lasketaan ns. 
+käännöistä
+, joita pelaajille kertyy jakokierroksen aikana.
+Jokaisesta pelaajan käännöissä olevasta kortista saa pisteitä seuraavasti:
+Ässä
+11 pistettä
+Kymppi
+10 pistettä
+Kuningas
+4 pistettä
+Rouva
+3 pistettä
+Jätkä
+2 pistettä
+Muista korteista ei saa pisteitä.
+Lisäksi se pelaaja, joka saa jakokierroksen viimeisen käännön, saa 20 pistettä. Kukin pelaaja (pelaajapari) saa myös pisteet jokaisesta jakokierroksen aikana tekemästään 
+valtista
+, vaikka se ei olisikaan enää valttia jakokierroksen päättyessä.
+Valteista saa pisteitä seuraavasti:
+Hertta
+100 pistettä
+Ruutu
+80 pistettä
+Risti
+60 pistettä
+Pata
+40 pistettä
+
+
+============================================================
+## huutaminen
+============================================================
+Huutaminen:
+Kun kortit on jaettu, jakajasta seuraava pelaaja myötäpäivään aloittaa huutamisen. Hän kertoo arvion siitä, kuinka paljon hän uskoo sillä jakokierroksella saavansa 
+pisteitä
+.
+Huutoa muutetaan nuolipainikkeista hiirellä klikkaamalla tai nuoli ylös- ja nuoli alas-näppäimistä. Sitten painetaan “Huuda”-painiketta. Pienin mahdollinen huuto on 60 pistettä, tai 5 pistettä enemmän kuin kukaan muu on huutanut siihen mennessä. Jos pelaaja ei usko saavansa niin paljoa pisteitä, hän voi painaa “Ohi”-painiketta, jolloin huutaminen sillä jakokierroksella on hänen osaltaan ohi. Seuraavaksi huutaa seuraava pelaaja (edellisen vasemmalla puolella oleva). Hänen on huudettava vähintään 5 pistettä enemmän kuin suurin siihen mennessä huudettu huuto, tai sitten huudettava "Ohi!". Jos pelaaja huutaa maksimihuudon 420 pistettä, hän voittaa huutamisen välittömästi (saadakseen 420 pistettä pelaajan pitää saada 
+läpäri
+ kaikilla neljällä 
+valtilla
+!). Huudetut pistemäärät ovat aina viidellä jaollisia. Näin jatketaan vuorotellen kunnes kaikki yhtä pelaajaa lukuunottamatta ovat huutaneet ohi. Huutamisen voittanutta pelaajaa sanotaan jakokierroksen 
+huutajaksi
+. Hänen huutamaansa viimeisintä pistemäärää sanotaan jakokierroksen huudoksi. Muilla jakokierroksen aikana huudetuilla pistemäärillä ei ole pelissä mitään merkitystä.
+Vain ne pelaajat, joiden pistemäärä on positiivinen tai nolla, saavat huutaa jakokierroksen alussa. Jos kaikki pelaajat, joiden pistemäärä on positiivinen tai nolla, huutavat heti ohi (siis eivät huuda edes 60, joka on pienin mahdollinen huuto), saavat miinuspisteillä olevat pelaajat huutaa. Jos kaikkien pelaajien pistemäärä on negatiivinen, kaikki pelaajat saavat huutaa normaalisti aloittaen jakajan vasemmalla puolella olevasta pelaajasta.
+Jos huutodialogissa (kuva yllä) on lisäksi painike, jossa lukee “Uusi jako”, on vuorossa olevalla pelaajalla (nelinpelissä pelaajalla ja hänen parillaan yhteensä) pakan kaikki neljä kuutosta. Tällöin hän voi ko. painiketta painamalla vaatia uuden jaon tehtäväksi.
+
+
+============================================================
+## miinuspisteet
+============================================================
+Miinuspisteet:
+§
+Pelissä saa miinuspisteitä seuraavasti:
+1)
+Jos pelaaja ei saa yhtään 
+kääntöä
+ koko 
+jakokierroksella
+, hän saa 
+jakokierroksen huudon
+ verran miinuspisteitä.
+1)
+Jos pelaaja on 
+jakokierroksen huutaja
+ mutta hän ei saa huutonsa verran pisteitä, mutta hän (nelinpelissä: tai hänen parinsa) saa vähintään yhden käännön, hän saa huutonsa verran miinuspisteitä (tai korotuksen verran, jos hän korotti huutoaan).
+1)
+Jos pelaaja on jakokierroksen huutaja ja hän ei saa ainoatakaan kääntöä (nelinpelissä: ei myöskään hänen parinsa), hän saa huutonsa verran miinuspisteitä kaksinkertaisena (tai korotuksen verran kaksinkertaisena, jos hän korotti huutoaan).
+Jos pelaajan kokonaispistetilanne on negatiivinen jakokierroksen alussa, hän ei saa huutaa sillä jakokierroksella. Neljän pelaajan pelissä pelaajapareilla on yhteiset pisteet. Jos heidän pistetilanteensa on negatiivinen, kumpikaan pariin kuuluvista pelaajista ei saa huutaa. Vain jos kaikki pelaajat, joiden pistemäärä on positiivinen tai nolla, ovat heti alussa huutaneet ohi, saavat miinuksilla olevat pelaajat huutaa. Riippumatta pelaajan pistemäärästä, kun pelaaja on kerran huutanut ohi, hän ei voi sillä jakokierroksella enää huutaa.
+
+
+============================================================
+## koiniminen
+============================================================
+Koiniminen:
+Koiniminen tapahtuu hieman eri tavalla riippuen siitä montako pelaajaa pelissä on.
+2:n ja 3:n pelaajan pelissä:
+Jakokierroksen huutaja
+ saa koinipakassa olevat kortit. Voidaan pelata joko ns. avoimella koinilla, jolloin kaikki pelaajat näkevät ensimmäisen pelikierroksen aikana koinipakassa olleet kortit näytön oikeassa reunassa, tai ns. salaisella koinilla, jolloin vain huutaja näkee koinipakassa olleet kortit. Huutaja valitsee itseltään (ja/tai koinipakasta tulleiden korttien joukosta) pois laitettavaksi saman verran kortteja kuin koinipakassa (3 tai 6). Näitä kortteja muut pelaajat eivät milloinkaan näe. Kymppejä ja ässiä huutaja ei saa laittaa pois. Pois laitetuista korteista lasketaan huutajalle 
+jakokierroksen
+ lopussa pisteitä samalla tavoin kuin hänen saamistaan 
+käännöistä
+. Kuitenkin hänen pitää saada näiden korttien lisäksi vähintään yksi kääntö välttyäkseen 
+miinuspisteiltä
+.
+4:n pelaajan pelissä:
+Nelinpelissä koiniminen tapahtuu siten (nelinpelissähän ei jaettu mitään koinipakkaa), että jakokierroksen huutajan pari valitsee ensin itseltään neljä korttia, jotka hän antaa huutajalle. Nähtyään saamansa kortit huutaja valitsee neljä korttia, jotka hän antaa parilleen takaisin. Takaisin annettujen korttien joukossa saa olla myöskin parilta saatuja kortteja. Nelinpelissä myös ässiä ja kymppejä saa koinia, ja koinittavia kortteja ei milloinkaan näytetä muille pelaajille.
+Jos kaikki pelaajat huutavat heti alussa ohi, eli kukaan ei uskalla huutaa edes minimisummaa 60, koinimista ei suoriteta lainkaan. Kaksin- ja kolminpelissä kukaan ei saa koinipakkaa, eikä koinipakassa olevia kortteja saa kukaan kääntöpakkaansa. Silti, jos pelataan avoimella koinilla, kaikki pelaajat saavat ensimmäisen pelikierroksen ajan nähdä, mitä kortteja koinipakassa oli. Varsinaista jakokierroksen huutajaa ei tällöin ole lainkaan tällä jakokierroksella. Ensimmäisen pelikierroksen aloittaa tällöin jakajasta seuraava pelaaja.
+Koinikorttien valinta:
+Koinittavat kortit valitaan hiiren vasemmalla painikkeella. Valitut kortit erottuvat pelaajan korteista siten, että ne ovat hieman sivussa muista korteista. Painamalla valittua korttia uudelleen, kortin valinta peruuntuu. Kun oikea määrä kortteja on valittuna, näytön vasempaan yläkulmaan ilmestyy painike, jossa lukee “Koini”. Korttien koiniminen tapahtuu tätä painiketta painamalla.
+
+
+============================================================
+## korottaminen
+============================================================
+Korottaminen:
+>
+Jakokierroksen huutaja
+ voi koinimisen jälkeen korottaa huutamaansa summaa, jos hän koinikortit nähtyään arvelee saavansa enemmän pisteitä kuin on huutanut. Huudettua summaa ei saa kuitenkaan pienentää. Jos huutaja saa 
+miinuspisteitä
+, ne lasketaan hänen korottamastaan pistemäärästä. Muiden pelaajien pisteisiin korotuksella ei ole mitään vaikutusta.
+Kuten huudossakin, korotusta muutetaan klikkaamalla hiirellä nuolipainikkeita tai nuoli ylös- ja nuoli alas-näppäimistä. Jos huutaja ei halua korottaa huutoaan, klikataan korotusdialogista painiketta “Ohi”. Tällöin korotusta ei tule, mutta huuto jää silti voimaan.
+
+
+============================================================
+## ensimmäinen pelikierros
+============================================================
+Ensimmäinen pelikierros:
+Jakokierroksen huutaja
+ (tai jollei sellaista ole, jakajan vasemmalla puolella oleva pelaaja) aloittaa ensimmäisen 
+pelikierroksen
+. Ensimmäisen pelikierroksen aloituskortin pitää olla ässä. Jos aloittajalla ei ole ässää, hänen on pelattava pataa. Jos hänellä ei ole pataakaan, hän saa aloittaa millä kortilla tahansa.
+Jos aloituskortti on jokin muu kuin ässä, se pelaaja, jolla kyseisen maan ässä on, on pelattava se aloituspelikierroksella. Aloitusmaan ässä siis aina “näkyy” ensimmäisellä pelikierroksella. Poikkeus tähän sääntöön on tilanne, jossa kahden pelaajan pelissä kolmasosa korteista on jaettu "kolmannelle pelaajalle”, jolloin on mahdollista, että kummallakaan pelaajalla ei ole aloitusmaan ässää.
+
+
+============================================================
+## kortin valinta
+============================================================
+Pelattavan kortin valinta:
+Vuorossa olevan pelaajan on aina valittava kierroksella pelaamansa kortti seuraavien sääntöjen mukaan: (säännöt tärkeysjärjestyksessä)
+1. Pelattavan kortin on oltava samaa maata kuin kortti, jolla 
+pelikierros
+ on aloitettu.
+2. Jos pelaajalla on aloituskortin kanssa samaa maata olevia kortteja kädessään, pelattavan kortin 
+arvon
+ on oltava suurempi kuin minkään pelikierroksella aiemmin pelatun samaa maata olevan kortin arvo. Tämä sääntö ei päde, mikäli pelikierroksella on pelattu 
+valttia
+ oleva kortti (paitsi jos pelikierros on aloitettu valtilla).
+3. Jos pelaajalla ei ole lainkaan pelikierroksen aloituskortin kanssa samaa maata olevia kortteja, hänen on pelattava valttia, mikäli jakokierroksella on tehty valtti. Edellisten jakokierrosten valteilla ei ole merkitystä.
+4. Jos pelaajalla ei ole lainkaan pelikierroksen aloituskortin kanssa samaa maata olevia kortteja eikä valttia (tai valttia ei ole tehty), hän voi pelata minkä tahansa kädessään olevan kortin.
+Edellisten neljän säännön lisäksi jakokierroksen 
+ensimmäisellä pelikierroksella
+ pätee sääntö, jonka mukaan “ässän pitää näkyä”.
+Pelikierroksen voittaa se pelaaja, joka on pelannut kierroksen 
+vahvimman kortin
+. Hän saa kaikki sillä pelikierroksella pelatut kortit omaan 
+kääntöpakkaansa
+ (nelinpelissä parin yhteiseen kääntöpakkaan). Aina voitettuaan pelikierroksen pelaaja voi tehdä 
+valtin
+ (nelinpelissä hän voi myös 
+kysyä pariltaan kokonaista valttia tai puolikasta
+). Pelikierroksen voittanut pelaaja aloittaa aina seuraavan pelikierroksen.
+
+
+============================================================
+## valtin tekeminen
+============================================================
+Valtin tekeminen:
+Kun pelaaja on juuri voittanut 
+pelikierroksen
+, hän voi tehdä 
+valtin
+. Valtin tekeminen edellyttää, että hänellä on juuri sillä hetkellä kädessään kuningas ja rouva samaa maata. Valtti tehdään valitsemalla “Pelitoiminnot”-valikon “Tee valtti”-kohdasta maa, josta valtti halutaan tehdä. Valtin tehtyään pelaaja on ansainnut ko. valtista saatavat 
+pisteet
+, vaikka joku muu pelaaja (tai hän itse) myöhemmin samalla 
+jakokierroksella
+ tekisikin jostakin muusta maasta valtin. Valtti on voimassa jakokierroksen loppuun tai siihen asti, kunnes joku muu pelaaja (tai sama pelaaja) tekee jostakin muusta maasta valtin. Yhden pelikierroksen jälkeen saa tehdä aina vain yhden valtin, toisen valtin tekemiseksi on voitettava toinen pelikierros, eli saatava uusi 
+kääntö
+. Valtit ovat 
+korteista vahvimpia
+, eli esim. hertan ollessa valttia herttakuutonen on vahvempi kuin esim. ruutuässä. Tästä huolimatta pelaajien on ensisijaisesti 
+pelattava samaa maata
+ kuin kortti jolla pelikierros on aloitettu.
+Nelinpelissä voi tehdä valtin myös kysymällä pariltaan, onko hänellä "kokonaista" (“Pelitoiminnot”-valikon toiminto “Kysy kokonaista”) tai jonkun maan "puolikasta" (“Pelitoiminnot”-valikon toiminto “Kysy puolikasta”). Kokonaiseksi sanotaan kokonaista valttia: sekä kuningas että rouva samaa maata. Puolikkaaksi valtin puolikasta: joko kuningasta tai rouvaa.
+Pelaajan on ensin tehtävä omassa kädessään olevat valtit. Jos pelaaja kysyy pariltaan kokonaista tai puolikasta, vaikka hänellä olisi kokonainen valtti omassa kädessäänkin, hänen kädessään olevaa valttia ei sillä jakokierroksella saa tehdä. Jossakin tilanteessa tämä voi kuitenkin olla taktisesti oikea ratkaisu.
+Jos pelaajan parilla on kädessään kokonainen valtti pelaajan sitä kysyessä, ko. maasta tulee valtti aivan samalla tavoin kuin valttikortit olisivat olleet kysyjän omassa kädessä. Jos parilla ei ole kokonaista valttia kädessään, pelikierroksen voittaja aloittaa seuraavan pelikierroksen. Yhdellä pelikierroksella voi siis esittää vain yhden kysymyksen parilleen (ja senkin vain jos ei tee valttia omasta kädestään). Jos parilla on useita kokonaisia valtteja kädessään, hän saa valita, mikä niistä tehdään valtiksi. Joku valtti pitää tehdä, mikäli sitä kysytään ja kysytyllä pelaajalla on kokonainen valtti kädessään.
+Pelaaja voi kysyä pariltaan myös jonkun maan puolikasta, jos hänellä on itsellään ko. maan toinen puolikas. Jos kysyjän parilla on kysytty puolikas, ko. maasta tulee valtti. Jos jompi kumpi parin osapuoli on kysynyt jakokierroksen aikana pariltaan mitä tahansa puolikasta, kumpikaan parin jäsenistä ei enää sillä jakokierroksella saa tehdä valtteja suoraan omasta kädestään, eikä kysyä kokonaista. Joissakin tilanteissa saattaa kuitenkin olla taktisesti parempi vaihtoehto kysyä puolikasta, vaikka ei olisikaan vielä kysynyt kokonaista.
+
+
+============================================================
+## pisteiden laskeminen
+============================================================
+Pisteiden laskeminen:
+Kun kaikki 
+jakokierroksella
+ jaetut kortit on pelattu, lasketaan kunkin pelaajan (nelinpelissä pelaajaparin) saamat 
+pisteet
+. Näitä pisteitä ei kuitenkaan välttämättä suoraan merkitä pelaajan hyväksi, vaan lisäksi otetaan huomioon seuraavaa:
+Huutajan pisteet:
+Jos edellä laskettu pelaajan (pelaajaparin) pistemäärä on yhtäsuuri tai suurempi (ilman pyöristyksiä) kuin 
+jakokierroksen huuto
+ (tai, jos huutaja korotti pistemäärää 
+koinimisen
+ jälkeen, niin korotettu pistemäärä), pelaaja (pelaajapari) saa huudon (korotuksen) verran pisteitä. Jos pistemäärä ei riitä huudettuun (
+korotettuun
+) pistemäärään, huutaja (nelinpelissä hänen parinsa myös) saa huudon (korotuksen) verran miinuspisteitä. Jos hän ei koko jakokierroksella saanut ainuttakaan 
+kääntöä
+ (koinittuja kortteja ei lasketa), hän (he) saa huutajan huutaman (korottaman) pistemäärän verran miinuksia kaksinkertaisena.
+Muiden pelaajien pisteet:
+Edellä laskettu pistemäärä pyöristetään lähimpään 5:een pisteeseen, ja tämä on pelaajan (pelaajaparin) tällä jakokierroksella saama pistemäärä. Jos pelaaja (pelaajapari) ei saanut koko jakokierroksella ainuttakaan kääntöä, hän (he) saa jakokierroksen huudon (tässä mahdollisella korotuksella ei ole vaikutusta) verran miinuspisteitä.
+Pelaajien kokonaispistemäärä on siis aina 5:llä jaollinen, koska huudot (ja korotukset) ovat aina viidellä jaollisia, ja muiden pelaajien kääntöjen pisteet pyöristetään 5:llä jaollisiksi.
+
+
+============================================================
+## läpäri
+============================================================
+"Läpäri":
+ell
+Jos 
+valtteja
+ ei oteta lukuun, korttipakassa on 140 pistettä (20 pistettä tulee viimeisestä 
+käännöstä
+). Jos pelaajalla (pelaajaparilla) on niin hyvät kortit, että hän voittaa jokaisen 
+jakokierroksen
+pelikierroksen
+, hän saa "läpärin"! Koska muut pelaajat eivät tällöin saa ainoatakaan kääntöä, he saavat huudon verran 
+miinuspisteitä
+.
+Myös kahden pelaajan pelissä läpäristä saa aina 140 pistettä (+tehdyistä valteista tulevat pisteet), vaikka todellisuudessa osa pistekorteista todennäköisesti onkin "kolmannen pelaajan" korteissa. Huutaja saa 
+huudon
+ (
+korotuksen
+) verran miinuspisteitä kaksinkertaisena, jos hänellä ei ole ässää jolla aloittaisi pelin, ja pelaaja jolla aloitusmaan ässä on tekee läpärin. Huutajan koinimia kortteja ei tässä yhteydessä lasketa käännöiksi. 
+Koinikortit
+ lasketaan huutajan pisteiksi ainoastaan silloin, jos hän (ja/tai hänen parinsa nelinpelissä) on saanut vähintään yhden käännön.
+
+
+============================================================
+## pelin voittaminen
+============================================================
+Pelin voittaminen:
+Pelin voittaa se pelaaja (nelinpelissä pelaajapari), joka ensimmäisenä ylittää 500 pisteen rajan (eli saa vähintään 505 pistettä, koska pistemäärä on aina 5:llä jaollinen). Jos useampia pelaajia (pelaajapareja) ylittää tuon pistemäärän samalla 
+jakokierroksella
+, ja yksi heistä on jakokierroksen huutaja, hän voittaa pelin. Sillä, kuinka paljon tuon 500 pistettä ylittää, on merkitystä ainoastaan silloin, jos kolmen pelaajan pelissä kaksi pelaajaa, joista kumpikaan ei ole viimeisen jakokierroksen huutaja, ylittää 500 pistettä samalla jakokierroksella huutajan jäädessä vielä ko. pistemäärän alapuolelle. Tällöin eniten pisteitä saanut pelaaja on pelin voittaja.
+
+
+============================================================
+## (untitled)
+============================================================
+Jakokierroksen huutaja on se pelaaja, joka teki suurimman huudon jakokierroksen alussa. Huutaja voi koinimisen jälkeen myös korottaa tekemäänsä huutoa. Vain huutajan lopullisella huudolla (korotuksella) on merkitystä jakokierroksella. Muiden pelaajien mahdollisia “hävinneitä” huutoja ei noteerata pelissä millään tavalla.
+
+
+============================================================
+## vuoron vaihtuminen
+============================================================
+Vuoron vaihtuminen
+Jos jostakin tietokoneesta on pelissä mukana useampi kuin yksi paikallinen ihmisen ohjaama pelaaja, tulee jokaisen vuoronvaihdon yhteydessä näytölle viesti, että vuoro vaihtuu. Viestissä näkyy seuraavaksi vuoroon tulevan pelaajan nimi. Tarkoitus on, että tämän viestin ollessa näytöllä pelaajat vaihtavat paikkaa, etteivät he näe toistensa kortteja. Edellisen vuorossa olleen pelaajan korteista näkyy vain selkäpuoli, ja kun viestistä painetaan OK, tulee seuraavaksi vuorossa olevan pelaajan kortit näkyviin. Jos pelissä on ko. tietokoneesta mukana vain yksi ihmispelaaja, hänen korttinsa ovat koko ajan näkyvissä eikä em. viestiä tule.
+
+
+============================================================
+## tekoälyohjelmat
+============================================================
+Tekoälyohjelmat
+Huutopussissa sinulla on mahdollisuus itse luoda tietokonepelaajille halutunlainen tekoäly! Tässä kerrotaan miten se tapahtuu.
+Huutopussipelin aikana on viisi tilannetta, jolloin tietokonepelaaja tarvitsee tekoälyä, eli ts. jotakin algoritmia, jonka perusteella se tekee pelissä tarvittavan valinnan. Nämä viisi tilannetta ovat:
+1.
+Huuto. Kun on tietokonepelaajan vuoro huutaa, sen pitää valita korottaako se aiempaa huutoa (ja kuinka paljon) vai huutaako se ohi. Jos pelaajalla (ja nelinpelissä sen parilla yhteensä) on kaikki neljä kuutosta, pelaaja voi tässä vaiheessa vaatia myös uuden jaon tehtäväksi.
+2.
+Koiniminen. Kun on tietokonepelaajan vuoro koinia eli antaa kortteja pois kädestään joko parilleen (nelinpelissä) tai pöydälle (2 ja 3 pelaajan pelissä), tarvitaan algoritmi jonka perusteella pois koinittavat kortit valitaan. Myös tässä vaiheessa uuden jaon vaatiminen on mahdollista, jos pelaajalla (ja hänen parillaan) on kaikki neljä kuutosta.
+3.
+Korotus. Jos tietokonepelaaja on voittanut huudon, se voi korottaa huutoaan. Tämä tilannetta vastaa hieman kohtaa 1 (Huuto), mutta tässä vaiheessa ei voi enää vaatia uutta jakoa tehtäväksi.
+4.
+Vuoron pelaaminen. Kun varsinaisessa pelissä tulee tietokonepelaajan vuoro, se voi tehdä jotakin seuraavista:
+·
+Jos se on aloittamassa pelikierrosta (joka ei ole jakokierroksen ensimmäinen pelikierros), ja ko. pelikierroksella ei ole vielä tehty valttia:
+·
+Pelata kortin
+·
+Tehdä valtin omasta kädestään
+Jos kyseessä on neljän pelaajan peli, on mahdollista lisäksi:
+·
+Kysyä kokonaista
+·
+Kysyä puolikasta
+·
+Jos se ei ole aloittamassa pelikierrosta, vaan pelikierros on jo aloitettu jonkun toisen pelaajan toimesta:
+·
+Pelata kortin
+5.
+Valtin valitseminen. Kun nelinpelissä tietokonepelaajan pari kysyy tietokonepelaajalta kokonaista, ja tietokonepelaajalla sattuu olemaan kädessään useampi kuin yksi kokonainen (joita ei ole vielä tehty valtiksi) kädessään, tietokonepelaajan pitää ratkaista kummasta näistä maista valtti tehdään.
+Voit kirjoittaa oman tietokoneohjelman joka käsittelee edellä mainitut tilanteet haluamallasi ohjelmointikielellä. Huutopussi käynnistää ohjelmasi aina, kun jokin em. viidestä tilanteesta tulee eteen. Voit kirjoittaa oman ohjelman jokaista tilannetta varten tai yhdistellä eri tilanteita käsitteleviä ohjelmia yhdeksi ohjelmaksi. Jotta Huutopussi tietäisi, mikä ohjelma missäkin tilanteessa pitää käynnistää, sinun pitää antaa kuhunkin tilanteeseen käytettävän ohjelman polku ja nimi pelaajan lisäys-/tietojen vaihto-dialogissa:
+Muuttaaksesi Huutopussin tietokonepelaajien tekoälyn kokonaisuudessaan, sinun pitää kirjoittaa jokainen eo. tekoälyohjelmista.
+Ohjelmien tulee olla täysin itsenäisiä ja riippumattomia minkään muun ohjelman suorituksesta. Tällaisilla ohjelmilla on yleensä tiedostopääte “.exe”.
+Jos jätät ohjelman määrittelemättä joihinkin kohtiin, tai jos Huutopussi ei löydä jossakin kohdassa mainittua ohjelmaa (tai kommunikointi ohjelman kanssa muulla tavoin epäonnistuu) kun tekoälyä vaativa tilanne tulee eteen, Huutopussi suorittaa oman sisäänrakennetun tekoälyrutiininsa, joka ei kuitenkaan välttämättä päädy optimaaliseen tulokseen ratkaisun tekemisessä, kuten alussa mainittiin. Jos ruksitat kohdan “Näytä virheilmoitukset”, Huutopussi näyttää ohjelmiesi kanssa kommunikoinnissa mahdollisesti tapahtuvista virheistä virheilmoituksen, jolloin voit tarkistaa ohjelmiesi toiminnan. Tämä on kätevä työkalu ohjelmiasi debugattaessa.
+Kommunikointi Huutopussin ja em. ohjelmien välillä tapahtuu kahden tiedoston avulla. Nämä tiedostot ovat 
+scinput.txt
+ ja 
+scoutput.txt
+. scinput.txt on sinun tekemäsi tekoälyohjelman kannalta input-tyyppinen tiedosto, johon Huutopussi ennen ohjelmasi käynnistystä kirjoittaa senhetkisen pelitilanteen kannalta olennaiset tiedot, jotta ohjelmasi voisi päätyä tilanteessa vaadittavaan järkevään ratkaisuun. Sinun ohjelmasi tehtävä on sitten kirjoittaa ratkaisu tiedostoon scoutput.txt.
+Jos sinulla on kavereita, joiden kanssa kirjoittelette tekoälyohjelmia, voitte kilpailla siitä kuka kirjoittaa parhaat tekoälyohjelmat laittamalla peliin osallistuvat tietokonepelaajat käyttämään eri tekoälyohjelmia. Muistakaa tällöin kuitenkin, että korttipeleissä myös tuurilla on aina merkittävä osuus pelin kulkuun, eikä tekoälyjen paremmuutta voida tämän vuoksi vertailla yhden tai muutaman pelin tuloksen perusteella!
+
+
+============================================================
+## scinputtxt
+============================================================
+scinput.txt
+Kun tietokoneen ohjaama pelaaja tulee tilanteeseen, jossa sen pitää tehdä jokin tekoälyä vaativa ratkaisu, Huutopussi aloittaa toiminnan, jossa käynnistetään ko. ratkaisun tekemisen suorittava tekoälyohjelma. Jotta tekoälyohjelma voisi suoriutua tehtävästään, se tarvitsee tietoa pelissä sillä hetkellä vallitsevasta tilanteesta. Ennen tekoälyohjelman käynnistämistä Huutopussi kirjoittaa nämä tiedot tiedostoon scinput.txt, josta tekoälyohjelmasi voi sitten ne lukea. Huutopussi kirjoittaa tiedot scinput.txt:iin aina samassa muodossa ja järjestyksessä, vaikka kaikki tiedot eivät ehkä olekaan aivan välttämättömiä jokaisessa tekoälyohjelmassa. Tiedot ovat kukin omalla rivillään seuraavassa järjestyksessä:
+1.
+Tilanne, joka pitää käsitellä ASCII-tekstinä. Mahdolliset tekstit ovat: “BID” huutamista varten, “EXCHANGE” koinimista varten, “RAISE” korotusta varten, “PLAY” pelaamista varten ja “CHOOSEWHOLE” kokonaisen valtin valitsemista varten.
+2.
+Numero 1-4, joka on pelissä mukana olevien pelaajien lukumäärä
+3.
+Ensimmäisen pelaajan eli sen, jonka indeksi on 0 (pelaa Huutopussin ruudulla alhaalla) pisteet
+4.
+Toisen pelaajan eli sen, jonka indeksi on 1 (pelaa Huutopussin ruudulla vasemmalla, paitsi kaksinpelissä ylhäällä) pisteet
+5.
+Kolmannen pelaajan eli sen, jonka indeksi on 2 (pelaa Huutopussin ruudulla ylhäällä) pisteet. Jos pelissä on mukana vähemmän kuin 3 pelaajaa, tämä rivi on tyhjä.
+6.
+Neljännen pelaajan eli sen, jonka indeksi on 3 (pelaa Huutopussin ruudulla oikealla) pisteet. Jos pelissä on mukana vähemmän kuin 4 pelaajaa, tämä rivi on tyhjä.
+7.
+Nykyisen pelaajan (eli sen, joka on juuri nyt tekoälyn “tarpeessa”) indeksi 0-3
+8.
+Nykyisen pelaajan (eli sen, joka on juuri nyt tekoälyn “tarpeessa”) kädessä olevat kortit 
+korttikoodein
+ välilyönnillä toisistaan erotettuina.
+9.
+Jakokierroksen huuto. Tämä rivi on tyhjä, kunnes joku pelaajista on huutanut jotain. Huutamisen suorittavaa tekoälyohjelmaa suoritettaessa tässä on suurin tähän mennessä huudettu huuto.
+10.
+Jakokierroksen korotus. Jos jakokierroksen huutoa ei korotettu, tässä on sama arvo kuin edellisellä rivillä (rivillä 9). Huutamisen suorittavaa tekoälyohjelmaa suoritettaessa tässä on sama arvo kuin rivillä 9.
+11.
+Jakokierroksen huutajan indeksi 0-3. Huutamisen suorittavaa tekoälyohjelmaa suoritettaessa sekä silloin, kun kukaan ei huutanut jakokierroksella mitään tämä rivi on tyhjä.
+12.
+Oikeus vaatia uutta jakoa. Tässä on teksti NEWDEAL, jos vuorossa olevalla tietokonepelaajalla on oikeus vaatia uusi jako. Muuten tämä rivi on tyhjä.
+13.
+Koinittavien korttien lukumäärä. 2 ja 3 pelaajan pelissä tämä voi olla 3 tai 6. 4 pelaajan pelissä tämä on aina 4.
+14.
+Koinimistapa. 2 ja 3 pelaajan pelissä tämä on merkkijono OPENEXCHANGE jos koinitaan avoimesti ja merkkijono SECRETEXCHANGE jos koinitaan salaisesti. 4 pelaajan pelissä tämä rivi on aina tyhjä (koinitaan salaisesti).
+15.
+Nykyisen pelaajan (eli sen, joka on juuri nyt tekoälyn “tarpeessa”) koinissa saamat kortit 
+korttikoodein
+ välilyönnillä toisistaan erotettuina. Myös 2-3 pelaajan pelissä, jos pelataan avoimella koinilla, tässä ovat koinipakasta tulleet kortit, vaikkei nykyinen pelaaja olisikaan jakokierroksen huutaja. Muutoin tämä rivi on tyhjä, jos nykyinen pelaaja ei ole jakokierroksen huutaja eikä hänen parinsa.
+16.
+Nykyisen pelaajan (eli sen, joka on juuri nyt tekoälyn “tarpeessa”) koinissa antamat kortit 
+korttikoodein
+ välilyönnillä toisistaan erotettuina. Tämä rivi on tyhjä, jos nykyinen pelaaja ei ole jakokierroksen huutaja eikä hänen parinsa.
+17.
+Pelikierroksella tehty valtti. Tässä on teksti TRUMPMADE, jos pelikierroksella on tehty tai kysytty valttia (eli ts. vuorossa oleva tietokonepelaaja ei enää saa ryhtyä “valtintekotoimenpiteisiin”). Muutoin tämä rivi on tyhjä.
+18.
+Jakokierroksen aikana tehdyt valtit 
+maakoodein
+ tekojärjestyksessä välilyönnillä toisistaan erotettuina. Jälkimmäisin on voimassa oleva valtti. Jos yhtään valttia ei ole vielä tehty meneillään olevalla jakokierroksella, tämä rivi on tyhjä.
+19.
+Ensimmäisen pelaajan eli sen, jonka indeksi on 0 (pelaa Huutopussin ruudulla alhaalla) jakokierroksen aikana tekemät valtit 
+maakoodein
+ tekojärjestyksessä välilyönnillä toisistaan erotettuina. Tämä rivi on tyhjä, jos ko. pelaaja ei ole tehnyt yhtään valttia meneillään olevan jakokierroksen aikana.
+ 1)
+20.
+Toisen pelaajan eli sen, jonka indeksi on 1 (pelaa Huutopussin ruudulla vasemmalla, paitsi kaksinpelissä ylhäällä) jakokierroksen aikana tekemät valtit 
+maakoodein
+ tekojärjestyksessä välilyönnillä toisistaan erotettuina. Tämä rivi on tyhjä, jos ko. pelaaja ei ole tehnyt yhtään valttia meneillään olevan jakokierroksen aikana. 
+1)
+21.
+Kolmannen pelaajan eli sen, jonka indeksi on 2 (pelaa Huutopussin ruudulla ylhäällä) jakokierroksen aikana tekemät valtit 
+maakoodein
+ tekojärjestyksessä välilyönnillä toisistaan erotettuina. Tämä rivi on tyhjä, jos pelissä on vain 2 pelaajaa tai kolmas pelaaja ei ole tehnyt yhtään valttia meneillään olevan jakokierroksen aikana. 
+1)
+22.
+Neljännen pelaajan eli sen, jonka indeksi on 3 (pelaa Huutopussin ruudulla oikealla) jakokierroksen aikana tekemät valtit 
+maakoodein
+ tekojärjestyksessä välilyönnillä toisistaan erotettuina. Tämä rivi on tyhjä, jos pelissä on vain 2 tai 3 pelaajaa tai neljäs pelaaja ei ole tehnyt yhtään valttia meneillään olevan jakokierroksen aikana. 
+1)
+23.
+Niiden pelaajien indeksit suuruusjärjestyksessä (indeksistä 0 alkaen) välilyönnillä toisistaan erotettuina, jotka ovat meneillään olevan jakokierroksen aikana kysyneet pariltaan kokonaista. Tämä rivi on tyhjä, jos pelissä on vähemmän kuin 4 pelaajaa tai kukaan ei ole kysynyt pariltaan kokonaista.
+24.
+Ensimmäisen pelaajan eli sen, jonka indeksi on 0 (pelaa Huutopussin ruudulla alhaalla) kysymät puolikkaat 
+maakoodein
+ kysymisjärjestyksessä välilyönnillä toisistaan erotettuina. Tämä rivi on tyhjä, jos pelissä on vain 2 tai 3 pelaajaa tai ensimmäinen pelaaja ei ole kysynyt pariltaan puolikasta meneillään olevan jakokierroksen aikana.
+25.
+Toisen pelaajan eli sen, jonka indeksi on 1 (pelaa Huutopussin ruudulla vasemmalla paitsi kaksinpelissä ylhäällä) kysymät puolikkaat 
+maakoodein
+ kysymisjärjestyksessä välilyönnillä toisistaan erotettuina. Tämä rivi on tyhjä, jos pelissä on vain 2 tai 3 pelaajaa tai toinen pelaaja ei ole kysynyt pariltaan puolikasta meneillään olevan jakokierroksen aikana.
+26.
+Kolmannen pelaajan eli sen, jonka indeksi on 2 (pelaa Huutopussin ruudulla ylhäällä) kysymät puolikkaat 
+maakoodein
+ kysymisjärjestyksessä välilyönnillä toisistaan erotettuina. Tämä rivi on tyhjä, jos pelissä on vain 2 tai 3 pelaajaa tai kolmas pelaaja ei ole kysynyt pariltaan puolikasta meneillään olevan jakokierroksen aikana.
+27.
+Neljännen pelaajan eli sen, jonka indeksi on 3 (pelaa Huutopussin ruudulla oikealla) kysymät puolikkaat 
+maakoodein
+ kysymisjärjestyksessä välilyönnillä toisistaan erotettuina. Tämä rivi on tyhjä, jos pelissä on vain 2 tai 3 pelaajaa tai neljäs pelaaja ei ole kysynyt pariltaan puolikasta meneillään olevan jakokierroksen aikana.
+28.
+Maat, jotka yleisesti tiedetään loppuneen ensimmäiseltä pelaajalta eli siltä pelaajalta, jonka indeksi on 0 (pelaa Huutopussin ruudulla alhaalla) 
+maakoodein
+ välilyönnillä toisistaan erotettuina. 
+2)
+29.
+Maat, jotka yleisesti tiedetään loppuneen toiselta pelaajalta eli siltä pelaajalta, jonka indeksi on 1 (pelaa Huutopussin ruudulla vasemmalla, paitsi kaksinpelissä ylhäällä) 
+maakoodein
+ välilyönnillä toisistaan erotettuina. 
+2)
+30.
+Maat, jotka yleisesti tiedetään loppuneen kolmannelta pelaajalta eli siltä pelaajalta, jonka indeksi on 2 (pelaa Huutopussin ruudulla ylhäällä) 
+maakoodein
+ välilyönnillä toisistaan erotettuina. 
+2)
+31.
+Maat, jotka yleisesti tiedetään loppuneen neljänneltä pelaajalta eli siltä pelaajalta, jonka indeksi on 3 (pelaa Huutopussin ruudulla oikealla) 
+maakoodein
+ välilyönnillä toisistaan erotettuina. 
+2)
+32.
+Ensimmäisen pelaajan eli sen, jonka indeksi on 0 (pelaa Huutopussin ruudulla alhaalla) käännöikseen saamat kortit 
+korttikoodein
+ pelaamisjärjestyksessä välilyönnillä toisistaan erotettuina. Tämä rivi on tyhjä, jos ensimmäinen pelaaja ei ole saanut yhtään kääntöä meneillään olevan jakokierroksen aikana. 
+3)
+33.
+Toisen pelaajan eli sen, jonka indeksi on 1 (pelaa Huutopussin ruudulla vasemmalla paitsi kaksinpelissä ylhäällä) käännöikseen saamat kortit 
+korttikoodein
+ pelaamisjärjestyksessä välilyönnillä toisistaan erotettuina. Tämä rivi on tyhjä, jos toinen pelaaja ei ole saanut yhtään kääntöä meneillään olevan jakokierroksen aikana. 
+3)
+34.
+Kolmannen pelaajan eli sen, jonka indeksi on 2 (pelaa Huutopussin ruudulla ylhäällä) käännöikseen saamat kortit 
+korttikoodein
+ pelaamisjärjestyksessä välilyönnillä toisistaan erotettuina. Tämä rivi on tyhjä, jos pelissä on vain 2 pelaajaa tai kolmas pelaaja ei ole saanut yhtään kääntöä meneillään olevan jakokierroksen aikana. 
+3)
+35.
+Neljännen pelaajan eli sen, jonka indeksi on 3 (pelaa Huutopussin ruudulla oikealla) käännöikseen saamat kortit 
+korttikoodein
+ pelaamisjärjestyksessä välilyönnillä toisistaan erotettuina. Tämä rivi on tyhjä, jos pelissä on vain 2 tai 3 pelaajaa tai neljäs pelaaja ei ole saanut yhtään kääntöä meneillään olevan jakokierroksen aikana. 
+3)
+36.
+Meneillään olevalla pelikierroksella pelatut kortit 
+korttikoodein
+ pelaamisjärjestyksessä. Tämä rivi on tyhjä, jos meneillään olevalla pelikierroksella ei ole vielä pelattu yhtään korttia. Pelaamisen suorittava tekoälyohjelma voi siis tällöin päätellä, että sen pitäisi aloittaa pelikierros.
+37.
+Tällä rivillä on teksti “ASKEDWHOLEUNSUCCESFULLY”, jos vuorossa oleva tietokonepelaaja on kysynyt pariltaan puolikasta kun parilla ei ole sellaista ollut (eli ei kannata kysyä enää). Muutoin tämä rivi on tyhjä.
+Jos rivit 32-35 ovat kaikki tyhjiä, voidaan päätellä, että ollaan pelaamassa jakokierroksen ensimmäistä pelikierrosta, jolloin valttia ei voida tehdä ja sääntö ässän näkymisestä ensimmäisellä pelikierroksella pitää ottaa huomioon.
+Tiedoston jokainen rivi päättyy ASCII-merkkeihin 10 ja 13.
+1) 
+Kohdissa 19-22, jos valtti tehdään kokonaista kysymällä, valtin tekijäksi katsotaan se pelaaja, jolla valtti oli kädessään, ei se, joka kysyi kokonaista. Jos valtti tehtiin puolikasta kysymällä, valtin tekijäksi katsotaan se pelaaja, joka kysyi puolikasta.
+2) 
+Maan tiedetään yleisesti loppuneen pelaajalta, jos pelaaja ei ole pelannut ko. maata vaikka pelikierros on aloitettu ko. maata pelaamalla, tai ko. maa on ollut valttia ja pelaaja ei ole pelannut sitä eikä pelikierroksen aloitusmaata.
+3) 
+Tässä käännöt lasketaan myös neljän pelaajan pelissä erikseen kullekin pelaajalle, vaikka jakokierroksen päätyttyä pisteitä laskettaessa parin saamat käännöt lasketaankin yhteen. Kaksin- ja kolminpelissä pois koinittuja kortteja ei lasketa tässä käännöiksi.
+
+
+============================================================
+## scoutputtxt
+============================================================
+scoutput.txt
+Kun tietokoneen ohjaama pelaaja tulee tilanteeseen, jossa sen pitää tehdä jokin tekoälyä vaativa ratkaisu, tapahtuu seuraavaa:
+1.
+Jos tarvittavan tekoälyohjelman kanssa samasta hakemistosta löytyy tiedosto nimeltä scoutput.txt, Huutopussi tuhoaa sen.
+1.
+Huutopussi täyttää 
+scinput.txt
+-tiedoston ajan tasalla olevilla tiedoilla.
+1.
+Huutopussi käynnistää tilanteeseen sopivan tekoälyohjelman.
+1.
+Huutopussi odottaa, että käynnistetty tekoälyohjelma on luonut tiedoston scoutput.txt ja vapauttaa sen Huutopussille lukemista varten. Mikäli tämä ei tapahdu käyttäjän asettaman aikarajan puitteissa, lopetetaan odottelu ja suoritetaan sisäinen tekoälyrutiini.
+1.
+Huutopussi lukee ja tulkitsee tiedoston scoutput.txt ensimmäisen rivin (muilla riveillä ei ole merkitystä). Jos rivin sisältö on kelvollinen, suoritetaan sen aiheuttamat toimenpiteet. Muutoin suoritetaan sisäinen tekoälyrutiini.
+Jos mikä tahansa edellä mainituista vaiheista epäonnistuu, loput vaiheet jätetään suorittamatta ja suoritetaan Huutopussin sisäinen tekoälyrutiini. Tekoälyohjelma vastaa siitä, että sen lopettaessa suorituksensa scoutput.txt:n ensimmäisen rivin sisällön aiheuttama toimenpide on Huutopussin sääntöjen kannalta laillinen! Mikäli Huutopussi huomaa, että näin ei ole, se jättää rivin sisällön aiheuttaman toimenpiteen tekemättä ja suorittaa sen sijasta sisäisen tekoälyrutiinin.
+Mitä tekoälyohjelman pitää scoutput.txt -tiedoston ensimmäiselle riville kirjoittaa:
+Huutaminen
+Huudon suuruus käyttäen ASCII-merkkejä 0 – 9. Merkkijono NEWDEAL tarkoittaa uuden jaon vaatimista. Merkkijono PASS tarkoittaa ohi huutamista.
+Koiniminen
+Pois koinittavat kortit 
+korttikoodein
+ välilyönnillä toisistaan erotettuina. Merkkijono NEWDEAL tarkoittaa uuden jaon vaatimista.
+Korotus
+Korotuksen suuruus käyttäen ASCII-merkkejä 0 – 9. Merkkijono “PASS” tarkoittaa, että huutoa ei koroteta.
+Pelaaminen
+- 
+Maakoodi
+, jos pelaaja haluaa tehdä valtin omasta kädestään tai kysyä maan puolikasta (tulkinta riippuu siitä onko pelaajalla kädessään ko. maasta yksi vai kaksi puolikasta). Tällöin toiminnan suorittamisen jälkeen Huutopussi päivittää scinput.txt:n ja käynnistää pelaamisen suorittavan tekoälyohjelman uudelleen kortin pelaamista varten.
+- Merkkijono ASKWHOLE, jos pelaaja haluaa kysyä pariltaan kokonaista. Tällöin toiminnan suorittamisen jälkeen Huutopussi päivittää scinput.txt:n ja käynnistää pelaamisen suorittavan tekoälyohjelman uudelleen kortin pelaamista varten.
+- Pelattavan kortin 
+korttikoodi
+.
+Kokonaisen valinta
+Valitun valtin 
+maakoodi
+.
+
+
+============================================================
+## (untitled)
+============================================================
+h
+hertta
+d
+ruutu
+c
+risti
+s
+pata
+
+
+============================================================
+## CardCodes
+============================================================
+Korttikoodit
+Kommunikointitiedostoissa 
+scinput.txt
+ ja 
+scoutput.txt
+ käytettävät korttikoodit:
+h14
+herttaässä
+h13
+herttakuningas
+h12
+herttarouva
+h11
+herttajätkä
+h10
+hertta 10
+h9
+hertta 9
+h8
+hertta 8
+h7
+hertta 7
+h6
+hertta 6
+d14
+ruutuässä
+d13
+ruutukuningas
+d12
+ruuturouva
+d11
+ruutujätkä
+d10
+ruutu 10
+d9
+ruutu 9
+d8
+ruutu 8
+d7
+ruutu 7
+d6
+ruutu 6
+c14
+ristiässä
+c13
+ristikuningas
+c12
+ristirouva
+c11
+ristijätkä
+c10
+risti 10
+c9
+risti 9
+c8 
+risti 8
+c7
+risti 7
+c6
+risti 6
+s14
+pataässä
+s13
+patakuningas
+s12
+patarouva
+s11
+patajätkä
+s10
+pata 10
+s9
+pata 9
+s8
+pata 8
+s7
+pata 7
+s6
+pata 6
+
+
+
+============================================================
+## (untitled)
+============================================================

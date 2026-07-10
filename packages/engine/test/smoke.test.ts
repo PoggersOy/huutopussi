@@ -201,12 +201,12 @@ function playScriptedDeal(initialScores: [number, number], expectWinner: Side | 
 
   expect(expectedActor(ctx.state)).toBe(2);
   expect(allowedActions(ctx.state, 2)).toEqual([
-    { type: 'setContract', min: 55, max: 410, step: 5 },
+    { type: 'setContract', min: 55, max: 440, step: 5 },
   ]);
   expectRuleError(ctx, 0, { type: 'setContract', amount: 60 }, 'error.notYourTurn');
   expectRuleError(ctx, 2, { type: 'setContract', amount: 50 }, 'error.contractTooLow');
   expectRuleError(ctx, 2, { type: 'setContract', amount: 62 }, 'error.contractNotMultiple');
-  expectRuleError(ctx, 2, { type: 'setContract', amount: 415 }, 'error.contractTooHigh');
+  expectRuleError(ctx, 2, { type: 'setContract', amount: 445 }, 'error.contractTooHigh');
   expect(act(ctx, 2, { type: 'setContract', amount: 60 })).toEqual([
     { type: 'contractSet', seat: 2, amount: 60 },
   ]);
