@@ -22,11 +22,13 @@ import {
   DEFAULT_RULES,
   expectedActor,
   type GameEvent,
+  ILLISOFT_RULES,
   initialMatchState,
   isRuleError,
   makeDeck,
   nextDealEvent,
   type PlayerAction,
+  type RuleConfig,
   redactEventFor,
   redactViewFor,
   type Seat,
@@ -34,6 +36,7 @@ import {
 } from '@hp/engine';
 import {
   type ClientMsg,
+  type ConfigPatch,
   clientMsgSchema,
   type LobbyCmd,
   PROTOCOL_VERSION,
@@ -84,6 +87,10 @@ export interface ServerOpts {
   timers?: Partial<TimerConfig>;
   /** ws keepalive ping interval in ms; null disables the heartbeat. */
   heartbeatMs?: number | null;
+  /** Global cap on concurrent live rooms; creation is refused past it. */
+  maxRooms?: number;
+  /** Cap on sessions per room; new guest joins are refused past it. */
+  maxSessionsPerRoom?: number;
 }
 
 export interface HpServer {
@@ -111,6 +118,49 @@ export function cryptoShuffle<T>(items: readonly T[]): T[] {
   return out;
 }
 
+/** Lobby preset names -> base rulesets (protocol configPatchSchema.preset). */
+const PRESET_RULES: Record<'paamuoto' | 'illisoft', RuleConfig> = {
+  paamuoto: DEFAULT_RULES,
+  illisoft: ILLISOFT_RULES,
+};
+
+type ConfigPatchResult =
+  | { ok: true; config: RuleConfig }
+  | { ok: false; code: string; params: Record<string, string | number> };
+
+/**
+ * Applies a host config patch: `preset` first (resets to the named base
+ * ruleset), then the remaining fields on top. Cross-field validity that the
+ * per-field zod schema cannot see is enforced on the RESULT; an invalid patch
+ * is rejected wholesale (the room config is left untouched).
+ */
+export function applyConfigPatch(current: RuleConfig, patch: ConfigPatch): ConfigPatchResult {
+  const { preset, ...fields } = patch;
+  const bad = (field: string): ConfigPatchResult => ({
+    ok: false,
+    code: 'error.badConfig',
+    params: { field },
+  });
+  const next: RuleConfig = { ...(preset !== undefined ? PRESET_RULES[preset] : current) };
+  const nextMut = next as unknown as Record<string, unknown>;
+  for (const [key, value] of Object.entries(fields)) {
+    if (value !== undefined) nextMut[key] = value;
+  }
+  // Koinipakka options exist only in the 2-3p modes...
+  if (next.players === 4) {
+    if (fields.talonSize !== undefined) return bad('talonSize');
+    if (fields.openTalon !== undefined) return bad('openTalon');
+  } else if (fields.exchangeCount !== undefined) {
+    // ...and the partner exchange only in 4p.
+    return bad('exchangeCount');
+  }
+  if (next.maxBid !== null && next.minBid > next.maxBid) return bad('minBid');
+  // Bid bounds must be bidStep-aligned or forced openings/maxBid become unreachable.
+  if (next.minBid % next.bidStep !== 0) return bad('minBid');
+  if (next.maxBid !== null && next.maxBid % next.bidStep !== 0) return bad('maxBid');
+  return { ok: true, config: next };
+}
+
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -130,6 +180,8 @@ export function createServer(opts: ServerOpts = {}): HpServer {
   const host = opts.host ?? '127.0.0.1';
   const requestedPort = opts.port ?? 8080;
   const staticDir = opts.staticDir ?? null;
+  const maxRooms = opts.maxRooms ?? 1000;
+  const maxSessionsPerRoom = opts.maxSessionsPerRoom ?? 64;
   const db = new Db(opts.dbPath ?? './data/hp.db');
 
   const rooms = new Map<string, Room>(); // by code
@@ -305,12 +357,15 @@ export function createServer(opts: ServerOpts = {}): HpServer {
       // State may have moved while an async bot was thinking.
       if (room.closed || !room.match || room.eventSeq !== before) return;
       if (expectedActor(room.match) !== seat) return;
+      // A present human may have reclaimed the seat during the think delay.
+      if (s.kind === 'human' && !s.botControlled) return;
       if (submitAction(room, s, randomUUID(), action)) return;
       // Hint/validate mismatch would be an engine bug — retry once with the
       // always-legal fallback bot so the match never stalls.
       const retry = await computeBotAction(room.match, seat, getFallbackBot());
       if (room.closed || !room.match || room.eventSeq !== before) return;
       if (expectedActor(room.match) !== seat) return;
+      if (s.kind === 'human' && !s.botControlled) return;
       if (!submitAction(room, s, randomUUID(), retry)) {
         console.error(`[server] bot action rejected twice for seat ${seat} in room ${room.code}`);
       }
@@ -416,7 +471,7 @@ export function createServer(opts: ServerOpts = {}): HpServer {
   }
 
   function startNewMatch(room: Room, origin: { token: string; actionId: string }): void {
-    const firstDealer = randomInt(4) as Seat;
+    const firstDealer = randomInt(room.config.players) as Seat;
     const matchId = randomUUID();
     room.match = initialMatchState(room.config, firstDealer);
     room.matchId = matchId;
@@ -440,6 +495,48 @@ export function createServer(opts: ServerOpts = {}): HpServer {
 
   function createDetachedSession(): Session {
     return createSession({ token: '', roomId: '', seat: null, nickname: null, kind: 'human' });
+  }
+
+  /**
+   * Drop a detached, UNSEATED human guest/spectator session (left behind by a
+   * socket close or a re-hello on the same socket). Seated sessions are kept —
+   * they hold a seat and may be reclaimed on reconnect — but unseated guests
+   * would otherwise pile up in `room.sessions` / `sessionsByToken` / the db
+   * until idle-close, since guests mint a fresh token every join and rarely
+   * resend one. Bounds memory, sqlite rows and per-event broadcast fan-out.
+   */
+  function discardDetachedSession(session: Session): void {
+    if (session.seat !== null || session.kind !== 'human') return;
+    const room = roomsById.get(session.roomId);
+    room?.sessions.delete(session.token);
+    sessionsByToken.delete(session.token);
+    db.deleteSession(session.token);
+  }
+
+  /**
+   * In-band seat reclaim (docs/plan.md §Reconnection — "instant reclaim"): a
+   * connected human acting on their own seat takes it back from the fill-in
+   * bot immediately. Without this a present-but-idle human who was passed to a
+   * bot on one slow turn could never regain control — they stay connected and
+   * so never send a second `hello`, the only other path that clears
+   * botControlled. Only genuine human WS actions reach here (bot moves go
+   * straight to submitAction), so the fill-in bot's own moves never self-clear.
+   */
+  function reclaimSeatOnAction(room: Room, session: Session): void {
+    if (session.kind !== 'human' || !session.botControlled) return;
+    session.botControlled = false;
+    session.reclaimPending = false;
+    // If it is still this seat's turn, cancel the scheduled bot action and
+    // re-arm a normal human turn timer; otherwise just re-advertise the seat.
+    if (
+      room.status === 'playing' &&
+      room.match !== null &&
+      room.match.winnerSide === null &&
+      expectedActor(room.match) === session.seat
+    ) {
+      updateTurn(room);
+    }
+    broadcastRoom(room);
   }
 
   /** The single action pipeline (WS actions, bot moves, autoplay all land here). */
@@ -491,6 +588,7 @@ export function createServer(opts: ServerOpts = {}): HpServer {
     switch (cmd.type) {
       case 'takeSeat': {
         if (seatsLocked) return fail('error.matchInProgress');
+        if (cmd.seat >= room.config.players) return fail('error.badSeat');
         if (sessionAtSeat(room, cmd.seat)) return fail('error.seatTaken');
         session.seat = cmd.seat;
         db.saveSession(sessionRow(session));
@@ -514,6 +612,7 @@ export function createServer(opts: ServerOpts = {}): HpServer {
       case 'addBot': {
         if (!isHost) return fail('error.notHost');
         if (seatsLocked) return fail('error.matchInProgress');
+        if (cmd.seat >= room.config.players) return fail('error.badSeat');
         if (sessionAtSeat(room, cmd.seat)) return fail('error.seatTaken');
         const bot = createSession({
           token: randomUUID(),
@@ -542,11 +641,10 @@ export function createServer(opts: ServerOpts = {}): HpServer {
       case 'setConfig': {
         if (!isHost) return fail('error.notHost');
         if (seatsLocked) return fail('error.matchInProgress');
-        const next = { ...room.config };
-        for (const [key, value] of Object.entries(cmd.patch)) {
-          if (value !== undefined) (next as Record<string, unknown>)[key] = value;
-        }
-        room.config = next;
+        const applied = applyConfigPatch(room.config, cmd.patch);
+        if (!applied.ok) return fail(applied.code, applied.params);
+        room.config = applied.config;
+        evictInactiveSeats(room);
         db.setRoomConfig(room.id, room.config);
         broadcastRoom(room, { token: session.token, actionId });
         return true;
@@ -569,6 +667,25 @@ export function createServer(opts: ServerOpts = {}): HpServer {
 
   function sessionRow(s: Session) {
     return { token: s.token, roomId: s.roomId, seat: s.seat, nickname: s.nickname, kind: s.kind };
+  }
+
+  /**
+   * After a mode shrink (players 4 -> 3/2), seats >= config.players no longer
+   * exist: bots there are removed, humans are unseated back to guests. The 2p
+   * dummy hand is NOT a seat — nothing ever occupies seats 2..3 in 2p mode.
+   */
+  function evictInactiveSeats(room: Room): void {
+    for (const s of [...room.sessions.values()]) {
+      if (s.seat === null || s.seat < room.config.players) continue;
+      if (s.kind === 'bot') {
+        room.sessions.delete(s.token);
+        sessionsByToken.delete(s.token);
+        db.deleteSession(s.token);
+      } else {
+        s.seat = null;
+        db.saveSession(sessionRow(s));
+      }
+    }
   }
 
   // ── hello / welcome / resync ────────────────────────────────────────────────
@@ -659,6 +776,11 @@ export function createServer(opts: ServerOpts = {}): HpServer {
         sock.close(4004, 'room not found');
         return;
       }
+      if (room.sessions.size >= maxSessionsPerRoom) {
+        sendJson(sock, { t: 'error', code: 'error.roomFull' });
+        sock.close(4006, 'room full');
+        return;
+      }
       const session = createSession({
         token: randomUUID(),
         roomId: room.id,
@@ -675,7 +797,25 @@ export function createServer(opts: ServerOpts = {}): HpServer {
       return;
     }
 
-    // No roomCode: create a room with the creator seated at 0 as host.
+    // No roomCode: create a room with the creator seated at 0 as host. The
+    // optional hello config is applied like a lobby setConfig patch on top of
+    // the default ruleset; an invalid patch refuses room creation (the client
+    // may re-hello).
+    if (rooms.size >= maxRooms) {
+      // Global room cap: refuse new-room creation so an unauthenticated client
+      // can't spin up unbounded rooms (each persists a Room + Session to disk).
+      sendJson(sock, { t: 'error', code: 'error.serverBusy' });
+      return;
+    }
+    let config = defaultConfig();
+    if (msg.config !== undefined) {
+      const applied = applyConfigPatch(config, msg.config);
+      if (!applied.ok) {
+        sendJson(sock, { t: 'error', code: applied.code, params: applied.params });
+        return;
+      }
+      config = applied.config;
+    }
     const roomId = randomUUID();
     const code = generateRoomCode((c) => rooms.has(c));
     const session = createSession({
@@ -689,7 +829,7 @@ export function createServer(opts: ServerOpts = {}): HpServer {
       id: roomId,
       code,
       hostToken: session.token,
-      config: defaultConfig(),
+      config,
     });
     room.sessions.set(session.token, session);
     sessionsByToken.set(session.token, session);
@@ -704,9 +844,11 @@ export function createServer(opts: ServerOpts = {}): HpServer {
     sendWelcome(session, room);
   }
 
-  function defaultConfig(): typeof DEFAULT_RULES {
-    // Fresh object so per-room patches never share state.
-    return { ...DEFAULT_RULES };
+  function defaultConfig(): RuleConfig {
+    // The product plays illisoft rules by default (spec §11); päämuoto stays
+    // selectable via the lobby preset. Fresh object so per-room patches never
+    // share state.
+    return { ...ILLISOFT_RULES };
   }
 
   function handleResync(session: Session): void {
@@ -734,7 +876,14 @@ export function createServer(opts: ServerOpts = {}): HpServer {
     session.socket = null;
     const room = roomsById.get(session.roomId);
     if (!room || room.closed) return;
-    if (session.seat !== null) broadcastRoom(room); // connected flag changed
+    if (session.seat === null) {
+      // Unseated guest/spectator disconnect: nothing to hold, so drop the dead
+      // session instead of letting it linger until idle-close.
+      discardDetachedSession(session);
+      armIdleTimerIfEmpty(room);
+      return;
+    }
+    broadcastRoom(room); // connected flag changed
     // Mid-turn disconnect: guarantee at least graceMs before autoplay.
     if (
       room.status === 'playing' &&
@@ -775,6 +924,9 @@ export function createServer(opts: ServerOpts = {}): HpServer {
         ctx.session = null;
         prev.socket = null;
         const prevRoom = roomsById.get(prev.roomId);
+        // An unseated guest left behind by the re-hello is garbage — drop it so
+        // repeated re-hellos can't accumulate dead sessions in the room.
+        discardDetachedSession(prev);
         if (prevRoom && !prevRoom.closed && prev.seat !== null) broadcastRoom(prevRoom);
         if (prevRoom) armIdleTimerIfEmpty(prevRoom);
       }
@@ -798,6 +950,8 @@ export function createServer(opts: ServerOpts = {}): HpServer {
           respondError(session, msg.actionId, 'error.roomNotFound');
           return;
         }
+        // A connected human who acts reclaims their seat from the fill-in bot.
+        reclaimSeatOnAction(room, session);
         submitAction(room, session, msg.actionId, msg.action);
         return;
       }
@@ -871,7 +1025,19 @@ export function createServer(opts: ServerOpts = {}): HpServer {
       res.end('method not allowed');
       return;
     }
-    serveStatic(decodeURIComponent(url.pathname), res);
+    let pathname: string;
+    try {
+      pathname = decodeURIComponent(url.pathname);
+    } catch {
+      // A lone/incomplete percent-escape (e.g. `/%`, `/%zz`, `/foo%`) makes
+      // decodeURIComponent throw URIError synchronously here. Left uncaught it
+      // takes down the whole process (Node default on uncaughtException), so a
+      // single unauthenticated `GET /%` could drop every live room. 400 it.
+      res.writeHead(400, { 'content-type': 'text/plain' });
+      res.end('bad request');
+      return;
+    }
+    serveStatic(pathname, res);
   });
 
   // ── WebSocket endpoint at /ws ───────────────────────────────────────────────

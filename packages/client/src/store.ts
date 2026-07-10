@@ -38,6 +38,12 @@ export interface ServerSlice {
   view: PlayerView | null;
   turn: TurnInfo | null;
   lastError: ServerError | null;
+  /**
+   * Terminal (non-retryable) server close reason as an i18n key, e.g.
+   * 'error.sessionReplaced' / 'error.roomNotFound'. Set when the socket layer
+   * gives up reconnecting; screens render a dead-end instead of a spinner.
+   */
+  fatal: string | null;
 }
 
 export type ToastKind = 'error' | 'info' | 'update';
@@ -115,6 +121,7 @@ const initialServer: ServerSlice = {
   view: null,
   turn: null,
   lastError: null,
+  fatal: null,
 };
 
 const initialUi: UiSlice = {
@@ -248,8 +255,11 @@ function deriveBubbles(
 
   if (nextDeal !== null && declGrew) {
     for (const d of nextDeal.declarations.slice(prevDeclCount)) {
-      // `d.seat` is the asker for asks; the reveal comes from the partner.
-      const at = d.how === 'own' ? d.seat : partnerOf(d.seat);
+      // The trump bubble sits at the seat that revealed the marriage: the
+      // declarer (own) or the holder credited by a whole-ask (ohje 587) —
+      // both are `d.seat` — but a half-ask credits the ASKER, so its reveal
+      // comes from the partner.
+      const at = d.how === 'halfAsk' ? partnerOf(d.seat) : d.seat;
       out.push({
         seat: at,
         code: 'bubble.trump',
@@ -297,6 +307,7 @@ export const serverApply = {
         view: msg.view,
         turn: msg.turn,
         lastError: null,
+        fatal: null,
       },
       // A fresh snapshot invalidates all ephemeral interaction state.
       ui: {
@@ -387,6 +398,17 @@ export const serverApply = {
         },
       };
     });
+  },
+
+  /**
+   * Terminal server close (session replaced, room gone/full, version too old)
+   * or, with `null`, clearing it before a fresh connection attempt. A non-null
+   * code also marks us disconnected — the socket layer has stopped retrying.
+   */
+  setFatal(code: string | null): void {
+    useStore.setState((s) => ({
+      server: { ...s.server, fatal: code, connected: code === null ? s.server.connected : false },
+    }));
   },
 
   /** Full reset (leaving a room / connecting somewhere else). */

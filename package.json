@@ -9,10 +9,12 @@
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "sim": "pnpm --filter @hp/bots sim",
+    "test:e2e": "playwright test",
     "build:server": "esbuild packages/server/src/index.ts --bundle --platform=node --format=esm --target=node24 --external:better-sqlite3 --banner:js=\"import { createRequire as __createRequire } from 'node:module'; const require = __createRequire(import.meta.url);\" --outfile=packages/server/dist/server.js"
   },
   "devDependencies": {
     "@biomejs/biome": "2.1.2",
+    "@playwright/test": "^1.61.1",
     "esbuild": "^0.25.0"
   }
 }

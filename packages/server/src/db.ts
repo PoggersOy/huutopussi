@@ -43,35 +43,26 @@ CREATE INDEX IF NOT EXISTS idx_sessions_room ON sessions(room_id);
 CREATE TABLE IF NOT EXISTS matches (
   id           TEXT PRIMARY KEY,
   room_id      TEXT NOT NULL,
-  config       TEXT NOT NULL,
+  config       TEXT NOT NULL,       -- RuleConfig JSON (mode: players/talon/variants)
   first_dealer INTEGER NOT NULL,
   status       TEXT NOT NULL, -- active | finished | abandoned
   winner_side  INTEGER,
-  final_score0 INTEGER,
-  final_score1 INTEGER,
-  final_score2 INTEGER,
+  final_scores TEXT,                -- JSON number[], one per side (2 or 3)
   deals        INTEGER NOT NULL DEFAULT 0,
   started_at   INTEGER NOT NULL,
   finished_at  INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_matches_room ON matches(room_id, status);
 CREATE TABLE IF NOT EXISTS deals (
-  match_id         TEXT NOT NULL,
-  deal_index       INTEGER NOT NULL,
-  dealer           INTEGER NOT NULL,
-  declarer         INTEGER NOT NULL,
-  contract         INTEGER NOT NULL,
-  made             INTEGER NOT NULL,
-  score_delta0     INTEGER NOT NULL,
-  score_delta1     INTEGER NOT NULL,
-  score_delta2     INTEGER,
-  marriage_points0 INTEGER NOT NULL,
-  marriage_points1 INTEGER NOT NULL,
-  marriage_points2 INTEGER,
-  porvoo0          INTEGER NOT NULL,
-  porvoo1          INTEGER NOT NULL,
-  porvoo2          INTEGER,
-  finished_at      INTEGER NOT NULL,
+  match_id    TEXT NOT NULL,
+  deal_index  INTEGER NOT NULL,
+  dealer      INTEGER NOT NULL,
+  declarer    INTEGER,              -- null = contract-less (all-pass) deal
+  contract    INTEGER,
+  bid         INTEGER,
+  made        INTEGER,
+  result      TEXT NOT NULL,        -- full DealResult JSON (variable-length sides)
+  finished_at INTEGER NOT NULL,
   PRIMARY KEY (match_id, deal_index)
 );
 CREATE TABLE IF NOT EXISTS deal_events (
@@ -195,17 +186,17 @@ export class Db {
   }
 
   recordDealResult(matchId: string, dealIndex: number, dealer: Seat, result: DealResult): void {
-    // 4p has two sides; 3p (side === seat) has three. Side 2 columns are null in 4p/2p.
-    const [a, b, c] = result.sides;
-    if (!a || !b) throw new Error('recordDealResult: fewer than two sides in DealResult');
+    // The full DealResult (2 or 3 SideBreakdowns) goes in as JSON; the
+    // queryable columns are duplicated out. declarer/contract/bid/made are
+    // null for a contract-less (all-pass) deal.
+    if (result.sides.length < 2) {
+      throw new Error('recordDealResult: fewer than two sides in DealResult');
+    }
     this.raw
       .prepare(
         `INSERT OR REPLACE INTO deals (
-           match_id, deal_index, dealer, declarer, contract, made,
-           score_delta0, score_delta1, score_delta2,
-           marriage_points0, marriage_points1, marriage_points2,
-           porvoo0, porvoo1, porvoo2, finished_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           match_id, deal_index, dealer, declarer, contract, bid, made, result, finished_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         matchId,
@@ -213,16 +204,9 @@ export class Db {
         dealer,
         result.declarer,
         result.contract,
-        result.made ? 1 : 0,
-        a.scoreDelta,
-        b.scoreDelta,
-        c ? c.scoreDelta : null,
-        a.marriagePoints,
-        b.marriagePoints,
-        c ? c.marriagePoints : null,
-        a.porvoo ? 1 : 0,
-        b.porvoo ? 1 : 0,
-        c ? (c.porvoo ? 1 : 0) : null,
+        result.bid,
+        result.made === null ? null : result.made ? 1 : 0,
+        JSON.stringify(result),
         Date.now(),
       );
     this.raw.prepare('UPDATE matches SET deals = deals + 1 WHERE id = ?').run(matchId);
@@ -231,17 +215,10 @@ export class Db {
   finishMatch(id: string, winnerSide: Side, finalScores: number[]): void {
     this.raw
       .prepare(
-        `UPDATE matches SET status = 'finished', winner_side = ?, final_score0 = ?,
-         final_score1 = ?, final_score2 = ?, finished_at = ? WHERE id = ?`,
+        `UPDATE matches SET status = 'finished', winner_side = ?, final_scores = ?,
+         finished_at = ? WHERE id = ?`,
       )
-      .run(
-        winnerSide,
-        finalScores[0] ?? 0,
-        finalScores[1] ?? 0,
-        finalScores[2] ?? null,
-        Date.now(),
-        id,
-      );
+      .run(winnerSide, JSON.stringify(finalScores), Date.now(), id);
   }
 
   abandonMatch(id: string): void {
@@ -253,14 +230,12 @@ export class Db {
   matchSummaries(roomId: string): MatchSummary[] {
     const rows = this.raw
       .prepare(
-        `SELECT winner_side, final_score0, final_score1, final_score2, deals, finished_at
+        `SELECT winner_side, final_scores, deals, finished_at
          FROM matches WHERE room_id = ? AND status = 'finished' ORDER BY finished_at ASC`,
       )
       .all(roomId) as Array<{
       winner_side: number;
-      final_score0: number;
-      final_score1: number;
-      final_score2: number | null;
+      final_scores: string | null;
       deals: number;
       finished_at: number;
     }>;
@@ -269,10 +244,7 @@ export class Db {
       winnerSide: (r.winner_side === 0 || r.winner_side === 1 || r.winner_side === 2
         ? r.winner_side
         : 0) as Side,
-      finalScores:
-        r.final_score2 === null
-          ? [r.final_score0, r.final_score1]
-          : [r.final_score0, r.final_score1, r.final_score2],
+      finalScores: r.final_scores === null ? [] : (JSON.parse(r.final_scores) as number[]),
       deals: r.deals,
     }));
   }

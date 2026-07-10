@@ -12,6 +12,7 @@
 import '../styles/table.css';
 import {
   type ActionHint,
+  activeSeats,
   type Card,
   type DealView,
   type PlayerView,
@@ -32,10 +33,11 @@ import {
   BiddingSheet,
   ContractSheet,
   DeclarationSheet,
+  DiscardSheet,
   ExchangeSheet,
   type PlayHint,
 } from './table/TableSheets';
-import { actorOf, relSeat, SUIT_GLYPH, useNameOf } from './table/tableUtils';
+import { actorOf, feltSlot, SUIT_GLYPH, useNameOf } from './table/tableUtils';
 
 const BUBBLE_MS = 4_000;
 const TRICK_LINGER_MS = 1_300;
@@ -99,7 +101,12 @@ export function Table() {
   const answerHint = hints.find((h) => h.type === 'answerWhole') ?? null;
   const giveHint = hints.find((h) => h.type === 'giveCards') ?? null;
   const returnHint = hints.find((h) => h.type === 'returnCards') ?? null;
-  const selectCount = giveHint?.count ?? returnHint?.count ?? null;
+  const discardHint = hints.find((h) => h.type === 'discardCards') ?? null;
+  /** Redeal during the exchange window (illisoft redealWindow 'bidAndExchange'). */
+  const canRedealNow = hints.some((h) => h.type === 'demandRedeal');
+  const selectCount = giveHint?.count ?? returnHint?.count ?? discardHint?.count ?? null;
+  /** Multi-select legality (koini discard: no aces or tens) — from the hint only. */
+  const selectLegal = discardHint?.legal ?? null;
 
   const actor: Seat | null = turn?.seat ?? (deal !== null ? actorOf(deal, players) : null);
   const actorName = actor !== null ? nameOf(actor) : '';
@@ -131,12 +138,25 @@ export function Table() {
             count={selectCount}
             targetName={target !== null ? nameOf(target) : ''}
             actorName={actorName}
+            canDemandRedeal={canRedealNow}
           />
         );
         break;
       }
+      case 'exchangeDiscard':
+        sheet = (
+          <DiscardSheet
+            hint={discardHint}
+            actorName={actorName}
+            dealIndex={view.dealIndex}
+            canDemandRedeal={canRedealNow}
+          />
+        );
+        break;
       case 'exchangeContract':
-        sheet = <ContractSheet hint={contractHint} actorName={actorName} />;
+        sheet = (
+          <ContractSheet hint={contractHint} actorName={actorName} canDemandRedeal={canRedealNow} />
+        );
         break;
       case 'awaitWholeAnswer':
         sheet = <AnswerWholeSheet hint={answerHint} actorName={actorName} config={view.config} />;
@@ -173,25 +193,35 @@ export function Table() {
           <p className="felt__idle dim">{t('common.loading')}</p>
         ) : (
           <>
-            {([1, 2, 3] as const).map((rel) => {
-              const other = ((me + rel) % 4) as Seat;
-              const info = room.seats[other];
-              if (info === undefined) return null;
-              return (
-                <OpponentPanel
-                  key={other}
-                  pos={rel === 1 ? 'left' : rel === 2 ? 'top' : 'right'}
-                  info={info}
-                  name={nameOf(other)}
-                  count={deal.handCounts[other]}
-                  isTurn={actor === other && view.winnerSide === null}
-                  isDealer={view.dealer === other}
-                  isDeclarer={deal.declarer === other}
-                  bubble={bubbles.find((b) => b.seat === other) ?? null}
-                />
-              );
-            })}
-            <TrickArea deal={deal} me={me} completedTrick={completedTrick} nameOf={nameOf} />
+            {activeSeats(players)
+              .filter((other) => other !== me)
+              .map((other) => {
+                const info = room.seats[other];
+                if (info === undefined) return null;
+                const slot = feltSlot(me, other, players);
+                return (
+                  <OpponentPanel
+                    key={other}
+                    pos={slot === 1 ? 'left' : slot === 3 ? 'right' : 'top'}
+                    info={info}
+                    name={nameOf(other)}
+                    count={deal.handCounts[other]}
+                    isTurn={actor === other && view.winnerSide === null}
+                    isDealer={view.dealer === other}
+                    isDeclarer={deal.declarer === other}
+                    bubble={bubbles.find((b) => b.seat === other) ?? null}
+                  />
+                );
+              })}
+            <FeltPiles deal={deal} />
+            {deal.talonSeen !== null && <TalonStrip cards={deal.talonSeen} />}
+            <TrickArea
+              deal={deal}
+              me={me}
+              players={players}
+              completedTrick={completedTrick}
+              nameOf={nameOf}
+            />
             <LastTrickPeek deal={deal} hidden={completedTrick !== null} nameOf={nameOf} />
             {myBubble !== null && (
               <div className="bubble bubble--me">{t(myBubble.code, myBubble.params ?? {})}</div>
@@ -211,7 +241,12 @@ export function Table() {
         {raisedCard !== null && playHint !== null && !pending && (
           <p className="thand__hint dim">{t('table.tapAgain')}</p>
         )}
-        <HandFan hand={deal?.hand ?? []} playHint={playHint} selectCount={selectCount} />
+        <HandFan
+          hand={deal?.hand ?? []}
+          playHint={playHint}
+          selectCount={selectCount}
+          selectLegal={selectLegal}
+        />
       </footer>
 
       {showScoredOverlay && scoredResult !== null && (
@@ -219,6 +254,7 @@ export function Table() {
           result={scoredResult}
           scores={view.scores}
           mySide={mySide}
+          players={players}
           nameOf={nameOf}
           onClose={() => setScoredClosedFor(view.dealIndex)}
         />
@@ -255,6 +291,7 @@ function TopBar({
 }) {
   const { t } = useTranslation();
   const deal = view.deal;
+  const players = view.config.players;
   const trump = deal?.trump ?? null;
   const otherSide = mySide === 0 ? 1 : 0;
   const usScore = view.scores[mySide] ?? 0;
@@ -268,20 +305,42 @@ function TopBar({
       contractLabel = `${t('table.bid')} ${deal.bid.amount} — ${nameOf(deal.bid.seat)}`;
     } else if (deal.phase.name === 'bidding' && deal.phase.highBid !== null) {
       contractLabel = `${t('table.bid')} ${deal.phase.highBid.amount} — ${nameOf(deal.phase.highBid.seat)}`;
+    } else if (deal.phase.name !== 'bidding' && deal.declarer === null) {
+      // Contract-less deal (illisoft: everyone said "Ohi").
+      contractLabel = t('table.contractless');
     }
   }
+
+  // 4p: us/them. 2-3p: every seat is its own side — per-player labels, me first.
+  const mySeatFirst =
+    players === 4
+      ? []
+      : [...activeSeats(players)].sort(
+          (a, b) => ((a - mySide + players) % players) - ((b - mySide + players) % players),
+        );
 
   return (
     <header className="ttop">
       <div className="ttop__row">
         <span>
-          <strong>
-            {t('table.us')} {usScore}
-          </strong>
-          <span className="dim">
-            {' · '}
-            {t('table.them')} {themScore}
-          </span>
+          {players === 4 ? (
+            <>
+              <strong>
+                {t('table.us')} {usScore}
+              </strong>
+              <span className="dim">
+                {' · '}
+                {t('table.them')} {themScore}
+              </span>
+            </>
+          ) : (
+            mySeatFirst.map((seat, i) => (
+              <span key={seat} className={seat === (mySide as Seat) ? undefined : 'dim'}>
+                {i > 0 && ' · '}
+                {nameOf(seat)} {view.scores[sideOf(seat, players)] ?? 0}
+              </span>
+            ))
+          )}
         </span>
         <span className={trump !== null ? `ttop__trump suit--${trump}` : 'dim'}>
           {trump !== null ? `${SUIT_GLYPH[trump]} ${t(`suit.${trump}`)}` : t('table.noTrump')}
@@ -358,11 +417,13 @@ function OpponentPanel({
 function TrickArea({
   deal,
   me,
+  players,
   completedTrick,
   nameOf,
 }: {
   deal: DealView;
   me: Seat;
+  players: 2 | 3 | 4;
   completedTrick: CompletedTrick | null;
   nameOf: (seat: Seat) => string;
 }) {
@@ -386,7 +447,7 @@ function TrickArea({
       {plays.map((play) => (
         <div
           key={`${play.seat}-${play.card}`}
-          className={`trick__card trick__card--p${relSeat(me, play.seat)}${
+          className={`trick__card trick__card--p${feltSlot(me, play.seat, players)}${
             winner === play.seat ? ' trick__card--win' : ''
           }`}
         >
@@ -394,6 +455,50 @@ function TrickArea({
         </div>
       ))}
       {label !== null && <span className="trick__label dim">{label}</span>}
+    </div>
+  );
+}
+
+// ── 2-3p felt fixtures: koinipakka / dummy piles + the open-talon strip ──────
+
+function FeltPiles({ deal }: { deal: DealView }) {
+  const { t } = useTranslation();
+  const showTalon = deal.talonCount !== null && deal.talonCount > 0;
+  const showDummy = deal.dummyHandCount !== null;
+  if (!showTalon && !showDummy) return null;
+  return (
+    <div className="felt-piles">
+      {showTalon && (
+        <div className="felt-pile">
+          <CardBack width="18px" />
+          <span className="dim">
+            {t('table.talon')} {deal.talonCount}
+          </span>
+        </div>
+      )}
+      {showDummy && (
+        <div className="felt-pile">
+          <CardBack width="18px" />
+          <span className="dim">
+            {t('table.dummy')} {deal.dummyHandCount}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Avoin koini: everyone sees the koinipakka faces during the whole first trick. */
+function TalonStrip({ cards }: { cards: Card[] }) {
+  const { t } = useTranslation();
+  return (
+    <div className="talon-strip">
+      <span className="talon-strip__label dim">{t('table.openTalon')}</span>
+      <div className="talon-strip__cards">
+        {cards.map((card) => (
+          <CardFace key={card} card={card} width="var(--card-w-sm)" />
+        ))}
+      </div>
     </div>
   );
 }
@@ -441,10 +546,13 @@ function HandFan({
   hand,
   playHint,
   selectCount,
+  selectLegal,
 }: {
   hand: Card[];
   playHint: PlayHint | null;
   selectCount: number | null;
+  /** Cards eligible for the multi-select (koini discard); null = all. */
+  selectLegal: Card[] | null;
 }) {
   const { t } = useTranslation();
   const raisedCard = useStore((s) => s.ui.raisedCard);
@@ -455,6 +563,7 @@ function HandFan({
 
   function onTap(card: Card): void {
     if (selectCount !== null) {
+      if (selectLegal !== null && !selectLegal.includes(card)) return;
       toggleSelectedCard(card, selectCount);
       return;
     }
@@ -469,10 +578,14 @@ function HandFan({
     raiseCard(card);
   }
 
+  const density =
+    hand.length > 12 ? ' hand--dense hand--xdense' : hand.length > 9 ? ' hand--dense' : '';
   return (
-    <div className={`hand${hand.length > 9 ? ' hand--dense' : ''}`}>
+    <div className={`hand${density}`}>
       {hand.map((card) => {
-        const illegal = playHint !== null && !playHint.legal.includes(card);
+        const illegal =
+          (playHint !== null && !playHint.legal.includes(card)) ||
+          (selectCount !== null && selectLegal !== null && !selectLegal.includes(card));
         const raised = raisedCard === card;
         const picked = selectedCards.includes(card);
         return (

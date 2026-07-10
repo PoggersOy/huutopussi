@@ -35,6 +35,18 @@ test('healthz responds', async () => {
   expect(await res.json()).toEqual({ ok: true });
 });
 
+test('a malformed percent-encoded path is a 400, not a process crash', async () => {
+  // decodeURIComponent throws URIError on a lone/incomplete escape; uncaught in
+  // the request listener it would terminate the whole server.
+  for (const bad of ['/%', '/%zz', '/%2', '/foo%']) {
+    const res = await fetch(`http://127.0.0.1:${port}${bad}`);
+    expect(res.status).toBe(400);
+  }
+  // The server is still alive and serving after the malformed requests.
+  const ok = await fetch(`http://127.0.0.1:${port}/healthz`);
+  expect(ok.status).toBe(200);
+});
+
 test('bad messages get error.badMessage without crashing', async () => {
   const c = await TestClient.connect(port);
   const err1 = c.next((m) => m.t === 'error', 5_000, 'bad message error');

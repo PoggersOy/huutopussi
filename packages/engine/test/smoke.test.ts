@@ -737,11 +737,12 @@ describe('whole-ask answer paths', () => {
     expect(act(ctx, 0, { type: 'askWhole' })).toEqual([
       { type: 'askedWhole', seat: 0 },
       { type: 'answeredWhole', seat: 2, suit: 'D' },
-      { type: 'trumpSet', suit: 'D', seat: 0, side: 0, how: 'wholeAsk', points: 80 },
+      // ohje 587: credited to the holder (seat 2), not the asker (seat 0).
+      { type: 'trumpSet', suit: 'D', seat: 2, side: 0, how: 'wholeAsk', points: 80 },
     ]);
     expect(ctx.state.deal?.trump).toBe('D');
     expect(ctx.state.deal?.declarations).toEqual([
-      { suit: 'D', seat: 0, side: 0, how: 'wholeAsk', trickIndex: 1, points: 80 },
+      { suit: 'D', seat: 2, side: 0, how: 'wholeAsk', trickIndex: 1, points: 80 },
     ]);
   });
 
@@ -757,7 +758,8 @@ describe('whole-ask answer paths', () => {
     expectRuleError(ctx, 0, { type: 'playCard', card: 'S6' }, 'error.notInPhase');
     expect(act(ctx, 2, { type: 'answerWhole', suit: 'C' })).toEqual([
       { type: 'answeredWhole', seat: 2, suit: 'C' },
-      { type: 'trumpSet', suit: 'C', seat: 0, side: 0, how: 'wholeAsk', points: 60 },
+      // ohje 587: credited to the holder (seat 2), not the asker (seat 0).
+      { type: 'trumpSet', suit: 'C', seat: 2, side: 0, how: 'wholeAsk', points: 60 },
     ]);
     expect(ctx.state.deal?.trump).toBe('C');
     expect(ctx.state.deal?.phase).toEqual({ name: 'lead', leader: 0, canDeclare: false });
@@ -772,7 +774,8 @@ describe('whole-ask answer paths', () => {
     expect(act(ctx, 0, { type: 'askWhole' })).toEqual([
       { type: 'askedWhole', seat: 0 },
       { type: 'answeredWhole', seat: 2, suit: 'C' },
-      { type: 'trumpSet', suit: 'C', seat: 0, side: 0, how: 'wholeAsk', points: 60 },
+      // ohje 587: credited to the holder (seat 2), not the asker (seat 0).
+      { type: 'trumpSet', suit: 'C', seat: 2, side: 0, how: 'wholeAsk', points: 60 },
     ]);
     expect(ctx.state.deal?.trump).toBe('C');
   });

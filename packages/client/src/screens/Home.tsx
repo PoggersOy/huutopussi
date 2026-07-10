@@ -28,6 +28,8 @@ export function Home() {
   const [nickname, setNickname] = useState(savedNickname);
   const [code, setCode] = useState('');
   const [creating, setCreating] = useState(false);
+  /** Game mode for a new room (2/3/4 pelaajaa) — sent in the hello config. */
+  const [players, setPlayers] = useState<2 | 3 | 4>(4);
   const [recents] = useState<RecentRoom[]>(loadRecentRooms);
   const canInstall = useSyncExternalStore(subscribeInstall, installAvailable);
   const createdCode = useStore((s) => s.server.room?.code);
@@ -49,7 +51,7 @@ export function Home() {
 
   function onCreate(): void {
     setCreating(true);
-    connect(undefined, undefined, persistNickname());
+    connect(undefined, undefined, persistNickname(), { players });
   }
 
   function onJoin(e: FormEvent): void {
@@ -89,6 +91,19 @@ export function Home() {
               maxLength={20}
               autoComplete="nickname"
             />
+          </label>
+          <label className="stack">
+            <span className="dim">{t('config.players')}</span>
+            <select
+              value={players}
+              onChange={(e) => setPlayers(Number(e.target.value) as 2 | 3 | 4)}
+            >
+              {([2, 3, 4] as const).map((n) => (
+                <option key={n} value={n}>
+                  {t('config.playersOpt', { n })}
+                </option>
+              ))}
+            </select>
           </label>
           <button type="button" className="btn--primary" onClick={onCreate} disabled={creating}>
             {creating ? t('connection.connecting') : t('home.create')}

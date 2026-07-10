@@ -39,3 +39,44 @@ jobs:
 
       - name: Simulation (500 seeded fuzz games)
         run: pnpm sim -- --games 500 --seed 42
+
+  e2e:
+    name: e2e (Playwright / chromium)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    needs: ci
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build client
+        run: pnpm --filter @hp/client build
+
+      - name: Build server bundle
+        run: pnpm build:server
+
+      - name: Install Playwright chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: E2E tests
+        run: pnpm test:e2e
+        env:
+          # The webServer command reuses the builds from the steps above.
+          E2E_SKIP_BUILD: '1'
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report
+          retention-days: 7

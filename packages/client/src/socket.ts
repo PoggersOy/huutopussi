@@ -16,7 +16,13 @@
  * typed cast, no runtime validation.
  */
 import type { PlayerAction } from '@hp/engine';
-import { type ClientMsg, type LobbyCmd, PROTOCOL_VERSION, type ServerMsg } from '@hp/protocol';
+import {
+  type ClientMsg,
+  type ConfigPatch,
+  type LobbyCmd,
+  PROTOCOL_VERSION,
+  type ServerMsg,
+} from '@hp/protocol';
 import { recordRoomHistory } from './history';
 import { serverApply, useStore } from './store';
 
@@ -31,6 +37,20 @@ export const WAKE_WATCHDOG_MS = 3_000;
 export function backoffDelay(attempt: number): number {
   return Math.min(BACKOFF_CAP_MS, BACKOFF_BASE_MS * 2 ** Math.max(0, attempt - 1));
 }
+
+/**
+ * Server close codes that must NOT be retried: reconnecting would just earn the
+ * same close forever (two tabs stealing each other's session, a gone/full room,
+ * a version mismatch). Each maps to the i18n key surfaced as a dead-end. Every
+ * other close (network blips, 1006, server restart) still auto-reconnects.
+ */
+export const TERMINAL_CLOSE: Readonly<Record<number, string>> = {
+  4000: 'error.roomClosed', // room idle-closed / abandoned
+  4001: 'error.sessionReplaced', // superseded by another connection (other tab)
+  4002: 'error.protocolVersion', // client too old
+  4004: 'error.roomNotFound', // room does not exist
+  4006: 'error.roomFull', // room at its session cap
+};
 
 /** localStorage key holding the session token for a room. */
 export function sessionKey(roomCode: string): string {
@@ -59,6 +79,8 @@ interface Desired {
   roomCode: string | undefined;
   sessionToken: string | undefined;
   nickname: string | undefined;
+  /** Initial room config for creation; ignored by the server on join/rejoin. */
+  config: ConfigPatch | undefined;
 }
 
 let desired: Desired | null = null;
@@ -108,6 +130,10 @@ function openSocket(): void {
     if (desired.roomCode !== undefined) hello.roomCode = desired.roomCode;
     if (desired.sessionToken !== undefined) hello.sessionToken = desired.sessionToken;
     if (desired.nickname !== undefined) hello.nickname = desired.nickname;
+    // Only meaningful when creating a room (no roomCode yet).
+    if (desired.roomCode === undefined && desired.config !== undefined) {
+      hello.config = desired.config;
+    }
     socket.send(JSON.stringify(hello));
     if (pingTimer !== null) clearInterval(pingTimer);
     pingTimer = setInterval(() => send({ t: 'ping' }), PING_INTERVAL_MS);
@@ -129,7 +155,7 @@ function openSocket(): void {
     handleMessage(msg);
   };
 
-  socket.onclose = () => {
+  socket.onclose = (ev: CloseEvent) => {
     if (gen !== generation) return;
     ws = null;
     if (pingTimer !== null) {
@@ -137,6 +163,16 @@ function openSocket(): void {
       pingTimer = null;
     }
     serverApply.setConnected(false);
+    const terminal = TERMINAL_CLOSE[ev.code];
+    if (terminal !== undefined) {
+      // The server told us this connection is a dead end — stop the reconnect
+      // loop entirely (otherwise two tabs / a gone room flap forever) and hand
+      // the reason to the UI.
+      desired = null;
+      clearTimers();
+      serverApply.setFatal(terminal);
+      return;
+    }
     if (!intentionalClose) scheduleReconnect();
   };
 
@@ -195,11 +231,17 @@ function handleMessage(msg: ServerMsg): void {
 // ── Public API ───────────────────────────────────────────────────────────────
 
 /**
- * Connect (or reconnect) to a room. Omit `roomCode` to create a new room.
- * Idempotent: calling again for the room we are already connected to just
- * triggers a resync.
+ * Connect (or reconnect) to a room. Omit `roomCode` to create a new room;
+ * `config` is the initial room config for creation (preset + overrides) and
+ * is ignored by the server when joining an existing room. Idempotent: calling
+ * again for the room we are already connected to just triggers a resync.
  */
-export function connect(roomCode?: string, sessionToken?: string, nickname?: string): void {
+export function connect(
+  roomCode?: string,
+  sessionToken?: string,
+  nickname?: string,
+  config?: ConfigPatch,
+): void {
   const code = roomCode?.toUpperCase();
   installWakeHandlers();
 
@@ -219,12 +261,15 @@ export function connect(roomCode?: string, sessionToken?: string, nickname?: str
   ws?.close();
   clearTimers();
   if (switchingRoom) serverApply.reset();
+  // A fresh attempt clears any prior dead-end so screens leave the error state.
+  serverApply.setFatal(null);
 
   desired = {
     roomCode: code,
     sessionToken:
       sessionToken ?? (code !== undefined ? (loadSessionToken(code) ?? undefined) : undefined),
     nickname,
+    config,
   };
   attempts = 0;
   intentionalClose = false;
@@ -239,6 +284,7 @@ export function disconnect(): void {
   ws = null;
   desired = null;
   serverApply.setConnected(false);
+  serverApply.setFatal(null);
 }
 
 /**

@@ -23,7 +23,16 @@
  * messages sent to the acting seat itself; every other recipient gets
  * `hints: null`.
  */
-import type { ActionHint, Card, GameEvent, PlayerView, RuleConfig, Seat, Side } from '@hp/engine';
+import type {
+  ActionHint,
+  Card,
+  GameEvent,
+  PlayerAction,
+  PlayerView,
+  RuleConfig,
+  Seat,
+  Side,
+} from '@hp/engine';
 import { z } from 'zod';
 
 export const PROTOCOL_VERSION = 2;
@@ -67,6 +76,20 @@ export const playerActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('askHalf'), suit: suitSchema, rankHeld: z.enum(['K', 'Q']) }),
   z.object({ type: z.literal('playCard'), card: cardSchema }),
 ]);
+
+/**
+ * Compile-time drift guard: the parsed action type must be mutually
+ * assignable with the engine's PlayerAction — a variant missing from either
+ * side (or a payload shape mismatch) fails to typecheck.
+ */
+type _PlayerActionSchemaMatchesEngine = [z.infer<typeof playerActionSchema>, PlayerAction] extends [
+  PlayerAction,
+  z.infer<typeof playerActionSchema>,
+]
+  ? true
+  : never;
+const _playerActionSchemaMatchesEngine: _PlayerActionSchemaMatchesEngine = true;
+void _playerActionSchemaMatchesEngine;
 
 // ── Client → server: lobby commands ──────────────────────────────────────────
 

@@ -26,12 +26,20 @@ export class RandomLegalBot implements Actor {
   onTurn(view: PlayerView, hints: ActionHint[]): PlayerAction {
     const hand: readonly Card[] = view.deal?.hand ?? [];
 
+    // Exchange-window redeal (redealWindow 'bidAndExchange'): the hint is
+    // appended after the phase's primary hint, so give it its chance first.
+    if (hints.some((h) => h.type === 'demandRedeal') && this.rng() < REDEAL_PROB) {
+      return { type: 'demandRedeal' };
+    }
+
     for (const hint of hints) {
       switch (hint.type) {
         case 'bid':
           return this.bidAction(hint);
         case 'giveCards':
           return { type: 'giveCards', cards: sample(this.rng, hand, hint.count) };
+        case 'discardCards':
+          return { type: 'discardCards', cards: sample(this.rng, hint.legal, hint.count) };
         case 'setContract':
           return { type: 'setContract', amount: this.contractAmount(hint) };
         case 'returnCards':

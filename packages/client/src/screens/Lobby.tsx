@@ -5,7 +5,7 @@
  * host's Start button. Non-hosts see the config read-only. All legality/
  * authority stays server-side — every control just submits a lobby command.
  */
-import type { RuleConfig, Seat } from '@hp/engine';
+import { DEFAULT_RULES, ILLISOFT_RULES, type RuleConfig, type Seat } from '@hp/engine';
 import type { ConfigPatch, RoomStatePublic, SeatInfo } from '@hp/protocol';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -22,7 +22,10 @@ export function Lobby() {
   if (room === null) return null;
 
   const isHost = mySeat !== null && room.hostSeat === mySeat;
-  const allSeated = room.seats.every((seat) => seat.kind !== 'empty');
+  // Defensive slice: only config.players seats are active (protocol sends that
+  // many, but a stale 4-entry snapshot must not block a 2-3p start).
+  const activeSeatInfos = room.seats.slice(0, room.config.players);
+  const allSeated = activeSeatInfos.every((seat) => seat.kind !== 'empty');
 
   return (
     <div className="screen">
@@ -55,7 +58,7 @@ export function Lobby() {
             </button>
             {!allSeated && (
               <p className="dim" style={{ textAlign: 'center' }}>
-                {t('lobby.needFourPlayers')}
+                {t('lobby.needAllSeats')}
               </p>
             )}
           </>
@@ -69,7 +72,7 @@ export function Lobby() {
   );
 }
 
-// ── Mini table: 4 seat cards around a felt oval ──────────────────────────────
+// ── Mini table: config.players seat cards around a felt oval ─────────────────
 
 function MiniTable({
   room,
@@ -80,22 +83,26 @@ function MiniTable({
   mySeat: Seat | null;
   isHost: boolean;
 }) {
-  // Rotate so the viewer sits at the bottom (partner across, like at a table).
-  const bottom = mySeat ?? 0;
-  const at = (offset: number): SeatInfo => room.seats[(bottom + offset) % 4] as SeatInfo;
+  const players = room.config.players;
+  const seats = room.seats.slice(0, players);
+  // Rotate so the viewer sits at the bottom (4p: partner across, like at a table).
+  const bottom = mySeat !== null && mySeat < players ? mySeat : 0;
+  const at = (offset: number): SeatInfo => seats[(bottom + offset) % players] as SeatInfo;
 
   const card = (info: SeatInfo, area: string) => (
-    <div style={{ gridArea: area }} className="lobby-table__slot">
+    <div key={area} style={{ gridArea: area }} className="lobby-table__slot">
       <SeatCard info={info} mySeat={mySeat} hostSeat={room.hostSeat} viewerIsHost={isHost} />
     </div>
   );
 
   return (
     <div className="lobby-table">
-      {card(at(2), 'top')}
-      {card(at(1), 'left')}
+      {players === 4 && card(at(2), 'top')}
+      {players === 2 && card(at(1), 'top')}
+      {players >= 3 && card(at(1), 'left')}
       <div className="lobby-table__felt" style={{ gridArea: 'center' }} aria-hidden="true" />
-      {card(at(3), 'right')}
+      {players === 4 && card(at(3), 'right')}
+      {players === 3 && card(at(2), 'right')}
       {card(at(0), 'bottom')}
     </div>
   );
@@ -226,11 +233,26 @@ function ShareBlock({ code }: { code: string }) {
 
 // ── Rules config panel (configPatchSchema fields; host-editable) ─────────────
 
-const MIN_BID_OPTIONS = [0, 25, 50, 75, 100, 150, 200];
+const MIN_BID_OPTIONS = [0, 25, 50, 60, 75, 100, 150, 200];
 const WIN_TARGET_OPTIONS = [250, 500, 750, 1000];
 
 function numberOptions(base: readonly number[], current: number): number[] {
   return base.includes(current) ? [...base] : [...base, current].sort((a, b) => a - b);
+}
+
+/** The 2-3p mode fields are orthogonal to the ruleset choice (spec §11). */
+const MODE_FIELDS: ReadonlySet<string> = new Set(['players', 'talonSize', 'openTalon']);
+
+function matchesPreset(config: RuleConfig, preset: RuleConfig): boolean {
+  return (Object.keys(preset) as Array<keyof RuleConfig>).every(
+    (key) => MODE_FIELDS.has(key) || config[key] === preset[key],
+  );
+}
+
+function presetOf(config: RuleConfig): 'illisoft' | 'paamuoto' | 'custom' {
+  if (matchesPreset(config, ILLISOFT_RULES)) return 'illisoft';
+  if (matchesPreset(config, DEFAULT_RULES)) return 'paamuoto';
+  return 'custom';
 }
 
 function ConfigPanel({ config, isHost }: { config: RuleConfig; isHost: boolean }) {
@@ -238,11 +260,78 @@ function ConfigPanel({ config, isHost }: { config: RuleConfig; isHost: boolean }
   const patch = (p: ConfigPatch): void => {
     sendLobby({ type: 'setConfig', patch: p });
   };
+  const preset = presetOf(config);
 
   return (
     <section className="panel stack">
       <h2 style={{ fontSize: 'var(--fs-md)' }}>{t('lobby.config')}</h2>
       {!isHost && <p className="dim">{t('config.hostOnly')}</p>}
+
+      <label className="config-row">
+        <span>{t('config.preset')}</span>
+        <select
+          value={preset}
+          disabled={!isHost}
+          onChange={(e) => {
+            const value = e.target.value;
+            if (value === 'illisoft' || value === 'paamuoto') patch({ preset: value });
+          }}
+        >
+          <option value="illisoft">{t('config.presetIllisoft')}</option>
+          <option value="paamuoto">{t('config.presetPaamuoto')}</option>
+          {preset === 'custom' && (
+            <option value="custom" disabled>
+              {t('config.presetCustom')}
+            </option>
+          )}
+        </select>
+      </label>
+
+      <label className="config-row">
+        <span>{t('config.players')}</span>
+        <select
+          value={config.players}
+          disabled={!isHost}
+          onChange={(e) => patch({ players: Number(e.target.value) as 2 | 3 | 4 })}
+        >
+          {([2, 3, 4] as const).map((n) => (
+            <option key={n} value={n}>
+              {t('config.playersOpt', { n })}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      {config.players !== 4 && (
+        <>
+          <label className="config-row">
+            <span>{t('config.talonSize')}</span>
+            <select
+              value={config.talonSize}
+              disabled={!isHost}
+              onChange={(e) => patch({ talonSize: Number(e.target.value) as 3 | 6 })}
+            >
+              {([3, 6] as const).map((n) => (
+                <option key={n} value={n}>
+                  {t('config.cardsOpt', { n })}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="config-row">
+            <span>{t('config.openTalon')}</span>
+            <select
+              value={config.openTalon ? 'open' : 'secret'}
+              disabled={!isHost}
+              onChange={(e) => patch({ openTalon: e.target.value === 'open' })}
+            >
+              <option value="open">{t('config.openTalonOpen')}</option>
+              <option value="secret">{t('config.openTalonSecret')}</option>
+            </select>
+          </label>
+        </>
+      )}
 
       <label className="config-row">
         <span>{t('config.cardPoints')}</span>

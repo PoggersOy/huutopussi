@@ -14,9 +14,12 @@
  *  - EXCHANGE contract: 12-card strength minus a safety margin, never below
  *    the winning bid.
  *  - EXCHANGE return: lowest-point junk, keeping complete-marriage halves.
+ *  - EXCHANGE discard (2-3p koini): lowest non-point junk from the legal set
+ *    (aces/tens are never offered), keeping complete-marriage halves.
  *  - DECLARATIONS: declare ASAP, highest marriage value first; own marriage
  *    beats asking; ask the half when holding exactly one half of a suit;
- *    ask the whole only when holding no useful half at all.
+ *    ask the whole only when holding no useful half at all. Asks are 4p-only
+ *    (2-3p hints never offer them; partner logic is gated on config.players).
  *  - PLAY: lead aces (or a high own-side trump to draw trump) early and junk
  *    otherwise; when obliged to head the trick — even over the partner — do
  *    it minimally; smear points when the partner has the trick and we play
@@ -160,8 +163,19 @@ export class HeuristicBot implements Actor {
     const bid = findHint(hints, 'bid');
     if (bid) return this.bidAction(bid, hand, config);
 
+    // Exchange-window redeal (redealWindow 'bidAndExchange'): a hand that
+    // qualifies is trash by the same argument as in bidding — always redeal.
+    if (findHint(hints, 'demandRedeal')) return { type: 'demandRedeal' };
+
     const give = findHint(hints, 'giveCards');
     if (give) return { type: 'giveCards', cards: giveCards(hand, give.count, config) };
+
+    // 2-3p koini discard: same junk ordering as the 4p return, restricted to
+    // the hinted legal set (hand minus aces and tens).
+    const discard = findHint(hints, 'discardCards');
+    if (discard) {
+      return { type: 'discardCards', cards: returnCards(discard.legal, discard.count, config) };
+    }
 
     const contract = findHint(hints, 'setContract');
     if (contract) return { type: 'setContract', amount: contractAmount(contract, hand, config) };
@@ -252,7 +266,8 @@ export class HeuristicBot implements Actor {
     const ledSuit = suitOf(firstPlay.card);
     const winning = winningPlay(plays, deal.trump);
     const winners = legal.filter((c) => beats(c, winning.card, ledSuit, deal.trump));
-    const partnerWinning = winning.seat === partnerOf(me);
+    // Partnership logic is 4p-only: in 2-3p every other seat is an opponent.
+    const partnerWinning = config.players === 4 && winning.seat === partnerOf(me);
 
     if (winners.length === legal.length) {
       // Obliged to head the trick (also over the partner): do it minimally,
@@ -263,7 +278,7 @@ export class HeuristicBot implements Actor {
 
     if (winners.length === 0) {
       // Cannot win: smear points onto the partner's certain trick, else dump.
-      if (partnerWinning && plays.length === 3) return highestPoints(pool, config);
+      if (partnerWinning && plays.length === config.players - 1) return highestPoints(pool, config);
       return lowestJunk(pool, config);
     }
 
@@ -299,7 +314,11 @@ function contractAmount(hint: ContractHint, hand: readonly Card[], config: RuleC
   return Math.min(cap, hint.min + steps * hint.step);
 }
 
-/** Return the lowest-point junk, keeping complete-marriage halves. */
+/**
+ * The lowest-point junk, keeping complete-marriage halves — used both for the
+ * 4p exchange return (from the hand) and the 2-3p koini discard (from the
+ * hinted legal set, which is the hand minus aces and tens).
+ */
 function returnCards(hand: readonly Card[], count: number, config: RuleConfig): Card[] {
   const protectedHalves = reservedCards(hand, []);
   const keepValue = (c: Card): number => {

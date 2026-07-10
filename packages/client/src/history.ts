@@ -67,11 +67,18 @@ export interface HistoryEntry {
 function isMatchSummary(m: unknown): m is MatchSummary {
   if (typeof m !== 'object' || m === null) return false;
   const s = m as MatchSummary;
+  // Variant-ready per the frozen @hp/protocol MatchSummary: 4p has 2 sides
+  // (winnerSide 0|1), 2-3p has one side per seat (winnerSide up to 2), so
+  // finalScores holds sideCount(config) totals (2 or 3) and winnerSide indexes
+  // into it. Hardcoding 2 sides silently dropped every 3-player summary.
   return (
     typeof s.finishedAt === 'number' &&
-    (s.winnerSide === 0 || s.winnerSide === 1) &&
+    Number.isInteger(s.winnerSide) &&
     Array.isArray(s.finalScores) &&
-    s.finalScores.length === 2 &&
+    (s.finalScores.length === 2 || s.finalScores.length === 3) &&
+    s.finalScores.every((n) => typeof n === 'number') &&
+    s.winnerSide >= 0 &&
+    s.winnerSide < s.finalScores.length &&
     typeof s.deals === 'number'
   );
 }

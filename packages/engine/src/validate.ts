@@ -276,7 +276,9 @@ function validateDeclaration(
       events.push({ type: 'answeredWhole', seat: partner, suit: null });
     } else if (options.length === 1 && only) {
       events.push({ type: 'answeredWhole', seat: partner, suit: only });
-      events.push(trumpSetEvent(only, seat, 'wholeAsk', cfg));
+      // ohje 587: a whole-ask trump is credited to the seat that HELD the
+      // marriage (the partner), not the asker.
+      events.push(trumpSetEvent(only, partner, 'wholeAsk', cfg));
     }
     // 2+ declarable marriages: the partner chooses (awaitWholeAnswer phase).
     return events;
@@ -503,7 +505,9 @@ export function validateAction(
       }
       return [
         { type: 'answeredWhole', seat, suit: action.suit },
-        trumpSetEvent(action.suit, ph.leader, 'wholeAsk', cfg),
+        // ohje 587: credit the whole-ask trump to the marriage HOLDER (the
+        // answering partner `seat`), not the asker (`ph.leader`).
+        trumpSetEvent(action.suit, seat, 'wholeAsk', cfg),
       ];
     }
 

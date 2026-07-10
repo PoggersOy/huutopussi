@@ -1,12 +1,16 @@
 /**
  * Test plumbing: a scripted WS client that speaks the @hp/protocol contract,
  * plus a deterministic hint-driven auto-player (forced opener bids minimum,
- * everyone else passes, exchanges/plays first legal option, never declares).
+ * everyone else passes, exchanges/discards/plays first legal option, never
+ * declares). With `openBid` the driver opens an untouched auction at the hint
+ * minimum — under rulesets without a forced opening (illisoft) that guarantees
+ * the deal gets a declarer and the exchange/koini phases run.
  */
 import { randomUUID } from 'node:crypto';
 import type { ActionHint, Card, PlayerAction, PlayerView, Seat } from '@hp/engine';
 import {
   type ClientMsg,
+  type ConfigPatch,
   type LobbyCmd,
   PROTOCOL_VERSION,
   type ServerMsg,
@@ -94,7 +98,14 @@ export class TestClient {
   }
 
   async hello(
-    opts: { roomCode?: string; sessionToken?: string; nickname?: string; v?: number } = {},
+    opts: {
+      roomCode?: string;
+      sessionToken?: string;
+      nickname?: string;
+      v?: number;
+      /** Initial room config (create only): preset + overrides. */
+      config?: ConfigPatch;
+    } = {},
   ): Promise<ServerMsg> {
     const reply = this.next((m) => m.t === 'welcome' || m.t === 'error', 10_000, 'welcome');
     this.send({
@@ -103,6 +114,7 @@ export class TestClient {
       ...(opts.roomCode !== undefined ? { roomCode: opts.roomCode } : {}),
       ...(opts.sessionToken !== undefined ? { sessionToken: opts.sessionToken } : {}),
       ...(opts.nickname !== undefined ? { nickname: opts.nickname } : {}),
+      ...(opts.config !== undefined ? { config: opts.config } : {}),
     });
     return reply;
   }
@@ -155,16 +167,37 @@ export class TestClient {
   }
 }
 
+export interface ScriptOpts {
+  /**
+   * Open an untouched auction at the hint minimum instead of passing. Without
+   * a forced opening (illisoft) this guarantees the deal gets a declarer.
+   */
+  openBid?: boolean;
+}
+
 /** Deterministic legal move from hints (see module doc). */
-export function scriptedAction(view: PlayerView, hints: ActionHint[]): PlayerAction {
+export function scriptedAction(
+  view: PlayerView,
+  hints: ActionHint[],
+  opts: ScriptOpts = {},
+): PlayerAction {
   const hand: readonly Card[] = view.deal?.hand ?? [];
   for (const h of hints) {
     switch (h.type) {
-      case 'bid':
+      case 'bid': {
         if (h.forced || !h.canPass) return { type: 'bid', amount: h.min };
+        const phase = view.deal?.phase;
+        const auctionUntouched = phase?.name === 'bidding' && phase.highBid === null;
+        if (opts.openBid === true && auctionUntouched && h.min <= h.max) {
+          return { type: 'bid', amount: h.min };
+        }
         return { type: 'pass' };
+      }
       case 'giveCards':
         return { type: 'giveCards', cards: hand.slice(0, h.count) };
+      case 'discardCards':
+        // 2-3p koini: legal = hand minus aces and tens.
+        return { type: 'discardCards', cards: h.legal.slice(0, h.count) };
       case 'setContract':
         return { type: 'setContract', amount: h.min };
       case 'returnCards':
@@ -188,14 +221,14 @@ export function scriptedAction(view: PlayerView, hints: ActionHint[]): PlayerAct
 }
 
 /** Auto-plays whenever a received welcome/update says it is our turn. */
-export function attachDriver(client: TestClient): void {
+export function attachDriver(client: TestClient, opts: ScriptOpts = {}): void {
   let lastActedSeq = -1;
   const maybeAct = (view: PlayerView | null, turn: TurnInfo | null, seq: number): void => {
     if (!view || !turn || !turn.hints) return;
     if (client.seat === null || turn.seat !== client.seat) return;
     if (seq <= lastActedSeq) return;
     lastActedSeq = seq;
-    client.action(scriptedAction(view, turn.hints));
+    client.action(scriptedAction(view, turn.hints, opts));
   };
   client.onServerMsg((msg) => {
     if (msg.t !== 'update' && msg.t !== 'welcome') return;
@@ -206,13 +239,28 @@ export function attachDriver(client: TestClient): void {
   maybeAct(client.lastView, client.lastTurn, client.seq);
 }
 
-/** Creates a room with 4 seated scripted humans; returns [host, g1, g2, g3]. */
-export async function seatFourHumans(port: number): Promise<TestClient[]> {
+/**
+ * Creates a room (optional initial config via hello) and seats `players`
+ * scripted humans; returns [host, guest1, ...]. When `config` sets a 2/3-
+ * player mode, only that many seats exist and get filled.
+ */
+export async function seatHumans(
+  port: number,
+  players: 2 | 3 | 4,
+  config?: ConfigPatch,
+): Promise<TestClient[]> {
   const host = await TestClient.connect(port);
-  const welcome = (await host.hello({ nickname: 'host' })) as WelcomeMsg;
+  const welcome = (await host.hello({
+    nickname: 'host',
+    ...(config !== undefined ? { config } : {}),
+  })) as WelcomeMsg;
   if (welcome.t !== 'welcome') throw new Error('host hello failed');
+  if (welcome.room.config.players !== players) {
+    throw new Error(`room has ${welcome.room.config.players} seats, wanted ${players}`);
+  }
   const clients = [host];
-  for (const seat of [1, 2, 3] as Seat[]) {
+  for (let i = 1; i < players; i++) {
+    const seat = i as Seat;
     const c = await TestClient.connect(port);
     const w = await c.hello({ roomCode: host.roomCode, nickname: `p${seat}` });
     if (w.t !== 'welcome') throw new Error(`guest ${seat} hello failed`);
@@ -227,6 +275,11 @@ export async function seatFourHumans(port: number): Promise<TestClient[]> {
     clients.push(c);
   }
   return clients;
+}
+
+/** 4 seated scripted humans on the päämuoto ruleset (the original harness). */
+export async function seatFourHumans(port: number): Promise<TestClient[]> {
+  return seatHumans(port, 4, { preset: 'paamuoto' });
 }
 
 /** Resolves when the client sees the deal reach the scored phase. */

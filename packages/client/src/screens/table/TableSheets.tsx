@@ -6,10 +6,12 @@
  */
 import {
   type ActionHint,
+  activeSeats,
   type DealPhase,
   marriageValue,
   type RuleConfig,
   type Seat,
+  sideOf,
 } from '@hp/engine';
 import { type ReactNode, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -17,9 +19,11 @@ import { CardFace } from '../../components/CardFace';
 import { sendAction } from '../../socket';
 import { useStore } from '../../store';
 import { SUIT_GLYPH } from './tableUtils';
+import { useTalonCards } from './talonMemory';
 
 export type BidHint = Extract<ActionHint, { type: 'bid' }>;
 export type ContractHint = Extract<ActionHint, { type: 'setContract' }>;
+export type DiscardHint = Extract<ActionHint, { type: 'discardCards' }>;
 export type DeclHint = Extract<ActionHint, { type: 'declaration' }>;
 export type AnswerWholeHint = Extract<ActionHint, { type: 'answerWhole' }>;
 export type PlayHint = Extract<ActionHint, { type: 'playCard' }>;
@@ -41,6 +45,24 @@ function SheetShell({ title, children }: { title: string; children: ReactNode })
 function WaitingNote({ name }: { name: string }) {
   const { t } = useTranslation();
   return <p className="dim tsheet__waiting">{t('sheet.waiting', { name })}</p>;
+}
+
+/** Redeal demand button for the exchange-window sheets (illisoft §3) — shown
+ *  only when the server hinted `demandRedeal` alongside the phase action. */
+function RedealButton({ show }: { show: boolean }) {
+  const { t } = useTranslation();
+  const pending = usePending();
+  if (!show) return null;
+  return (
+    <button
+      type="button"
+      className="btn--danger"
+      disabled={pending}
+      onClick={() => sendAction({ type: 'demandRedeal' })}
+    >
+      {t('action.demandRedeal')}
+    </button>
+  );
 }
 
 /** Stepper with quick-add buttons (+step / +2·step / +5·step, i.e. +5/+10/+25). */
@@ -92,9 +114,23 @@ export function BiddingSheet({
 }) {
   const { t } = useTranslation();
   const pending = usePending();
+  const view = useStore((s) => s.server.view);
   const min = hint?.min ?? 0;
   const [amount, setAmount] = useState(min);
   useEffect(() => setAmount(min), [min]);
+
+  // Cosmetic bid-ban indicators (illisoft §2) — legality still comes from hints.
+  const cfg = view?.config ?? null;
+  const players = cfg?.players ?? 4;
+  const banned = (seat: Seat): boolean =>
+    cfg !== null &&
+    cfg.bidBanThreshold !== null &&
+    (view?.scores[sideOf(seat, players)] ?? 0) <= cfg.bidBanThreshold;
+  const reopened =
+    cfg?.bidBanReopen === true &&
+    phase.excluded.length === 0 &&
+    banned(phase.turn) &&
+    !activeSeats(players).every(banned);
 
   return (
     <SheetShell title={t('phase.bidding')}>
@@ -103,6 +139,12 @@ export function BiddingSheet({
           ? t('sheet.highBid', { amount: phase.highBid.amount, name: nameOf(phase.highBid.seat) })
           : t('sheet.noBids')}
       </p>
+      {phase.excluded.length > 0 && (
+        <p className="dim tsheet__center">
+          {t('sheet.bidBanSkipped', { names: phase.excluded.map(nameOf).join(', ') })}
+        </p>
+      )}
+      {reopened && <p className="tsheet__notice">{t('sheet.biddingReopened')}</p>}
       {hint !== null ? (
         <>
           {hint.forced && (
@@ -160,12 +202,14 @@ export function ExchangeSheet({
   count,
   targetName,
   actorName,
+  canDemandRedeal = false,
 }: {
   mode: 'give' | 'return';
   /** Exact number of cards to select; null when the viewer is not the actor. */
   count: number | null;
   targetName: string;
   actorName: string;
+  canDemandRedeal?: boolean;
 }) {
   const { t } = useTranslation();
   const pending = usePending();
@@ -196,6 +240,63 @@ export function ExchangeSheet({
           >
             {t('common.confirm')} · {t('sheet.selectedCount', { n: selected.length, count })}
           </button>
+          <RedealButton show={canDemandRedeal} />
+        </>
+      ) : (
+        <WaitingNote name={actorName} />
+      )}
+    </SheetShell>
+  );
+}
+
+// ── Koini discard (2-3p: declarer sets aside talonSize cards) ────────────────
+
+export function DiscardSheet({
+  hint,
+  actorName,
+  dealIndex,
+  canDemandRedeal = false,
+}: {
+  hint: DiscardHint | null;
+  actorName: string;
+  dealIndex: number;
+  canDemandRedeal?: boolean;
+}) {
+  const { t } = useTranslation();
+  const pending = usePending();
+  const selected = useStore((s) => s.ui.selectedCards);
+  const talonCards = useTalonCards(dealIndex);
+
+  return (
+    <SheetShell title={t('phase.exchangeDiscard')}>
+      {hint !== null ? (
+        <>
+          <p className="dim tsheet__center">{t('sheet.discard', { count: hint.count })}</p>
+          {talonCards !== null && (
+            <>
+              <p className="dim tsheet__center">{t('sheet.talonWas')}</p>
+              <div className="tsheet__picked">
+                {talonCards.map((card) => (
+                  <CardFace key={card} card={card} width="var(--card-w-sm)" />
+                ))}
+              </div>
+            </>
+          )}
+          <div className="tsheet__picked">
+            {selected.map((card) => (
+              <CardFace key={card} card={card} width="var(--card-w-sm)" />
+            ))}
+          </div>
+          <button
+            type="button"
+            className="btn--primary tsheet__big"
+            disabled={pending || selected.length !== hint.count}
+            onClick={() => sendAction({ type: 'discardCards', cards: selected })}
+          >
+            {t('action.discard')} ·{' '}
+            {t('sheet.selectedCount', { n: selected.length, count: hint.count })}
+          </button>
+          <RedealButton show={canDemandRedeal} />
         </>
       ) : (
         <WaitingNote name={actorName} />
@@ -209,9 +310,11 @@ export function ExchangeSheet({
 export function ContractSheet({
   hint,
   actorName,
+  canDemandRedeal = false,
 }: {
   hint: ContractHint | null;
   actorName: string;
+  canDemandRedeal?: boolean;
 }) {
   const { t } = useTranslation();
   const pending = usePending();
@@ -220,7 +323,7 @@ export function ContractSheet({
   useEffect(() => setAmount(min), [min]);
 
   return (
-    <SheetShell title={t('action.setContract')}>
+    <SheetShell title={t('sheet.contractTitle')}>
       {hint !== null ? (
         <>
           <p className="dim tsheet__center">{t('sheet.contractMin', { min: hint.min })}</p>
@@ -231,14 +334,26 @@ export function ContractSheet({
             value={amount}
             onChange={setAmount}
           />
-          <button
-            type="button"
-            className="btn--primary tsheet__big"
-            disabled={pending}
-            onClick={() => sendAction({ type: 'setContract', amount })}
-          >
-            {t('action.setContract')} {amount}
-          </button>
+          <div className="tsheet__actions">
+            {/* "Ohi" keeps the contract at the winning bid (amount = min). */}
+            <button
+              type="button"
+              className="tsheet__big"
+              disabled={pending}
+              onClick={() => sendAction({ type: 'setContract', amount: hint.min })}
+            >
+              {t('action.keepBid', { amount: hint.min })}
+            </button>
+            <button
+              type="button"
+              className="btn--primary tsheet__big"
+              disabled={pending || amount <= hint.min}
+              onClick={() => sendAction({ type: 'setContract', amount })}
+            >
+              {t('action.raiseTo', { amount })}
+            </button>
+          </div>
+          <RedealButton show={canDemandRedeal} />
         </>
       ) : (
         <WaitingNote name={actorName} />

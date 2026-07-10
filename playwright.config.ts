@@ -1,0 +1,51 @@
+/**
+ * Playwright E2E configuration (e2e/*.spec.ts).
+ *
+ *  - One project: iPhone 14 viewport/UA emulated in CHROMIUM (CI installs
+ *    chromium only; the device descriptor's webkit default is overridden).
+ *  - webServer runs the REAL production server (`e2e/run-server.mjs`): it
+ *    builds the client + the esbuild server bundle, then starts it on port
+ *    8197 with a fresh temp SQLite db. CI pre-builds and sets E2E_SKIP_BUILD=1.
+ *  - Tests share that one server process (each test creates its own room), so
+ *    they run serially with a single worker for determinism.
+ *  - locale en-US pins the client's language detection to English; the specs
+ *    assert against English UI strings.
+ */
+import { defineConfig, devices } from '@playwright/test';
+
+const PORT = 8197;
+const BASE_URL = `http://127.0.0.1:${PORT}`;
+
+export default defineConfig({
+  testDir: './e2e',
+  fullyParallel: false,
+  workers: 1,
+  retries: 0,
+  forbidOnly: !!process.env.CI,
+  /* Bots act with a humanizing 500-1500 ms delay; full deals take minutes. */
+  timeout: 240_000,
+  expect: { timeout: 15_000 },
+  reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : [['list']],
+  use: {
+    baseURL: BASE_URL,
+    locale: 'en-US',
+    trace: 'retain-on-failure',
+  },
+  projects: [
+    {
+      name: 'iphone-14-chromium',
+      use: {
+        ...devices['iPhone 14'],
+        browserName: 'chromium',
+      },
+    },
+  ],
+  webServer: {
+    command: 'node e2e/run-server.mjs',
+    url: `${BASE_URL}/healthz`,
+    reuseExistingServer: !process.env.CI,
+    timeout: 240_000,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  },
+});

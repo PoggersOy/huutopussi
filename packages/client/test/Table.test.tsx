@@ -319,7 +319,7 @@ describe('speech bubbles', () => {
 });
 
 describe('overlays', () => {
-  it('shows the deal-scored breakdown with Porvoo and running totals', () => {
+  it('shows the deal-scored breakdown with the trickless flag and running totals', () => {
     applyWelcome(
       makeView(
         makeDeal({
@@ -371,7 +371,7 @@ describe('overlays', () => {
     expect(screen.getByText('Card points')).toBeTruthy();
     expect(screen.getByText('+120')).toBeTruthy();
     expect(screen.getByText('-60')).toBeTruthy();
-    expect(screen.getByText('Porvoo (läpäri)!')).toBeTruthy();
+    expect(screen.getByText('No tricks!')).toBeTruthy();
     expect(screen.getByText('Standing: 120 — -60')).toBeTruthy();
   });
 

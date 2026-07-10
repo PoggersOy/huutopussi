@@ -1,9 +1,11 @@
 /**
  * Full-screen overlays for the Table screen: the per-deal score breakdown
  * (auto-replaced when the server authors the next deal) and the match-ended
- * screen with the host's rematch button.
+ * screen with the host's rematch button. Both are parametric on the game
+ * mode: 4p shows the classic us/them pair columns, 2-3p one column per
+ * player (each seat is its own side).
  */
-import { type DealResult, SEATS, type Seat, type Side, sideOf } from '@hp/engine';
+import { type DealResult, SEATS, type Seat, type Side, sideCount, sideOf } from '@hp/engine';
 import { useTranslation } from 'react-i18next';
 import { sendLobby } from '../../socket';
 
@@ -11,10 +13,18 @@ function signed(n: number): string {
   return n > 0 ? `+${n}` : `${n}`;
 }
 
+/** Column order: the viewer's side first, the rest by side index. */
+function sideOrder(players: 2 | 3 | 4, mySide: Side): Side[] {
+  const n = players === 4 ? 2 : players;
+  const sides = Array.from({ length: n }, (_, i) => i as Side);
+  return [...sides].sort((a, b) => ((a - mySide + n) % n) - ((b - mySide + n) % n));
+}
+
 export function DealScoredOverlay({
   result,
   scores,
   mySide,
+  players,
   nameOf,
   onClose,
 }: {
@@ -22,71 +32,102 @@ export function DealScoredOverlay({
   /** Running match totals (already include this deal's deltas). */
   scores: number[];
   mySide: Side;
+  players: 2 | 3 | 4;
   nameOf: (seat: Seat) => string;
   onClose: () => void;
 }) {
   const { t } = useTranslation();
-  const otherSide: Side = mySide === 0 ? 1 : 0;
-  const us = result.sides[mySide];
-  const them = result.sides[otherSide];
-  if (us === undefined || them === undefined) return null;
-  const rows: Array<[string, number, number]> = [
-    ['overlay.cardPoints', us.cardPoints, them.cardPoints],
-    ['overlay.lastTrick', us.lastTrickBonus, them.lastTrickBonus],
-    ['overlay.marriages', us.marriagePoints, them.marriagePoints],
-    ['overlay.total', us.rawTotal, them.rawTotal],
-    ['overlay.tricks', us.tricks, them.tricks],
+  const order = sideOrder(players, mySide);
+  const sideLabel = (side: Side): string =>
+    players === 4 ? (side === mySide ? t('table.us') : t('table.them')) : nameOf(side as Seat);
+  const cols = order.map((side) => result.sides[side]).filter((s) => s !== undefined);
+  if (cols.length !== order.length) return null;
+
+  const hasDiscards = cols.some((s) => s.discardPoints > 0);
+  const hasRounding = cols.some((s) => s.roundedTotal !== s.rawTotal);
+  const hasPorvoo = cols.some((s) => s.porvoo);
+  const rows: Array<[string, number[]]> = [
+    ['overlay.cardPoints', cols.map((s) => s.cardPoints)],
+    ['overlay.lastTrick', cols.map((s) => s.lastTrickBonus)],
+    ['overlay.marriages', cols.map((s) => s.marriagePoints)],
+    ...(hasDiscards
+      ? [['overlay.koini', cols.map((s) => s.discardPoints)] as [string, number[]]]
+      : []),
+    ['overlay.total', cols.map((s) => s.rawTotal)],
+    ...(hasRounding
+      ? [['overlay.rounded', cols.map((s) => s.roundedTotal)] as [string, number[]]]
+      : []),
+    ['overlay.tricks', cols.map((s) => s.tricks)],
   ];
 
   return (
     <div className="overlay" role="dialog" aria-modal="true">
       <div className="overlay__panel stack">
         <h2>{t('event.dealScored')}</h2>
-        {result.declarer !== null && result.contract !== null && result.made !== null && (
-          <p className={result.made ? 'overlay__made' : 'overlay__failed'}>
-            {t(result.made ? 'overlay.contractMade' : 'overlay.contractFailed', {
-              contract: result.contract,
-              name: nameOf(result.declarer),
-            })}
-          </p>
+        {result.declarer === null ? (
+          <p className="dim tsheet__center">{t('overlay.contractless')}</p>
+        ) : (
+          result.contract !== null &&
+          result.made !== null && (
+            <p className={result.made ? 'overlay__made' : 'overlay__failed'}>
+              {t(result.made ? 'overlay.contractMade' : 'overlay.contractFailed', {
+                contract: result.contract,
+                name: nameOf(result.declarer),
+              })}
+            </p>
+          )
         )}
         <table className="score">
           <thead>
             <tr>
               <th />
-              <th>{t('table.us')}</th>
-              <th>{t('table.them')}</th>
+              {order.map((side) => (
+                <th key={side}>{sideLabel(side)}</th>
+              ))}
             </tr>
           </thead>
           <tbody>
-            {rows.map(([key, usValue, themValue]) => (
+            {rows.map(([key, values]) => (
               <tr key={key}>
                 <th>{t(key)}</th>
-                <td>{usValue}</td>
-                <td>{themValue}</td>
+                {values.map((value, i) => (
+                  <td key={order[i]}>{value}</td>
+                ))}
               </tr>
             ))}
-            {(us.porvoo || them.porvoo) && (
+            {hasPorvoo && (
               <tr>
                 <th className="score__porvoo">{t('table.porvoo')}</th>
-                <td className="score__porvoo">{us.porvoo ? '×' : ''}</td>
-                <td className="score__porvoo">{them.porvoo ? '×' : ''}</td>
+                {cols.map((s, i) => (
+                  <td key={order[i]} className="score__porvoo">
+                    {s.porvoo ? '×' : ''}
+                  </td>
+                ))}
               </tr>
             )}
             <tr className="score__delta">
               <th>{t('overlay.delta')}</th>
-              <td className={us.scoreDelta >= 0 ? 'delta--pos' : 'delta--neg'}>
-                {signed(us.scoreDelta)}
-              </td>
-              <td className={them.scoreDelta >= 0 ? 'delta--pos' : 'delta--neg'}>
-                {signed(them.scoreDelta)}
-              </td>
+              {cols.map((s, i) => (
+                <td key={order[i]} className={s.scoreDelta >= 0 ? 'delta--pos' : 'delta--neg'}>
+                  {signed(s.scoreDelta)}
+                </td>
+              ))}
             </tr>
           </tbody>
         </table>
         <p className="tsheet__center">
           <strong>
-            {t('overlay.standing', { us: scores[mySide] ?? 0, them: scores[otherSide] ?? 0 })}
+            {players === 4
+              ? t('overlay.standing', {
+                  us: scores[mySide] ?? 0,
+                  them: scores[mySide === 0 ? 1 : 0] ?? 0,
+                })
+              : order.map((side, i) => (
+                  <span key={side}>
+                    {i > 0 && ' · '}
+                    {sideLabel(side)} {scores[side] ?? 0}
+                  </span>
+                ))}
           </strong>
         </p>
         <p className="dim tsheet__center">{t('overlay.nextDeal')}</p>
@@ -130,18 +171,33 @@ export function MatchEndedOverlay({
         ? t('overlay.victory')
         : t('overlay.defeat');
   const isHost = seat !== null && seat === hostSeat;
+  const sides = Array.from({ length: sideCount({ players }) }, (_, i) => i as Side);
+  const ranked = [...sides].sort((a, b) => (scores[b] ?? 0) - (scores[a] ?? 0));
 
   return (
     <div className="overlay" role="dialog" aria-modal="true">
       <div className="overlay__panel stack">
         <h2 className={won ? 'overlay__win' : undefined}>{title}</h2>
         <p className="tsheet__center">{t('overlay.winners', { names: winners })}</p>
-        <p className="overlay__final">
-          {scores[mySide] ?? 0} — {scores[otherSide] ?? 0}
-        </p>
-        <p className="dim tsheet__center">
-          {t('table.us')} — {t('table.them')}
-        </p>
+        {players === 4 ? (
+          <>
+            <p className="overlay__final">
+              {scores[mySide] ?? 0} — {scores[otherSide] ?? 0}
+            </p>
+            <p className="dim tsheet__center">
+              {t('table.us')} — {t('table.them')}
+            </p>
+          </>
+        ) : (
+          <p className="overlay__final">
+            {ranked.map((side, i) => (
+              <span key={side} className={side === winnerSide ? 'overlay__win' : undefined}>
+                {i > 0 && ' · '}
+                {nameOf(side as Seat)} {scores[side] ?? 0}
+              </span>
+            ))}
+          </p>
+        )}
         {isHost ? (
           <button
             type="button"

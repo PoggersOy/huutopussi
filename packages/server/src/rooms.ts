@@ -6,7 +6,7 @@
  */
 import { randomBytes } from 'node:crypto';
 import type { MatchState, RuleConfig, Seat } from '@hp/engine';
-import { SEATS } from '@hp/engine';
+import { activeSeats } from '@hp/engine';
 import type { RoomStatePublic, SeatInfo } from '@hp/protocol';
 import { isConnected, type Session } from './sessions.js';
 
@@ -93,15 +93,16 @@ export function sessionAtSeat(room: Room, seat: Seat): Session | null {
 export function hostSessionOf(room: Room): Session | null {
   const recorded = room.hostToken !== null ? (room.sessions.get(room.hostToken) ?? null) : null;
   if (recorded && recorded.seat !== null) return recorded;
-  for (const seat of SEATS) {
+  for (const seat of activeSeats(room.config.players)) {
     const s = sessionAtSeat(room, seat);
     if (s && s.kind === 'human') return s;
   }
   return null;
 }
 
+/** One SeatInfo per ACTIVE seat (length = config.players; 2p dummy is no seat). */
 export function roomPublic(room: Room): RoomStatePublic {
-  const seats = SEATS.map((seat): SeatInfo => {
+  const seats = activeSeats(room.config.players).map((seat): SeatInfo => {
     const s = sessionAtSeat(room, seat);
     if (!s) {
       return { seat, nickname: null, kind: 'empty', connected: false, botControlled: false };
@@ -113,7 +114,7 @@ export function roomPublic(room: Room): RoomStatePublic {
       connected: s.kind === 'bot' ? true : isConnected(s),
       botControlled: s.botControlled,
     };
-  }) as [SeatInfo, SeatInfo, SeatInfo, SeatInfo];
+  });
   const host = hostSessionOf(room);
   return {
     code: room.code,
@@ -129,6 +130,7 @@ export function anyHumanConnected(room: Room): boolean {
   return false;
 }
 
+/** Match readiness: every ACTIVE seat (0..players-1) is filled. */
 export function allSeatsFilled(room: Room): boolean {
-  return SEATS.every((seat) => sessionAtSeat(room, seat) !== null);
+  return activeSeats(room.config.players).every((seat) => sessionAtSeat(room, seat) !== null);
 }

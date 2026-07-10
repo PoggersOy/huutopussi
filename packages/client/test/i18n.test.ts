@@ -123,3 +123,41 @@ describe('i18n catalogs', () => {
     expect(orphans).toEqual([]);
   });
 });
+
+// The ohje never uses "tikki" (0×); it uses "kääntö" for a won trick / pile
+// (inflected as käänn-: käännön, käännöt) and "pelikierros" for a trick round.
+// "läpäri" is the SLAM and "Porvoo" is päämuoto slang — neither belongs on the
+// trickless column. See docs/illisoft-saannot-spec.md §12.
+describe('illisoft fi terminology (ohje §12)', () => {
+  // Matches every inflection of kääntö (kääntö / käännön / käännöt) but not tikki.
+  const KAANTO = 'kään';
+
+  it('labels the trickless column with kääntö, not läpäri or Porvoo', () => {
+    const label = fi.table.porvoo.toLowerCase();
+    expect(label).not.toContain('läpäri');
+    expect(label).not.toContain('porvoo');
+    expect(label).toContain(KAANTO);
+  });
+
+  it('uses kääntö (never tikki) for every won-trick label', () => {
+    const wonTrickLabels = [
+      fi.overlay.tricks,
+      fi.table.lastTrickBtn,
+      fi.table.trickWonBy,
+      fi.overlay.lastTrick,
+      fi.config.declareRightOwnLedWonTrick,
+      fi.config.declareRightAnyWonTrick,
+      fi.config.showLastTrick,
+    ];
+    for (const label of wonTrickLabels) {
+      expect(label.toLowerCase()).not.toContain('tikki');
+      expect(label.toLowerCase()).toContain(KAANTO);
+    }
+  });
+
+  it('uses pelikierros (never tikki) for the head-trick obligation', () => {
+    const label = fi.error.mustHeadTrick.toLowerCase();
+    expect(label).not.toContain('tikki');
+    expect(label).toContain('pelikierro');
+  });
+});

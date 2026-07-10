@@ -14,6 +14,11 @@ function summary(finishedAt: number, winnerSide: 0 | 1 = 0): MatchSummary {
   return { finishedAt, winnerSide, finalScores: [520, 310], deals: 7 };
 }
 
+/** A 2-3p (pirunpakka) summary: side === seat, so winnerSide can be 2. */
+function summary3p(finishedAt: number, winnerSide: 0 | 1 | 2 = 2): MatchSummary {
+  return { finishedAt, winnerSide, finalScores: [430, 380, 510], deals: 9 };
+}
+
 beforeEach(() => localStorage.clear());
 
 describe('recent rooms', () => {
@@ -62,5 +67,26 @@ describe('room match history', () => {
   it('filters malformed entries', () => {
     localStorage.setItem('hp:history:XXXXX', JSON.stringify([{ bogus: true }, summary(5)]));
     expect(loadRoomHistory('XXXXX')).toEqual([summary(5)]);
+  });
+
+  it('keeps 3-player summaries (winnerSide up to 2, three final scores)', () => {
+    recordRoomHistory('TRI33', [summary3p(1, 0), summary3p(2, 1), summary3p(3, 2)]);
+    expect(loadRoomHistory('TRI33')).toHaveLength(3);
+    expect(
+      loadAllHistory()
+        .map((e) => e.match.winnerSide)
+        .sort(),
+    ).toEqual([0, 1, 2]);
+  });
+
+  it('rejects a winnerSide that does not index the final scores', () => {
+    const bad: MatchSummary = {
+      finishedAt: 9,
+      winnerSide: 2 as 0 | 1,
+      finalScores: [1, 2],
+      deals: 4,
+    };
+    localStorage.setItem('hp:history:BADXX', JSON.stringify([bad, summary(7)]));
+    expect(loadRoomHistory('BADXX')).toEqual([summary(7)]);
   });
 });

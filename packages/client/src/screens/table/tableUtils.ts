@@ -5,9 +5,17 @@ import { useStore } from '../../store';
 
 export const SUIT_GLYPH: Record<Suit, string> = { H: '♥', D: '♦', C: '♣', S: '♠' };
 
-/** Position of `other` relative to `me` around the table: 0=self/bottom, 1=left, 2=partner/top, 3=right. */
-export function relSeat(me: Seat, other: Seat): 0 | 1 | 2 | 3 {
-  return ((other - me + 4) % 4) as 0 | 1 | 2 | 3;
+/**
+ * Visual felt slot of `other` relative to `me`: 0=self/bottom, 1=left,
+ * 2=top/across, 3=right. Parametric on the game mode: 4p keeps the classic
+ * layout (partner across), 3p seats the two opponents left+right, 2p seats
+ * the single opponent across.
+ */
+export function feltSlot(me: Seat, other: Seat, players: 2 | 3 | 4): 0 | 1 | 2 | 3 {
+  const rel = (other - me + players) % players;
+  if (players === 2) return rel === 0 ? 0 : 2;
+  if (players === 3) return rel === 0 ? 0 : rel === 1 ? 1 : 3;
+  return rel as 0 | 1 | 2 | 3;
 }
 
 /** Seat display name: nickname when seated, localized seat label otherwise. */

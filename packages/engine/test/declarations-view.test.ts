@@ -552,13 +552,30 @@ describe('askWhole', () => {
     expect(act(ctx, 1, { type: 'askWhole' })).toEqual([
       { type: 'askedWhole', seat: 1 },
       { type: 'answeredWhole', seat: 3, suit: 'C' },
-      { type: 'trumpSet', suit: 'C', seat: 1, side: 1, how: 'wholeAsk', points: 60 },
+      { type: 'trumpSet', suit: 'C', seat: 3, side: 1, how: 'wholeAsk', points: 60 },
     ]);
     expect(ctx.state.deal?.trump).toBe('C');
-    // The declaration is attributed to the ASKER's lead opportunity.
+    // ohje 587: the declaration is attributed to the HOLDER (seat 3), not the
+    // asker (seat 1). Both share side 1.
     expect(ctx.state.deal?.declarations).toEqual([
-      { suit: 'C', seat: 1, side: 1, how: 'wholeAsk', trickIndex: 1, points: 60 },
+      { suit: 'C', seat: 3, side: 1, how: 'wholeAsk', trickIndex: 1, points: 60 },
     ]);
+  });
+
+  // ohje 587: "jos valtti tehdään kokonaista kysymällä, valtin tekijäksi
+  // katsotaan se pelaaja, jolla valtti oli kädessään, ei se, joka kysyi
+  // kokonaista." Regression guard for the asker-credit divergence.
+  it('credits a whole-ask trump to the HOLDER seat, never the asker (ohje 587)', () => {
+    const ctx = setupDeal(ANYWON_HANDS, ANYWON_GIVE);
+    winTrick0(ctx, ['CJ', 'C7', 'C8']);
+    const events = act(ctx, 1, { type: 'askWhole' });
+    const trumpSet = events.find((e) => e.type === 'trumpSet');
+    // Asker is seat 1; the ♣ marriage sits in the partner's (seat 3) hand.
+    expect(trumpSet).toMatchObject({ how: 'wholeAsk', seat: 3 });
+    expect(trumpSet).not.toMatchObject({ seat: 1 });
+    const decl = ctx.state.deal?.declarations[0];
+    expect(decl?.seat).toBe(3);
+    expect(decl?.side).toBe(1); // asker and holder still share the side
   });
 
   it('enters the choice phase with 2+ marriages and validates the answer', () => {
@@ -581,7 +598,8 @@ describe('askWhole', () => {
 
     expect(act(ctx, 3, { type: 'answerWhole', suit: 'C' })).toEqual([
       { type: 'answeredWhole', seat: 3, suit: 'C' },
-      { type: 'trumpSet', suit: 'C', seat: 1, side: 1, how: 'wholeAsk', points: 60 },
+      // ohje 587: credited to the holder (seat 3), not the asker (seat 1).
+      { type: 'trumpSet', suit: 'C', seat: 3, side: 1, how: 'wholeAsk', points: 60 },
     ]);
     expect(ctx.state.deal?.trump).toBe('C');
     expect(ctx.state.deal?.phase).toEqual({ name: 'lead', leader: 1, canDeclare: false });
@@ -633,7 +651,8 @@ describe('askWhole', () => {
     expect(act(ctx, 1, { type: 'askWhole' })).toEqual([
       { type: 'askedWhole', seat: 1 },
       { type: 'answeredWhole', seat: 3, suit: 'C' },
-      { type: 'trumpSet', suit: 'C', seat: 1, side: 1, how: 'wholeAsk', points: 60 },
+      // ohje 587: credited to the holder (seat 3), not the asker (seat 1).
+      { type: 'trumpSet', suit: 'C', seat: 3, side: 1, how: 'wholeAsk', points: 60 },
     ]);
     expect(ctx.state.deal?.trump).toBe('C');
     expect(ctx.state.deal?.declarations.map((d) => d.suit)).toEqual(['H', 'D', 'C']);
@@ -909,7 +928,9 @@ describe('full-deal declaration lifecycle', () => {
   it('runs whole-ask locks, mid-deal switches and end-of-deal boundaries', () => {
     const ctx = playLifecycleDeal();
     expect(ctx.state.deal?.declarations).toEqual([
-      { suit: 'C', seat: 1, side: 1, how: 'wholeAsk', trickIndex: 1, points: 60 },
+      // ohje 587: the whole-ask ♣ is credited to the holder (seat 3), not the
+      // asker (seat 1); seat 3 also declared ♦ from hand.
+      { suit: 'C', seat: 3, side: 1, how: 'wholeAsk', trickIndex: 1, points: 60 },
       { suit: 'D', seat: 3, side: 1, how: 'own', trickIndex: 4, points: 80 },
     ]);
     // Replay determinism: the event log reproduces the final state.

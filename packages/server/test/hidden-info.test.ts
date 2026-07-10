@@ -8,12 +8,23 @@
  * (every recipient receives every seq), exactly like the engine fuzz check.
  * Legitimately privy fields are excluded: the viewer's own hand, and the
  * exchange faces for the two exchanging seats.
+ *
+ * A second suite runs a 2p salainen-koini deal and scans every message for
+ * the deal's OTHER hidden zones: the talon faces (hidden until a kept talon
+ * card is publicly played), the dead dummy hand (never visible to anyone)
+ * and the declarer's face-down discards (visible to the declarer only).
  */
-import type { Seat } from '@hp/engine';
+import type { Card, Seat } from '@hp/engine';
 import type { ServerMsg } from '@hp/protocol';
 import { afterAll, beforeAll, expect, test } from 'vitest';
 import { createServer, type HpServer } from '../src/index.js';
-import { attachDriver, seatFourHumans, TestClient, waitForDealScored } from './helpers.js';
+import {
+  attachDriver,
+  seatFourHumans,
+  seatHumans,
+  TestClient,
+  waitForDealScored,
+} from './helpers.js';
 
 let server: HpServer;
 let port: number;
@@ -155,6 +166,84 @@ test("no message ever leaks another seat's hand; hints only to the actor", async
   // Sanity: the scan had teeth — plenty of messages and card tokens flowed.
   const scanned = everyone.flatMap((c) => c.messages.filter((m) => m.t === 'update'));
   expect(scanned.length).toBeGreaterThan(100);
+
+  for (const c of everyone) c.close();
+});
+
+test('2p salainen koini: talon, dummy hand and discards never leak', async () => {
+  const clients = await seatHumans(port, 2, { players: 2, openTalon: false });
+  const host = clients[0] as TestClient;
+  const guest = clients[1] as TestClient;
+
+  const spectator = await TestClient.connect(port);
+  const sw = await spectator.hello({ roomCode: host.roomCode, nickname: 'peeper2' });
+  expect(sw.t).toBe('welcome');
+
+  // The guest always passes and the host opens the untouched auction, so the
+  // host (seat 0) is deterministically the declarer.
+  attachDriver(host, { openBid: true });
+  attachDriver(guest);
+
+  const everyone = [host, guest, spectator];
+  const scoredSeen = everyone.map((c) => waitForDealScored(c));
+  host.lobby({ type: 'startMatch' });
+  await Promise.all(scoredSeen);
+
+  // Server truth: the deal's hidden zones (intact in the scored deal state).
+  const room = server.rooms.get(host.roomCode);
+  const deal = room?.match?.deal;
+  if (!deal || !deal.talon || !deal.dummyHand || !deal.discarded) {
+    throw new Error('scored 2p deal must retain talon/dummyHand/discarded');
+  }
+  expect(deal.declarer).toBe(0);
+  expect(deal.talon.length).toBe(3);
+  expect(deal.dummyHand.length).toBe(11);
+  expect(deal.discarded.length).toBe(3);
+  const dummySet = new Set<Card>(deal.dummyHand);
+  const hiddenSet = new Set<Card>([...deal.talon, ...deal.dummyHand, ...deal.discarded]);
+
+  // When each card became public: kept talon cards surface only via a play.
+  const playedAt = new Map<Card, number>();
+  for (const m of spectator.messages) {
+    if (m.t !== 'update' || m.event?.type !== 'cardPlayed') continue;
+    if (!playedAt.has(m.event.card)) playedAt.set(m.event.card, m.seq);
+  }
+  expect(playedAt.size).toBe(22); // 11 tricks x 2 plays, all public
+
+  const violations: string[] = [];
+  const scan = (label: string, msgs: ServerMsg[], hidden: ReadonlySet<Card>): void => {
+    for (const m of msgs) {
+      if (m.t !== 'update' && m.t !== 'welcome') continue;
+      const json = JSON.stringify(m);
+      for (const match of json.matchAll(CARD_TOKEN_RE)) {
+        const card = match[1] as Card;
+        if (!hidden.has(card)) continue;
+        // A hidden-zone card is only ever legitimate once publicly played
+        // (kept talon cards in the declarer's hand); dummy/discards never are.
+        if ((playedAt.get(card) ?? Number.POSITIVE_INFINITY) > m.seq) {
+          violations.push(`${label}: seq ${m.seq} (${m.t}) leaks ${card}`);
+        }
+      }
+      // Salainen koini: the talon faces are never broadcast.
+      if ((m.t === 'update' || m.t === 'welcome') && m.view?.deal?.talonSeen != null) {
+        violations.push(`${label}: seq ${m.seq} carries talonSeen`);
+      }
+    }
+  };
+
+  // Non-declarer viewers may see none of the hidden zones; the declarer is
+  // privy to talon+discards but must never see the dummy hand.
+  scan('guest', guest.messages, hiddenSet);
+  scan('spectator', spectator.messages, hiddenSet);
+  scan('declarer', host.messages, dummySet);
+
+  expect(violations).toEqual([]);
+
+  // Teeth: the hidden zones were non-trivial and messages actually flowed. A
+  // 2p deal has 11 tricks x 2 plays = 22 public plays, so the guest reliably
+  // receives at least that many update snapshots plus bidding/koini/scored.
+  expect(hiddenSet.size).toBeGreaterThanOrEqual(14);
+  expect(guest.messages.filter((m) => m.t === 'update').length).toBeGreaterThan(22);
 
   for (const c of everyone) c.close();
 });

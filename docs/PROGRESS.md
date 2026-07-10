@@ -4,13 +4,14 @@ Plan: `docs/plan.md`. Rules: `docs/huutopussin-saannot.md`.
 
 | Phase | Status | Verified by |
 |---|---|---|
-| P0 Scaffolding | in progress | — |
-| P1 Engine: deal/bid/exchange/scoring | pending | — |
-| P2 Engine: tricks/declarations/fuzz | pending | — |
-| P3 Server | done | integration+chaos+hidden-info+persistence tests (9) green |
-| P4 Client MVP | pending | — |
-| P5 Reconnect + PWA + i18n | pending | — |
-| P6 Persistence + deploy | pending | — |
+| P0 Scaffolding | done | pnpm workspaces build; `pnpm typecheck`/`pnpm lint` green across 5 packages |
+| P1 Engine: deal/bid/exchange/scoring | done | engine vitest suite (part of 319 engine tests); 5000-game sim clean |
+| P2 Engine: tricks/declarations/fuzz | done | 319 engine tests + 50k-game fuzz gate (earlier) + 5000-game sim (seed 31337, mixed) — 36,306 deals, zero invariant violations |
+| P3 Server | done | 19 server tests (integration/chaos/hidden-info/persistence/reconnect/modes) green |
+| P4 Client MVP | done | 49 client vitest tests; `pnpm --filter @hp/client build` (Vite+PWA) green |
+| P5 Reconnect + PWA + i18n | done | client reconnect/PWA covered by e2e reconnect+pwa specs; i18n fi+en suite green |
+| P6 Persistence + deploy | done | persistence+recovery server tests; `docker build` → 267 MB image serving healthz/SPA/WS |
+| E2E (Playwright, chromium/iPhone-14) | done | 5 specs green (full-game, two-humans, reconnect, pwa×2) — 3.9 min/run |
 | P7 Polish | pending | — |
 
 ## Log
@@ -22,7 +23,7 @@ Plan: `docs/plan.md`. Rules: `docs/huutopussin-saannot.md`.
   green, fuzz harness (2k games verified). Protocol package authored by architect
   (snapshot-per-change sync model — supersedes plan's event+gap scheme).
   GitHub repo created: BigTimeSam/huutopussi (private); CI/CD + Fly.io deploy and
-  huutopussi.com domain are the new deployment targets.
+  huutopussi.online domain are the new deployment targets.
 - 2026-07-10 20:05: **50k fuzz gate PASSED** — 50,000 games (seed 1000), 558,320
   deals, 23.9M actions, 30.9M events, zero invariant violations, 50.6 games/s.
   P2 gate formally satisfied. Full-stack workflow WF-2 running (server, client,
@@ -89,6 +90,58 @@ Plan: `docs/plan.md`. Rules: `docs/huutopussin-saannot.md`.
   engine PlayerAction gained 'discardCards' which @hp/protocol's
   playerActionSchema does not carry yet (in-flight 2-3p migration, not a
   Table issue).
+
+- **P5 — Playwright E2E suite (chromium, iPhone 14 viewport)**: root
+  `@playwright/test` devDep + `playwright.config.ts` (single serial worker;
+  `webServer` = `e2e/run-server.mjs`, which builds the client + esbuild server
+  bundle — skipped in CI via `E2E_SKIP_BUILD=1` — and starts the REAL
+  production server entry on :8197 with a temp SQLite db). `e2e/helpers.ts` is
+  a hint-driven UI driver that only ever taps enabled elements (bid-min-once →
+  pass, exchange tap-select+confirm, min contract, "Just lead", two-step
+  raised-card play). Four specs: `full-game` (Anna + 3 bots through a whole
+  deal; deal-scored overlay numbers sum per the point system — 130 card+last
+  points, 9 tricks, totals add up), `two-humans` (two contexts + 2 bots; bid
+  speech bubbles on both screens; the first three tricks byte-identical via
+  the last-trick peek + equal scores), `reconnect` (mid-deal reload reclaims
+  the seat via the localStorage token with identical hand/scores; faked
+  visibilitychange wake resyncs without tripping the 3 s zombie watchdog;
+  seat stays playable), `pwa` (manifest + SW activation + offline shell via
+  the precache, skipping gracefully on SW caveats). New CI job `e2e` (needs:
+  ci, chromium only, uploads the report on failure); root script `test:e2e`.
+  Full suite green twice in a row (~4.5 min/run — real bot delays).
+
+- 2026-07-10 (evening): **Full-stack build verified end-to-end — final gate
+  green.** The complete stack (engine + protocol + bots + server + client +
+  E2E + Docker) now passes a single gate run:
+  - `pnpm typecheck` — 5 packages clean.
+  - `pnpm lint` (Biome) — 106 files, no findings.
+  - `pnpm test` — **402 unit tests** green (engine 319, client 49, server 19,
+    bots 15; protocol type-only, no runtime tests).
+  - `pnpm sim -- --games 5000 --seed 31337 --bots mixed` — 5,000 games, 36,306
+    deals, 1.38M actions, 1.88M events, **zero invariant violations**,
+    **71.0 games/s** (heuristic avg 551.8 vs random 140.9).
+  - `pnpm --filter @hp/client build` — Vite prod build + PWA precache (13
+    entries, 469 KiB) green.
+  - `docker build -t hp-final .` — multi-stage image, **267 MB**, runtime serves
+    static SPA + `/ws` + `/healthz`.
+  - `npx playwright test` (chromium, iPhone-14 viewport) — **5 E2E specs green**
+    (full-game, two-humans, reconnect, pwa manifest + offline), ~3.9 min/run.
+
+  One gate blocker found and fixed during this run: the server now defaults new
+  rooms to **illisoft** rules (`defaultConfig()` → `ILLISOFT_RULES`, last-trick
+  bonus 20, contract-less deals), but `e2e/full-game.spec.ts` still asserted the
+  päämuoto point system (130-point deals, always a declarer). Fixed by pinning
+  päämuoto in that spec via a new `setPreset()` helper (selects the lobby
+  preset dropdown and waits for the server echo) — the illisoft default path
+  stays covered by the two-humans/reconnect specs, which run under it. No engine
+  or product code changed; the engine was already proven consistent for the
+  illisoft config by the sim's 4p `cardPoints+lastTrickBonus == totalDealPoints`
+  invariant (line 451) over all 36,306 deals.
+
+  Remaining low-severity finding (1): no E2E asserts the illisoft **default's**
+  scoring specifics (last-trick 20, nearest-5 opponent rounding, contract-less
+  all-pass deals) — full-game's point-arithmetic assertions now run only under
+  the pinned päämuoto preset. Consider an illisoft-scoped scoring spec post-MVP.
 
 ## Backlog (post-MVP)
 
