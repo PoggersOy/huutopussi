@@ -175,11 +175,13 @@ export function Table() {
           <>
             {([1, 2, 3] as const).map((rel) => {
               const other = ((me + rel) % 4) as Seat;
+              const info = room.seats[other];
+              if (info === undefined) return null;
               return (
                 <OpponentPanel
                   key={other}
                   pos={rel === 1 ? 'left' : rel === 2 ? 'top' : 'right'}
-                  info={room.seats[other]}
+                  info={info}
                   name={nameOf(other)}
                   count={deal.handCounts[other]}
                   isTurn={actor === other && view.winnerSide === null}

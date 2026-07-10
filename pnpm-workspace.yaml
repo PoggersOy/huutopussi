@@ -4,3 +4,10 @@ packages:
 onlyBuiltDependencies:
   - better-sqlite3
   - esbuild
+
+overrides:
+  # pure-rand 8.4.2 (published 2026-07-10, hours old) trips pnpm's
+  # minimumReleaseAge supply-chain check during the Docker `pnpm fetch`.
+  # Pin the previous release (dev-only dep of fast-check / engine tests);
+  # drop this once 8.4.2 is older than the policy window.
+  pure-rand: 8.4.1

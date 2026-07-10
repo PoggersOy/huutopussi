@@ -40,6 +40,9 @@
 FROM node:24-slim AS base
 ENV PNPM_HOME=/pnpm
 ENV PATH="$PNPM_HOME:$PATH"
+# No TTY in docker build: make pnpm non-interactive (it otherwise aborts when
+# it wants to recreate the modules dir created by `pnpm fetch`).
+ENV CI=true
 RUN corepack enable
 WORKDIR /repo
 
@@ -58,8 +61,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       python3 make g++ \
     && rm -rf /var/lib/apt/lists/*
 COPY . .
+# --prefer-offline (not --offline): `pnpm fetch` populates the store from the
+# lockfile alone, but skips some root-level tooling tarballs (e.g. biome);
+# prefer-offline reuses the cached store and downloads only what's missing.
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
-    pnpm install -r --frozen-lockfile --offline
+    pnpm install -r --frozen-lockfile --prefer-offline
 
 # Client → packages/client/dist (vite)
 RUN pnpm --filter @hp/client build

@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  pure-rand: 8.4.1
+
 importers:
 
   .:
@@ -2203,8 +2206,8 @@ packages:
     resolution: {integrity: sha512-vYt7UD1U9Wg6138shLtLOvdAu+8DsC/ilFtEVHcH+wydcSpNE20AfSOduf6MkRFahL5FY7X1oU7nKVZFtfq8Fg==}
     engines: {node: '>=6'}
 
-  pure-rand@8.4.2:
-    resolution: {integrity: sha512-vvuOGgcuPJAirlHvuQw1TrOiw7ptaIXXmIbNuiNOY6lNGJJH49PQ1Kj4nd783nPdQhQdicgOjVI2yI/9BD6/Ng==}
+  pure-rand@8.4.1:
+    resolution: {integrity: sha512-c58R2+SPFcSIPXoU834QN/KPDDOSd8sXcSrqf6e83Me6Rrp1EYkxukkjXMVrKvKaADs1SOyNkWdfvLf6zY8qLQ==}
 
   rc@1.2.8:
     resolution: {integrity: sha512-y3bGgqKj3QBdxLbLkomlohkvsA8gdAiUQlSBJnBhfn+BPxg4bc62d8TcBW15wavDfgexCgccckhcZvywyQYPOw==}
@@ -4443,7 +4446,7 @@ snapshots:
 
   fast-check@4.9.0:
     dependencies:
-      pure-rand: 8.4.2
+      pure-rand: 8.4.1
 
   fast-deep-equal@3.1.3: {}
 
@@ -4927,7 +4930,7 @@ snapshots:
 
   punycode@2.3.1: {}
 
-  pure-rand@8.4.2: {}
+  pure-rand@8.4.1: {}
 
   rc@1.2.8:
     dependencies:

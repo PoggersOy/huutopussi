@@ -23,7 +23,8 @@ import { createServer } from './server.js';
 
 function main(): void {
   const thisFile = fileURLToPath(import.meta.url);
-  const clientDist = resolve(dirname(thisFile), '../../client/dist');
+  // CLIENT_DIST (Docker: /app/public) wins; else the workspace layout path.
+  const clientDist = process.env.CLIENT_DIST ?? resolve(dirname(thisFile), '../../client/dist');
   const server = createServer({
     host: process.env.HOST ?? '0.0.0.0',
     port: Number(process.env.PORT ?? 8080),

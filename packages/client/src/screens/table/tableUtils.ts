@@ -14,7 +14,7 @@ export function relSeat(me: Seat, other: Seat): 0 | 1 | 2 | 3 {
 export function useNameOf(): (seat: Seat) => string {
   const room = useStore((s) => s.server.room);
   const { t } = useTranslation();
-  return (seat) => room?.seats[seat].nickname ?? t('table.seat', { seat: seat + 1 });
+  return (seat) => room?.seats[seat]?.nickname ?? t('table.seat', { seat: seat + 1 });
 }
 
 /**
