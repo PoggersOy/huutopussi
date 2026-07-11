@@ -14,6 +14,14 @@
  * `hello.matchmaking` intent + a `fillBotsAndStart` lobby command (client→
  * server), and an optional `RoomStatePublic.matchmaking` marker (server→client).
  * Additive/optional — PROTOCOL_VERSION still NOT bumped.
+ * Extended 2026-07-11 (user-authorized) for player-paced deals: a `nextDeal`
+ * lobby command (client→server) so a solo-vs-bots game advances to the next
+ * deal on the human's cue instead of a timer. Additive — no version bump.
+ * Extended 2026-07-11 (user-authorized) for the game-history deal browser:
+ * optional `MatchSummary.players`/`names`/`dealResults` carry each finished
+ * match's per-deal `DealResult` breakdowns (already persisted server-side) so
+ * the History screen can browse deal-by-deal. Additive/optional — pre-feature
+ * summaries simply omit them; PROTOCOL_VERSION still NOT bumped.
  *
  * Direction rules:
  *  - Client→server messages are UNTRUSTED: they are parsed with zod
@@ -35,6 +43,7 @@
 import type {
   ActionHint,
   Card,
+  DealResult,
   GameEvent,
   PlayerAction,
   PlayerView,
@@ -190,6 +199,11 @@ export const lobbyCmdSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('fillBotsAndStart') }),
   // Host-only: abort an ongoing match and close the room (all clients dropped).
   z.object({ type: z.literal('stopMatch') }),
+  // Advance to the next deal now (any seated player), while the match waits on a
+  // scored deal. Solo-vs-bots games do NOT auto-advance — the sole human drives
+  // the pace with this ("Jatka"); multi-human games auto-advance on a timer and
+  // never need it. No-op unless the deal is scored / a redeal is pending.
+  z.object({ type: z.literal('nextDeal') }),
 ]);
 
 // ── Client → server: envelope ────────────────────────────────────────────────
@@ -327,7 +341,26 @@ export interface MatchSummary {
   winnerSide: Side;
   /** One total per side: length === sideCount(config) (2 or 3). */
   finalScores: number[];
+  /** Number of deals played (the count; per-deal detail is `dealResults`). */
   deals: number;
+  /**
+   * Player count of the match — needed to render the deal breakdown, since a
+   * 2-side match is either 4p pairs (us/them) OR 2p (a side per seat). Optional:
+   * summaries produced before the deal-browser feature omit it.
+   */
+  players?: 2 | 3 | 4;
+  /**
+   * Seat-indexed display names captured at match end (length === players; a
+   * slot is null when the seat had no name). Optional (pre-feature summaries).
+   */
+  names?: (string | null)[];
+  /**
+   * Per-deal scoring breakdowns in deal order (index === dealIndex), for the
+   * History screen's deal-by-deal browser. Optional and possibly shorter than
+   * `deals` for matches finished before this feature (or if a legacy summary
+   * row was lost) — treat an absent/empty array as "no per-deal detail".
+   */
+  dealResults?: DealResult[];
 }
 
 /** Per-seat rating outcome of a finished match. */

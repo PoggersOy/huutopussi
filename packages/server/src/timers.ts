@@ -32,7 +32,12 @@ export interface TimerConfig {
    * always gets at least a full (host-editable) turn to come back.
    */
   graceMs: number;
-  /** Pause between dealScored and the server-authored next dealStarted. */
+  /**
+   * Pause between dealScored and the server-authored next dealStarted, in a
+   * MULTI-HUMAN room. A solo-vs-bots room does not auto-advance at all — the
+   * sole human advances with the `nextDeal` command ("Jatka") — so this delay
+   * never applies there (see server.ts isSoloVsBots).
+   */
   nextDealDelayMs: number;
   /** Pause between a redeal demand and the fresh dealStarted. */
   redealDelayMs: number;
@@ -48,10 +53,10 @@ export const DEFAULT_TIMER_CONFIG: TimerConfig = {
   // Floor only; the effective reconnect grace is at least the room's turn
   // budget (default 90 s == turnMs). See the graceMs field doc above.
   graceMs: 90_000,
-  nextDealDelayMs: 15_000,
+  nextDealDelayMs: 20_000,
   redealDelayMs: 5_000,
   idleCloseMs: 15 * 60_000,
-  botDelayMs: [1000, 2500],
+  botDelayMs: [500, 1200],
 };
 
 /** Crypto-random humanizing delay within the configured range. */

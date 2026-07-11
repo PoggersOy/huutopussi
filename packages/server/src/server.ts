@@ -619,6 +619,10 @@ export function createServer(opts: ServerOpts = {}): HpServer {
     // rating rows INSIDE it so they commit atomically with finishMatch.
     const matchEnding = events.some((e) => e.type === 'matchEnded');
     const ratingPlan = matchEnding ? planMatchRating(room, matchId, state, Date.now()) : null;
+    // Seat-indexed roster at match end, for the history deal-browser's labels.
+    const finalNames = matchEnding
+      ? activeSeats(room.config.players).map((seat) => sessionAtSeat(room, seat)?.nickname ?? null)
+      : null;
     db.transaction(() => {
       events.forEach((e, i) => {
         db.appendEvent(matchId, base + i + 1, e);
@@ -626,7 +630,7 @@ export function createServer(opts: ServerOpts = {}): HpServer {
           db.recordDealResult(matchId, state.dealIndex, state.dealer, e.result);
         }
         if (e.type === 'matchEnded') {
-          db.finishMatch(matchId, e.winnerSide, state.scores);
+          db.finishMatch(matchId, e.winnerSide, state.scores, finalNames);
         }
       });
       if (ratingPlan?.result.rated) db.applyRatingResults(ratingPlan.updates);
@@ -658,8 +662,26 @@ export function createServer(opts: ServerOpts = {}): HpServer {
       // Redeal demanded: author a fresh deal shortly.
       scheduleNextDeal(room, cfg.redealDelayMs, () => authorNextDeal(room));
     } else if (state.deal.phase.name === 'scored') {
-      scheduleNextDeal(room, cfg.nextDealDelayMs, () => authorNextDeal(room));
+      // Solo-vs-bots is player-paced: the sole human advances with `nextDeal`
+      // ("Jatka"), so no timer here. Multi-human games auto-advance so one idle
+      // player can't stall the table.
+      if (!isSoloVsBots(room)) {
+        scheduleNextDeal(room, cfg.nextDealDelayMs, () => authorNextDeal(room));
+      }
     }
+  }
+
+  /**
+   * A solo-vs-bots game: exactly one human occupies an active seat (the rest are
+   * bots). These games don't auto-advance between deals — the human drives the
+   * pace with the `nextDeal` lobby command.
+   */
+  function isSoloVsBots(room: Room): boolean {
+    let humans = 0;
+    for (const seat of activeSeats(room.config.players)) {
+      if (sessionAtSeat(room, seat)?.kind === 'human') humans += 1;
+    }
+    return humans === 1;
   }
 
   /** Server-authored dealStarted with a crypto-shuffled deck. */
@@ -955,6 +977,32 @@ export function createServer(opts: ServerOpts = {}): HpServer {
         if (!isHost) return fail('error.notHost');
         if (room.status !== 'playing') return fail('error.noMatch');
         closeRoom(room);
+        return true;
+      }
+      case 'nextDeal': {
+        // Advance a waiting (scored / redeal-pending) match to the next deal
+        // now. Any seated player may do it: solo-vs-bots games rely on it (no
+        // auto-advance timer), and in a multi-human game it just skips the rest
+        // of the countdown. No-op error outside a waiting state.
+        if (session.seat === null) return fail('error.notSeated');
+        if (room.status !== 'playing') return fail('error.noMatch');
+        const state = room.match;
+        if (!state || state.winnerSide !== null) return fail('error.noMatch');
+        const waiting = state.deal === null || state.deal.phase.name === 'scored';
+        if (!waiting) return fail('error.notInPhase');
+        if (room.timers.nextDeal) {
+          clearTimeout(room.timers.nextDeal);
+          room.timers.nextDeal = null;
+        }
+        try {
+          applyAndBroadcast(room, [nextDealEvent(state, cryptoShuffle(ALL_CARDS))], {
+            token: session.token,
+            actionId,
+          });
+        } catch (err) {
+          console.error(`[server] failed to advance deal in room ${room.code}`, err);
+          return fail('error.internal');
+        }
         return true;
       }
     }
@@ -1890,8 +1938,11 @@ export function createServer(opts: ServerOpts = {}): HpServer {
         // including the rating (a crash-during-finalize must not silently drop a
         // rated result). Atomic: finishMatch + ratings commit together.
         const plan = planMatchRating(room, rec.matchId, state, Date.now());
+        const finalNames = activeSeats(room.config.players).map(
+          (seat) => sessionAtSeat(room, seat)?.nickname ?? null,
+        );
         db.transaction(() => {
-          db.finishMatch(rec.matchId, state.winnerSide as Side, state.scores);
+          db.finishMatch(rec.matchId, state.winnerSide as Side, state.scores, finalNames);
           if (plan.result.rated) db.applyRatingResults(plan.updates);
         });
         applyRatingCache(plan);
@@ -1904,7 +1955,8 @@ export function createServer(opts: ServerOpts = {}): HpServer {
       if (room.status === 'playing') {
         if (state.deal === null) {
           scheduleNextDeal(room, cfg.redealDelayMs, () => authorNextDeal(room));
-        } else if (state.deal.phase.name === 'scored') {
+        } else if (state.deal.phase.name === 'scored' && !isSoloVsBots(room)) {
+          // Solo-vs-bots waits for the human's `nextDeal` even across a restart.
           scheduleNextDeal(room, cfg.nextDealDelayMs, () => authorNextDeal(room));
         }
       }

@@ -1,8 +1,11 @@
 /** CardFace renders every card of the 36-card deck; CardBack renders. */
-import { makeDeck, rankOf, suitOf } from '@hp/engine';
+import { makeDeck, rankOf, type Suit, suitOf } from '@hp/engine';
 import { render } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { CardBack, CardFace } from '../src/components/CardFace';
+
+// Four-colour deck (poker standard): ♥ red, ♦ blue, ♣ green, ♠ black.
+const EXPECTED_COLOR: Record<Suit, string> = { H: 'red', D: 'blue', C: 'green', S: 'black' };
 
 describe('CardFace', () => {
   it('renders all 36 cards with the right color and rank text', () => {
@@ -21,8 +24,7 @@ describe('CardFace', () => {
       const el = container.querySelector(`[data-card="${card}"]`);
       expect(el, card).not.toBeNull();
       const suit = suitOf(card);
-      const expectedColor = suit === 'H' || suit === 'D' ? 'red' : 'black';
-      expect(el?.getAttribute('data-color'), card).toBe(expectedColor);
+      expect(el?.getAttribute('data-color'), card).toBe(EXPECTED_COLOR[suit]);
       expect(el?.textContent, card).toContain(rankOf(card));
     }
     expect(container.querySelectorAll('svg[data-card]')).toHaveLength(36);

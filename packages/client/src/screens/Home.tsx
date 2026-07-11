@@ -1,7 +1,11 @@
 /**
- * Home: nickname (persisted) + create room + join by code + language toggle +
- * subtle PWA install affordance. Rejoinable/past games live on the History
- * screen (reached via the link below), not here.
+ * Home: the front door. A small config block (nickname + player count) shared by
+ * every mode, then three clearly separated ways to play:
+ *   1. Etsi peli   — online matchmaking against real opponents (ranked/unranked).
+ *   2. Pikapeli    — one tap to start immediately against bots.
+ *   3. Kaverit     — create a private room to share, or join one by code.
+ * A signed-in player's nickname field is pre-filled (editably) with their first
+ * name. Rejoinable/past games live on the History screen (link at the bottom).
  */
 import { type FormEvent, useEffect, useState, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -11,7 +15,7 @@ import { AuthPanel } from '../components/AuthPanel';
 import { ConnectionPill } from '../components/ConnectionPill';
 import { LANGUAGES, setLanguage } from '../i18n';
 import { installAvailable, promptInstall, subscribeInstall } from '../install';
-import { connect, findMatch } from '../socket';
+import { connect, findMatch, sendLobby } from '../socket';
 import { useStore } from '../store';
 
 const NICKNAME_KEY = 'hp:nickname';
@@ -35,26 +39,48 @@ export function storeNickname(nick: string): void {
   }
 }
 
+/** The leading token of a full name ("Samuli Vainio" → "Samuli"); '' if none. */
+function firstName(name: string | null): string {
+  return (name ?? '').trim().split(/\s+/)[0] ?? '';
+}
+
+/** Which start flow is in flight — decides how we route on the room's welcome. */
+type Pending = 'find' | 'quick' | 'create';
+
 export function Home() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
+  const user = useStore((s) => s.auth.user);
+  const signedIn = user !== null;
   const [nickname, setNickname] = useState(savedNickname);
   const [code, setCode] = useState('');
-  const [creating, setCreating] = useState(false);
-  const [searching, setSearching] = useState(false);
-  /** Game mode (2/3/4 players) — shared by Find match and Create room. */
+  const [pending, setPending] = useState<Pending | null>(null);
+  /** Game mode (2/3/4 players) — shared by every start flow. */
   const [players, setPlayers] = useState<2 | 3 | 4>(4);
   const [ranked, setRanked] = useState(false);
   const [buckets, setBuckets] = useState<MatchmakingBucket[]>([]);
   const canInstall = useSyncExternalStore(subscribeInstall, installAvailable);
   const createdCode = useStore((s) => s.server.room?.code);
-  const signedIn = useStore((s) => s.auth.user !== null);
   const effectiveRanked = ranked && signedIn;
 
-  // Room creation OR matchmaking: the code arrives in the welcome; then navigate.
+  // Signing in pre-fills the nickname with the account's first name — but only
+  // when the field is empty, so a name the player deliberately typed/saved wins.
+  // Keyed on `user` alone on purpose: run once per sign-in, not per keystroke.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `nickname` is read as a one-shot guard, not a trigger.
   useEffect(() => {
-    if ((creating || searching) && createdCode !== undefined) navigate(`/r/${createdCode}`);
-  }, [creating, searching, createdCode, navigate]);
+    if (user && nickname.trim() === '') {
+      const first = firstName(user.name);
+      if (first !== '') setNickname(first);
+    }
+  }, [user]);
+
+  // A start flow's room code arrives in the welcome (creation OR matchmaking).
+  // Quick-vs-bots additionally fills the empty seats and starts before we route.
+  useEffect(() => {
+    if (pending === null || createdCode === undefined) return;
+    if (pending === 'quick') sendLobby({ type: 'fillBotsAndStart' });
+    navigate(`/r/${createdCode}`);
+  }, [pending, createdCode, navigate]);
 
   // Ranked needs a signed-in account; drop the toggle on sign-out.
   useEffect(() => {
@@ -86,14 +112,19 @@ export function Home() {
     return nick === '' ? undefined : nick;
   }
 
-  function onCreate(): void {
-    setCreating(true);
+  function onFindMatch(): void {
+    setPending('find');
+    findMatch(players, effectiveRanked, persistNickname());
+  }
+
+  function onQuickBots(): void {
+    setPending('quick');
     connect(undefined, undefined, persistNickname(), { players });
   }
 
-  function onFindMatch(): void {
-    setSearching(true);
-    findMatch(players, effectiveRanked, persistNickname());
+  function onCreate(): void {
+    setPending('create');
+    connect(undefined, undefined, persistNickname(), { players });
   }
 
   function onJoin(e: FormEvent): void {
@@ -102,6 +133,8 @@ export function Home() {
     const trimmed = code.trim().toUpperCase();
     if (trimmed !== '') navigate(`/r/${trimmed}`);
   }
+
+  const busy = pending !== null;
 
   return (
     <div className="screen">
@@ -115,7 +148,9 @@ export function Home() {
         </div>
         <p className="dim">{t('home.tagline')}</p>
       </header>
+
       <main className="screen__main">
+        {/* Shared config: who you are + how many at the table. */}
         <div className="panel stack">
           <label className="stack">
             <span className="dim">{t('home.nickname')}</span>
@@ -127,23 +162,37 @@ export function Home() {
               autoComplete="nickname"
             />
           </label>
-          <label className="stack">
+          <div className="stack">
             <span className="dim">{t('config.players')}</span>
-            <select
-              value={players}
-              onChange={(e) => setPlayers(Number(e.target.value) as 2 | 3 | 4)}
-            >
+            <div className="seg">
               {([2, 3, 4] as const).map((n) => (
-                <option key={n} value={n}>
-                  {t('config.playersOpt', { n })}
-                </option>
+                <button
+                  type="button"
+                  key={n}
+                  className="seg__opt"
+                  aria-pressed={players === n}
+                  onClick={() => setPlayers(n)}
+                >
+                  {n}
+                </button>
               ))}
-            </select>
-          </label>
+            </div>
+          </div>
         </div>
 
-        <div className="panel stack">
-          <span className="dim">{t('matchmaking.title')}</span>
+        <h2 className="home-heading">{t('home.chooseMode')}</h2>
+
+        {/* 1 — Online matchmaking. */}
+        <section className="mode-card">
+          <div className="mode-card__head">
+            <span className="mode-card__icon" aria-hidden="true">
+              🔎
+            </span>
+            <div className="mode-card__text">
+              <h3 className="mode-card__title">{t('home.online.title')}</h3>
+              <p className="dim mode-card__desc">{t('home.online.desc')}</p>
+            </div>
+          </div>
           <div className={`toggle${effectiveRanked ? ' toggle--on' : ''}`}>
             <span className="toggle__thumb" aria-hidden="true" />
             <button
@@ -165,42 +214,71 @@ export function Home() {
             </button>
           </div>
           {ranked && !signedIn && <span className="dim">{t('matchmaking.rankedSignInHint')}</span>}
-          <button type="button" className="btn--primary" onClick={onFindMatch} disabled={searching}>
-            {searching ? t('matchmaking.searching') : t('matchmaking.find')}
-            {!searching && waiting > 0 && (
+          <button type="button" className="btn--primary" onClick={onFindMatch} disabled={busy}>
+            {pending === 'find' ? t('matchmaking.searching') : t('home.online.action')}
+            {pending !== 'find' && waiting > 0 && (
               <span className="mm-count">
                 {' '}
                 · {t('matchmaking.waitingCount', { count: waiting })}
               </span>
             )}
           </button>
-        </div>
+        </section>
 
-        <div className="panel stack">
-          <button type="button" onClick={onCreate} disabled={creating}>
-            {creating ? t('connection.connecting') : t('home.create')}
+        {/* 2 — Quick match against bots. */}
+        <section className="mode-card">
+          <div className="mode-card__head">
+            <span className="mode-card__icon" aria-hidden="true">
+              🤖
+            </span>
+            <div className="mode-card__text">
+              <h3 className="mode-card__title">{t('home.bots.title')}</h3>
+              <p className="dim mode-card__desc">{t('home.bots.desc')}</p>
+            </div>
+          </div>
+          <button type="button" onClick={onQuickBots} disabled={busy}>
+            {pending === 'quick' ? t('connection.connecting') : t('home.bots.action')}
           </button>
-        </div>
+        </section>
 
-        <form className="panel stack" onSubmit={onJoin}>
-          <span className="dim">{t('home.orJoin')}</span>
-          <input
-            value={code}
-            onChange={(e) => setCode(e.target.value.toUpperCase())}
-            placeholder={t('home.codePlaceholder')}
-            maxLength={5}
-            autoCapitalize="characters"
-            autoCorrect="off"
-            spellCheck={false}
-          />
-          <button type="submit" disabled={code.trim().length !== 5}>
-            {t('home.join')}
+        {/* 3 — Private room: create & share, or join by code. */}
+        <section className="mode-card">
+          <div className="mode-card__head">
+            <span className="mode-card__icon" aria-hidden="true">
+              👥
+            </span>
+            <div className="mode-card__text">
+              <h3 className="mode-card__title">{t('home.friends.title')}</h3>
+              <p className="dim mode-card__desc">{t('home.friends.desc')}</p>
+            </div>
+          </div>
+          <button type="button" onClick={onCreate} disabled={busy}>
+            {pending === 'create' ? t('connection.connecting') : t('home.create')}
           </button>
-        </form>
+          <div className="mode-card__or">
+            <span>{t('home.friends.or')}</span>
+          </div>
+          <form className="row mode-card__join" onSubmit={onJoin}>
+            <input
+              value={code}
+              onChange={(e) => setCode(e.target.value.toUpperCase())}
+              placeholder={t('home.codePlaceholder')}
+              maxLength={5}
+              autoCapitalize="characters"
+              autoCorrect="off"
+              spellCheck={false}
+            />
+            <button type="submit" disabled={code.trim().length !== 5}>
+              {t('home.join')}
+            </button>
+          </form>
+        </section>
+
         <button type="button" className="btn--ghost" onClick={() => navigate('/history')}>
           {t('home.historyLink')}
         </button>
       </main>
+
       <footer className="screen__bottom row" style={{ justifyContent: 'space-between' }}>
         <div className="row">
           <span className="dim">{t('home.language')}:</span>

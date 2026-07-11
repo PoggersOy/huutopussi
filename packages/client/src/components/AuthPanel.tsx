@@ -56,9 +56,43 @@ export function AuthPanel() {
   }
 
   if (googleClientId) {
-    // GIS renders its own (icon) button into this slot; the title labels it.
-    return <div ref={btnRef} className="auth-header__btn" title={t('auth.signInPrompt')} />;
+    // A custom, app-styled circular button (dark felt disc + gold ring + the
+    // Google "G"). The *real* GIS icon button is rendered into the overlay slot
+    // on top of it at opacity 0, so the actual sign-in click still runs through
+    // Google Identity Services — we get our look without touching the flow.
+    return (
+      <div className="auth-header__signin" title={t('auth.signInPrompt')}>
+        <span className="auth-header__signin-face" aria-hidden="true">
+          <GoogleG />
+        </span>
+        <div ref={btnRef} className="auth-header__gis" aria-hidden="true" />
+      </div>
+    );
   }
 
   return null; // login disabled → guest-only
+}
+
+/** The official multi-colour Google "G" mark. */
+function GoogleG() {
+  return (
+    <svg viewBox="0 0 24 24" width="20" height="20" role="img" aria-hidden="true">
+      <path
+        fill="#4285F4"
+        d="M23.06 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h6.2a5.3 5.3 0 0 1-2.3 3.48v2.89h3.72c2.17-2 3.44-4.95 3.44-8.38z"
+      />
+      <path
+        fill="#34A853"
+        d="M12 24c3.1 0 5.7-1.03 7.6-2.79l-3.72-2.89c-1.03.69-2.35 1.1-3.88 1.1-2.98 0-5.5-2.01-6.4-4.72H1.75v2.98A11.99 11.99 0 0 0 12 24z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M5.6 14.7A7.2 7.2 0 0 1 5.22 12c0-.94.16-1.85.38-2.7V6.32H1.75A12 12 0 0 0 .48 12c0 1.94.46 3.77 1.27 5.38l3.85-2.68z"
+      />
+      <path
+        fill="#EA4335"
+        d="M12 4.77c1.68 0 3.19.58 4.38 1.71l3.28-3.28C17.7 1.19 15.1 0 12 0 7.31 0 3.26 2.69 1.75 6.62l3.85 2.98C6.5 6.78 9.02 4.77 12 4.77z"
+      />
+    </svg>
+  );
 }

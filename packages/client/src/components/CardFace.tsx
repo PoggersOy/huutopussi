@@ -1,15 +1,29 @@
 /**
  * Inline-SVG playing cards for the 36-card Huutopussi deck (A 10 K Q J 9 8 7 6
- * in four suits): corner indices + suit pips, red/black. Pure presentational —
- * no i18n, no store. `CardBack` is the facedown counterpart.
+ * in four suits): corner indices + suit pips, four-colour (♥ red, ♦ blue,
+ * ♣ green, ♠ black). Pure presentational — no i18n, no store. `CardBack` is the
+ * facedown counterpart.
  */
 import { type Card, type Rank, rankOf, type Suit, suitOf } from '@hp/engine';
 import { useId } from 'react';
 
 const SUIT_GLYPH: Record<Suit, string> = { H: '♥', D: '♦', C: '♣', S: '♠' };
 
-export function suitColor(suit: Suit): 'red' | 'black' {
-  return suit === 'H' || suit === 'D' ? 'red' : 'black';
+/** Four-colour deck classification, one distinct colour per suit. */
+export type SuitColor = 'red' | 'blue' | 'green' | 'black';
+
+const SUIT_COLOR: Record<Suit, SuitColor> = { H: 'red', D: 'blue', C: 'green', S: 'black' };
+
+/** On-card-face fill per colour (var + hex fallback), tuned for the cream face. */
+const COLOR_FILL: Record<SuitColor, string> = {
+  red: 'var(--card-red, #c8102e)',
+  blue: 'var(--card-blue, #1667c8)',
+  green: 'var(--card-green, #147a3c)',
+  black: 'var(--card-black, #1a1a24)',
+};
+
+export function suitColor(suit: Suit): SuitColor {
+  return SUIT_COLOR[suit];
 }
 
 /** Center pip coordinates (viewBox 100×140) for the numeric ranks. */
@@ -77,7 +91,7 @@ export function CardFace({ card, width }: CardFaceProps) {
   const rank = rankOf(card);
   const glyph = SUIT_GLYPH[suit];
   const color = suitColor(suit);
-  const fill = color === 'red' ? 'var(--card-red, #c8102e)' : 'var(--card-black, #1a1a24)';
+  const fill = COLOR_FILL[color];
   const pips = PIP_LAYOUT[rank];
   const isCourt = rank === 'K' || rank === 'Q' || rank === 'J';
 

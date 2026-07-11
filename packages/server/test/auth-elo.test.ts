@@ -187,7 +187,8 @@ test('a match containing a bot is unrated: no rating change', async () => {
   host.lobby({ type: 'addBot', seat: 1 });
   await botSeated;
 
-  attachDriver(host, { openBid: true });
+  // Solo-vs-bots is player-paced between deals: drive "Jatka" to the finish.
+  attachDriver(host, { openBid: true, advanceDeals: true });
   const ended = host.next(
     (m) => m.t === 'update' && m.view.winnerSide !== null,
     60_000,

@@ -24,7 +24,11 @@
   --card-face-muted: #efe9d9;
   --card-back: var(--felt-800);
   --card-border: #1a1a24;
+  /* Four-colour deck (poker standard): ♥ red, ♦ blue, ♣ green, ♠ black.
+     Tuned for legibility on the cream card face. */
   --card-red: #c8102e;
+  --card-blue: #1667c8;
+  --card-green: #147a3c;
   --card-black: #1a1a24;
 
   /* ── Semantic ── */
@@ -39,8 +43,12 @@
   --ok: #46a758;
   --info: #4c8dd6;
 
-  /* ── Suit colors on dark felt (indicators/labels, not card faces) ── */
+  /* ── Suit colors on dark felt (indicators/labels, not card faces) ──
+     Four-colour deck, brightened so each suit reads on the dark green felt
+     (♠ uses cream as its "black"). */
   --suit-red: #ff7080;
+  --suit-blue: #6fb0ff;
+  --suit-green: #5fd08a;
   --suit-black: var(--cream);
 
   /* ── Card sizing ──

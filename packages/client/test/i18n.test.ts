@@ -124,22 +124,25 @@ describe('i18n catalogs', () => {
   });
 });
 
-// The ohje never uses "tikki" (0×); it uses "kääntö" for a won trick / pile
-// (inflected as käänn-: käännön, käännöt) and "pelikierros" for a trick round.
-// "läpäri" is the SLAM and "Porvoo" is päämuoto slang — neither belongs on the
-// trickless column. See docs/illisoft-saannot-spec.md §12.
-describe('illisoft fi terminology (ohje §12)', () => {
-  // Matches every inflection of kääntö (kääntö / käännön / käännöt) but not tikki.
+// Trick terminology: the product owner replaced the illisoft-era "kääntö" with
+// the standard Finnish "tikki" (docs/illisoft-saannot-spec.md §12 uses the older
+// "kääntö"; the UI overrides it). A trick round is still "pelikierros", and
+// "läpäri" (SLAM) / "Porvoo" (päämuoto slang) still don't belong on the
+// trickless column.
+describe('fi trick terminology (tikki)', () => {
+  // Matches every inflection of tikki (tikki / tikin / tikkiä / tikit) but not kääntö.
+  const TIKKI = 'tik';
   const KAANTO = 'kään';
 
-  it('labels the trickless column with kääntö, not läpäri or Porvoo', () => {
+  it('labels the trickless column with tikki, not läpäri or Porvoo', () => {
     const label = fi.table.porvoo.toLowerCase();
     expect(label).not.toContain('läpäri');
     expect(label).not.toContain('porvoo');
-    expect(label).toContain(KAANTO);
+    expect(label).not.toContain(KAANTO);
+    expect(label).toContain(TIKKI);
   });
 
-  it('uses kääntö (never tikki) for every won-trick label', () => {
+  it('uses tikki (never kääntö) for every won-trick label', () => {
     const wonTrickLabels = [
       fi.overlay.tricks,
       fi.table.lastTrickBtn,
@@ -150,8 +153,8 @@ describe('illisoft fi terminology (ohje §12)', () => {
       fi.config.showLastTrick,
     ];
     for (const label of wonTrickLabels) {
-      expect(label.toLowerCase()).not.toContain('tikki');
-      expect(label.toLowerCase()).toContain(KAANTO);
+      expect(label.toLowerCase()).not.toContain(KAANTO);
+      expect(label.toLowerCase()).toContain(TIKKI);
     }
   });
 

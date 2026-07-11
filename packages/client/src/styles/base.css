@@ -337,6 +337,29 @@ input::placeholder {
   border-bottom: none;
 }
 
+/* A finished match with per-deal detail: the whole row is a button that opens
+   the deal-by-deal browser. Reset the native button chrome to look like a row. */
+.match-row__btn {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  width: 100%;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.match-row__chev {
+  color: var(--gold);
+  font-weight: 700;
+}
+
 .score--winner {
   color: var(--gold);
   font-weight: 700;
@@ -617,11 +640,52 @@ input::placeholder {
   flex: none;
 }
 
-.auth-header__btn {
+/* Signed-out control: a custom app-styled circular sign-in button. The visible
+   "face" (felt disc + gold ring + Google G) is purely presentational; the real
+   Google Identity Services button sits on top at opacity 0 and captures the
+   actual click, so we get our look without reimplementing the auth flow. */
+.auth-header__signin {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  flex: none;
+}
+
+.auth-header__signin-face {
+  position: absolute;
+  inset: 0;
   display: flex;
   align-items: center;
-  min-width: 40px;
-  min-height: 40px;
+  justify-content: center;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 32%, var(--felt-600), var(--felt-800));
+  border: 1px solid var(--gold-soft);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 1px 3px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+
+/* Keep the invisible GIS button on top and covering the whole disc so the
+   entire circle is clickable. */
+.auth-header__gis {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  opacity: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.auth-header__gis > div,
+.auth-header__gis iframe {
+  width: 100% !important;
+  height: 100% !important;
+  margin: 0 !important;
 }
 
 /* Signed-in control: two separate fields — the ELO field on the left and the
@@ -815,4 +879,128 @@ input::placeholder {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius-2);
+}
+
+/* ── Home: player-count segmented control ── */
+
+/* A pill-shaped 2/3/4 selector (same family as the ranked toggle, but N-up and
+   with the highlight painted straight onto the pressed segment). */
+.seg {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 4px;
+  padding: 4px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+
+.seg__opt {
+  min-width: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-dim);
+  font-weight: 600;
+  transition:
+    color 180ms ease,
+    background 180ms ease;
+}
+
+.seg__opt[aria-pressed="true"] {
+  background: linear-gradient(180deg, var(--gold) 0%, var(--gold-soft) 100%);
+  color: var(--felt-950);
+  font-weight: 700;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+/* ── Home: "how to play" mode cards ── */
+
+.home-heading {
+  font-size: var(--fs-md);
+  color: var(--gold);
+  letter-spacing: 0.01em;
+  /* Pull the heading toward the cards it introduces (the main grid gap is wide). */
+  margin-bottom: calc(-1 * var(--space-2));
+}
+
+.mode-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-3);
+}
+
+.mode-card__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.mode-card__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex: none;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 32%, var(--felt-600), var(--felt-800));
+  border: 1px solid var(--gold-soft);
+  font-size: 22px;
+  line-height: 1;
+}
+
+.mode-card__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mode-card__title {
+  font-family: var(--font-display);
+  font-size: var(--fs-lg);
+  font-weight: 600;
+}
+
+.mode-card__desc {
+  font-size: var(--fs-sm);
+}
+
+/* "or join with a code" divider between the create button and the join field. */
+.mode-card__or {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--text-dim);
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.mode-card__or::before,
+.mode-card__or::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+.mode-card__join {
+  gap: var(--space-2);
+  flex-wrap: nowrap;
+}
+
+.mode-card__join input {
+  flex: 1;
+  min-width: 0;
+}
+
+.mode-card__join button {
+  flex: none;
 }

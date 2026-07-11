@@ -238,11 +238,14 @@ export const useStore = create<Store>()((set) => ({
 
 // ── Server-slice writers (socket layer ONLY — see module doc) ───────────────
 
-/** Events worth a passive toast even in the crude foundation UI. */
+/**
+ * Events worth a passive toast. `dealScored` is deliberately absent: the
+ * deal-results overlay ("Jaon tulokset") is the full surface for a scored deal,
+ * so a redundant toast would only flash over it.
+ */
 const TOASTED_EVENTS: ReadonlySet<GameEvent['type']> = new Set([
   'redealDemanded',
   'trumpSet',
-  'dealScored',
   'matchEnded',
 ]);
 

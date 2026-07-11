@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS matches (
   status       TEXT NOT NULL, -- active | finished | abandoned
   winner_side  INTEGER,
   final_scores TEXT,                -- JSON number[], one per side (2 or 3)
+  names        TEXT,                -- JSON (string|null)[], seat-indexed, at match end
   deals        INTEGER NOT NULL DEFAULT 0,
   started_at   INTEGER NOT NULL,
   finished_at  INTEGER
@@ -207,6 +208,11 @@ export class Db {
     try {
       this.raw.transaction(() => {
         this.addColumnIfMissing('matches', 'final_scores', 'TEXT');
+        // Seat-indexed player names captured at match end (JSON (string|null)[]),
+        // so the history deal-browser can label columns/declarer with the names
+        // that played THAT match (live seats change between matches). Nullable:
+        // pre-feature matches simply have no names.
+        this.addColumnIfMissing('matches', 'names', 'TEXT');
         // Turn pacing (autoplay + timeout); nullable so pre-feature rooms
         // recover with the server default (see activeMatches / server.ts).
         this.addColumnIfMissing('rooms', 'table_settings', 'TEXT');
@@ -407,13 +413,29 @@ export class Db {
     this.raw.prepare('UPDATE matches SET deals = deals + 1 WHERE id = ?').run(matchId);
   }
 
-  finishMatch(id: string, winnerSide: Side, finalScores: number[]): void {
+  /**
+   * `names` is the seat-indexed roster at match end (length === players), for
+   * the history deal-browser; omit it (or pass null) for callers that don't
+   * have it — the summary then falls back to generic seat/side labels.
+   */
+  finishMatch(
+    id: string,
+    winnerSide: Side,
+    finalScores: number[],
+    names?: (string | null)[] | null,
+  ): void {
     this.raw
       .prepare(
         `UPDATE matches SET status = 'finished', winner_side = ?, final_scores = ?,
-         finished_at = ? WHERE id = ?`,
+         names = ?, finished_at = ? WHERE id = ?`,
       )
-      .run(winnerSide, JSON.stringify(finalScores), Date.now(), id);
+      .run(
+        winnerSide,
+        JSON.stringify(finalScores),
+        names == null ? null : JSON.stringify(names),
+        Date.now(),
+        id,
+      );
   }
 
   abandonMatch(id: string): void {
@@ -425,23 +447,40 @@ export class Db {
   matchSummaries(roomId: string): MatchSummary[] {
     const rows = this.raw
       .prepare(
-        `SELECT winner_side, final_scores, deals, finished_at
+        `SELECT id, winner_side, final_scores, names, config, deals, finished_at
          FROM matches WHERE room_id = ? AND status = 'finished' ORDER BY finished_at ASC`,
       )
       .all(roomId) as Array<{
+      id: string;
       winner_side: number;
       final_scores: string | null;
+      names: string | null;
+      config: string;
       deals: number;
       finished_at: number;
     }>;
-    return rows.map((r) => ({
-      finishedAt: r.finished_at,
-      winnerSide: (r.winner_side === 0 || r.winner_side === 1 || r.winner_side === 2
-        ? r.winner_side
-        : 0) as Side,
-      finalScores: r.final_scores === null ? [] : (JSON.parse(r.final_scores) as number[]),
-      deals: r.deals,
-    }));
+    // Per-deal breakdowns for the history deal-browser. The full DealResult of
+    // every deal is already persisted; pull them in deal order per match.
+    const dealStmt = this.raw.prepare(
+      'SELECT result FROM deals WHERE match_id = ? ORDER BY deal_index ASC',
+    );
+    return rows.map((r) => {
+      const players = (JSON.parse(r.config) as RuleConfig).players;
+      const dealResults = (dealStmt.all(r.id) as Array<{ result: string }>).map(
+        (d) => JSON.parse(d.result) as DealResult,
+      );
+      return {
+        finishedAt: r.finished_at,
+        winnerSide: (r.winner_side === 0 || r.winner_side === 1 || r.winner_side === 2
+          ? r.winner_side
+          : 0) as Side,
+        finalScores: r.final_scores === null ? [] : (JSON.parse(r.final_scores) as number[]),
+        deals: r.deals,
+        players,
+        dealResults,
+        ...(r.names === null ? {} : { names: JSON.parse(r.names) as (string | null)[] }),
+      };
+    });
   }
 
   /** All matches still marked active, newest first, with their full event logs. */

@@ -14,8 +14,23 @@
     "tagline": "The Finnish bidding bag — play with friends",
     "nickname": "Nickname",
     "nicknamePlaceholder": "Your name",
+    "chooseMode": "How do you want to play?",
+    "online": {
+      "title": "Find a game",
+      "desc": "Play against real opponents online.",
+      "action": "Find opponents"
+    },
+    "bots": {
+      "title": "Quick match",
+      "desc": "Start a game against bots right away.",
+      "action": "Play against bots"
+    },
+    "friends": {
+      "title": "Play with friends",
+      "desc": "Create a private room and invite friends with a code.",
+      "or": "or join with a code"
+    },
     "create": "Create a room",
-    "orJoin": "…or join a room",
     "codePlaceholder": "Room code",
     "join": "Join",
     "language": "Language",
@@ -54,7 +69,6 @@
     "ranked": "Ranked",
     "unranked": "Unranked",
     "rankedSignInHint": "Sign in to play ranked",
-    "find": "Find match",
     "waitingCount": "{{count}} waiting",
     "searching": "Searching for players…",
     "waiting": "Waiting for players…",
@@ -199,7 +213,11 @@
     "seats": "{{filled}}/{{total}} seated",
     "result": "Side {{side}} won",
     "deals_one": "{{count}} deal",
-    "deals_other": "{{count}} deals"
+    "deals_other": "{{count}} deals",
+    "browseDeals": "Browse deals",
+    "dealTitle": "Deal {{n}} / {{total}}",
+    "prevDeal": "Previous deal",
+    "nextDeal": "Next deal"
   },
   "connection": {
     "connecting": "Connecting…",
@@ -309,7 +327,10 @@
     "contractless": "Everyone passed — no declarer",
     "contractMade": "Contract {{contract}} made — {{name}}",
     "contractFailed": "Contract {{contract}} failed — {{name}}",
-    "nextDeal": "Next deal starts in a moment…",
+    "dealResults": "Deal results",
+    "continue": "Continue",
+    "nextDealIn": "Next deal starts in {{n}} s…",
+    "nextDealSoon": "Next deal starts soon…",
     "redealTitle": "New deal",
     "redealBy": "{{name}} demanded a redeal",
     "redealIn": "Redealing in {{n}}…",
@@ -323,7 +344,6 @@
   "event": {
     "redealDemanded": "Redeal demanded",
     "trumpSet": "Trump is now {{suit}} (+{{points}})",
-    "dealScored": "Deal scored",
     "matchEnded": "Match over!"
   },
   "error": {

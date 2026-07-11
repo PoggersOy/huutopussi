@@ -77,23 +77,9 @@ export function Profile() {
       <header className="screen__top">
         <div className="row" style={{ justifyContent: 'space-between' }}>
           <h1>{t('profile.title')}</h1>
-          <div className="row">
-            {user !== null && (
-              <button
-                type="button"
-                className="btn--ghost"
-                onClick={() => {
-                  signOut();
-                  navigate('/');
-                }}
-              >
-                {t('auth.signOut')}
-              </button>
-            )}
-            <button type="button" className="btn--ghost" onClick={() => navigate('/')}>
-              {t('profile.back')}
-            </button>
-          </div>
+          <button type="button" className="btn--ghost" onClick={() => navigate('/')}>
+            {t('profile.back')}
+          </button>
         </div>
       </header>
       <main className="screen__main">
@@ -155,6 +141,21 @@ export function Profile() {
           </>
         )}
       </main>
+      {user !== null && (
+        <footer className="screen__bottom">
+          <button
+            type="button"
+            className="btn--danger"
+            style={{ width: '100%' }}
+            onClick={() => {
+              signOut();
+              navigate('/');
+            }}
+          >
+            {t('auth.signOut')}
+          </button>
+        </footer>
+      )}
     </div>
   );
 }

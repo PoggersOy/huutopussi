@@ -165,9 +165,11 @@ async function refreshMe(token: string): Promise<void> {
 }
 
 /**
- * Render the Google Sign-In button into `parent`. A compact circular ICON
- * button that fits the header top-right. No-op when login is disabled or GIS
- * hasn't loaded yet (the caller re-invokes on state changes).
+ * Render the Google Sign-In button into `parent`. We ask GIS for a compact
+ * circular icon button, but the caller overlays it at opacity 0 on top of our
+ * own app-styled disc — so this rendered button is only the (invisible) click
+ * surface that keeps us on Google's real credential flow. No-op when login is
+ * disabled or GIS hasn't loaded yet (the caller re-invokes on state changes).
  */
 export function renderGoogleButton(parent: HTMLElement): void {
   if (!clientId || !gisReady || !window.google) return;

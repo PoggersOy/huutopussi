@@ -198,6 +198,12 @@ export interface ScriptOpts {
    * a forced opening (illisoft) this guarantees the deal gets a declarer.
    */
   openBid?: boolean;
+  /**
+   * Send `nextDeal` ("Jatka") when a deal is scored so a solo-vs-bots match —
+   * which is player-paced and does NOT auto-advance — plays through to the end.
+   * Multi-human matches auto-advance server-side and don't need this.
+   */
+  advanceDeals?: boolean;
 }
 
 /** Deterministic legal move from hints (see module doc). */
@@ -248,6 +254,7 @@ export function scriptedAction(
 /** Auto-plays whenever a received welcome/update says it is our turn. */
 export function attachDriver(client: TestClient, opts: ScriptOpts = {}): void {
   let lastActedSeq = -1;
+  let lastAdvancedDeal = -1;
   const maybeAct = (view: PlayerView | null, turn: TurnInfo | null, seq: number): void => {
     if (!view || !turn || !turn.hints) return;
     if (client.seat === null || turn.seat !== client.seat) return;
@@ -255,9 +262,19 @@ export function attachDriver(client: TestClient, opts: ScriptOpts = {}): void {
     lastActedSeq = seq;
     client.action(scriptedAction(view, turn.hints, opts));
   };
+  // Solo-vs-bots is player-paced: nudge the next deal with `nextDeal` ("Jatka")
+  // once per scored deal so an all-bot-partner match still plays to the end.
+  const maybeAdvance = (view: PlayerView | null): void => {
+    if (!opts.advanceDeals || !view) return;
+    if (view.winnerSide !== null || view.deal?.phase.name !== 'scored') return;
+    if (view.dealIndex <= lastAdvancedDeal) return;
+    lastAdvancedDeal = view.dealIndex;
+    client.lobby({ type: 'nextDeal' });
+  };
   client.onServerMsg((msg) => {
     if (msg.t !== 'update' && msg.t !== 'welcome') return;
     maybeAct(msg.view, msg.turn, msg.seq);
+    maybeAdvance(msg.view);
   });
   // A welcome carrying our pending turn may have arrived before attaching
   // (e.g. reconnect into our own turn after crash recovery) — act on it now.

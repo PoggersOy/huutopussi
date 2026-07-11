@@ -143,7 +143,8 @@ test('host "Start with bots" fills empty seats and starts (unrated)', async () =
     auth: ua.token,
   })) as WelcomeMsg;
   expect(w.seat).toBe(0); // first finder is host
-  attachDriver(a, { openBid: true });
+  // Solo-vs-bots is player-paced between deals: drive "Jatka" to the finish.
+  attachDriver(a, { openBid: true, advanceDeals: true });
 
   const ended = matchEnd(a);
   a.lobby({ type: 'fillBotsAndStart' });

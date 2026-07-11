@@ -9,6 +9,7 @@ import { type DealResult, SEATS, type Seat, type Side, sideCount, sideOf } from 
 import type { MatchRatingResult } from '@hp/protocol';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { DealBreakdownTable, DealContractLine } from '../../components/DealBreakdownTable';
 import { sendLobby } from '../../socket';
 import { useStore } from '../../store';
 
@@ -60,13 +61,60 @@ function sideOrder(players: 2 | 3 | 4, mySide: Side): Side[] {
   return [...sides].sort((a, b) => ((a - mySide + n) % n) - ((b - mySide + n) % n));
 }
 
+/**
+ * Client-side estimate of the pause before a multi-human game auto-advances —
+ * mirrors the server's nextDealDelayMs minus the score-reveal hold (the overlay
+ * only appears once the final trick has been shown). Cosmetic: the overlay
+ * really unmounts when the fresh `dealStarted` lands.
+ */
+const NEXT_DEAL_COUNTDOWN_MS = 17_000;
+
+/** Live countdown to the server's auto-advance (multi-human games only). */
+function NextDealCountdown() {
+  const { t } = useTranslation();
+  const [deadline] = useState(() => Date.now() + NEXT_DEAL_COUNTDOWN_MS);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(id);
+  }, []);
+  const secs = Math.max(0, Math.ceil((deadline - now) / 1000));
+  return (
+    <p className="dim tsheet__center" aria-live="polite">
+      {secs > 0 ? t('overlay.nextDealIn', { n: secs }) : t('overlay.nextDealSoon')}
+    </p>
+  );
+}
+
+/**
+ * How the deal-results overlay moves on: a solo-vs-bots game is player-paced
+ * (the seated human clicks "Jatka" — no timer); a multi-human game shows a
+ * countdown to the server's auto-advance and no button (nothing to see while
+ * waiting).
+ */
+function NextDealPrompt({ solo, seated }: { solo: boolean; seated: boolean }) {
+  const { t } = useTranslation();
+  if (!solo) return <NextDealCountdown />;
+  if (!seated) return <p className="dim tsheet__center">{t('overlay.nextDealSoon')}</p>;
+  return (
+    <button
+      type="button"
+      className="btn--primary tsheet__big"
+      onClick={() => sendLobby({ type: 'nextDeal' })}
+    >
+      {t('overlay.continue')}
+    </button>
+  );
+}
+
 export function DealScoredOverlay({
   result,
   scores,
   mySide,
   players,
   nameOf,
-  onClose,
+  solo,
+  seated,
 }: {
   result: DealResult;
   /** Running match totals (already include this deal's deltas). */
@@ -74,97 +122,23 @@ export function DealScoredOverlay({
   mySide: Side;
   players: 2 | 3 | 4;
   nameOf: (seat: Seat) => string;
-  onClose: () => void;
+  /** Solo-vs-bots game → player-paced "Jatka"; else a next-deal countdown. */
+  solo: boolean;
+  /** This viewer holds a seat (only a seated player can press "Jatka"). */
+  seated: boolean;
 }) {
   const { t } = useTranslation();
   const order = sideOrder(players, mySide);
   const sideLabel = (side: Side): string =>
     players === 4 ? (side === mySide ? t('table.us') : t('table.them')) : nameOf(side as Seat);
-  const cols = order.map((side) => result.sides[side]).filter((s) => s !== undefined);
-  if (cols.length !== order.length) return null;
-
-  const hasDiscards = cols.some((s) => s.discardPoints > 0);
-  const hasRounding = cols.some((s) => s.roundedTotal !== s.rawTotal);
-  const hasPorvoo = cols.some((s) => s.porvoo);
-  const rows: Array<[string, number[]]> = [
-    ['overlay.cardPoints', cols.map((s) => s.cardPoints)],
-    ['overlay.lastTrick', cols.map((s) => s.lastTrickBonus)],
-    ['overlay.marriages', cols.map((s) => s.marriagePoints)],
-    ...(hasDiscards
-      ? [['overlay.koini', cols.map((s) => s.discardPoints)] as [string, number[]]]
-      : []),
-    ['overlay.total', cols.map((s) => s.rawTotal)],
-    ...(hasRounding
-      ? [['overlay.rounded', cols.map((s) => s.roundedTotal)] as [string, number[]]]
-      : []),
-    ['overlay.tricks', cols.map((s) => s.tricks)],
-  ];
 
   return (
     <div className="overlay" role="dialog" aria-modal="true">
       <div className="overlay__panel stack">
-        <h2>{t('event.dealScored')}</h2>
-        {result.declarer === null ? (
-          <p className="dim tsheet__center">{t('overlay.contractless')}</p>
-        ) : (
-          result.contract !== null &&
-          result.made !== null && (
-            <p className={result.made ? 'overlay__made' : 'overlay__failed'}>
-              {t(result.made ? 'overlay.contractMade' : 'overlay.contractFailed', {
-                contract: result.contract,
-                name: nameOf(result.declarer),
-              })}
-            </p>
-          )
-        )}
-        <table className="score">
-          <thead>
-            <tr>
-              <th />
-              {order.map((side) => (
-                <th key={side}>{sideLabel(side)}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map(([key, values]) => (
-              <tr key={key}>
-                <th>{t(key)}</th>
-                {values.map((value, i) => (
-                  <td key={order[i]}>{value}</td>
-                ))}
-              </tr>
-            ))}
-            {hasPorvoo && (
-              <tr>
-                <th className="score__porvoo">{t('table.porvoo')}</th>
-                {cols.map((s, i) => (
-                  <td key={order[i]} className="score__porvoo">
-                    {s.porvoo ? '×' : ''}
-                  </td>
-                ))}
-              </tr>
-            )}
-            <tr className="score__delta">
-              <th>{t('overlay.delta')}</th>
-              {cols.map((s, i) => (
-                <td key={order[i]} className={s.scoreDelta >= 0 ? 'delta--pos' : 'delta--neg'}>
-                  {signed(s.scoreDelta)}
-                </td>
-              ))}
-            </tr>
-            <tr className="score__matchtotal">
-              <th>{t('overlay.matchTotal')}</th>
-              {order.map((side) => (
-                <td key={side}>{scores[side] ?? 0}</td>
-              ))}
-            </tr>
-          </tbody>
-        </table>
-        <p className="dim tsheet__center">{t('overlay.nextDeal')}</p>
-        <button type="button" className="btn--ghost" onClick={onClose}>
-          {t('common.close')}
-        </button>
+        <h2>{t('overlay.dealResults')}</h2>
+        <DealContractLine result={result} nameOf={nameOf} />
+        <DealBreakdownTable result={result} scores={scores} order={order} sideLabel={sideLabel} />
+        <NextDealPrompt solo={solo} seated={seated} />
       </div>
     </div>
   );

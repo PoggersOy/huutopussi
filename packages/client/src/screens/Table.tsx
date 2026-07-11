@@ -40,7 +40,7 @@ import {
 } from './table/TableSheets';
 import { actorOf, feltSlot, SUIT_GLYPH, useNameOf } from './table/tableUtils';
 
-const BUBBLE_MS = 4_000;
+const BUBBLE_MS = 5_000;
 const TRICK_LINGER_MS = 1_300;
 /**
  * After the FINAL trick of a deal, the score card is held back this long so the
@@ -131,13 +131,41 @@ export function Table() {
   const dealScored = view?.deal?.phase.name === 'scored';
   const dealIndex = view?.dealIndex ?? null;
 
-  // Speech bubbles auto-dismiss.
+  // Speech bubbles auto-dismiss a fixed span after EACH first appears. Timers
+  // are keyed by bubble id in a ref so an unrelated bubble arriving — frequent
+  // in bot games, where every action rebuilds the `bubbles` array — never
+  // resets a live bubble's clock (the old array-keyed effect did, so bubbles
+  // could linger far past BUBBLE_MS whenever updates kept flowing).
+  const bubbleTimers = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
   useEffect(() => {
-    const timers = bubbles.map((b) => setTimeout(() => dismissBubble(b.id), BUBBLE_MS));
-    return () => {
-      for (const timer of timers) clearTimeout(timer);
-    };
+    const timers = bubbleTimers.current;
+    const live = new Set(bubbles.map((b) => b.id));
+    for (const b of bubbles) {
+      if (timers.has(b.id)) continue;
+      timers.set(
+        b.id,
+        setTimeout(() => {
+          timers.delete(b.id);
+          dismissBubble(b.id);
+        }, BUBBLE_MS),
+      );
+    }
+    // Drop timers for bubbles that already vanished (replaced / deal boundary).
+    for (const [id, timer] of timers) {
+      if (!live.has(id)) {
+        clearTimeout(timer);
+        timers.delete(id);
+      }
+    }
   }, [bubbles, dismissBubble]);
+  // Clear every pending bubble timer on unmount.
+  useEffect(
+    () => () => {
+      for (const timer of bubbleTimers.current.values()) clearTimeout(timer);
+      bubbleTimers.current.clear();
+    },
+    [],
+  );
 
   // The completed trick lingers briefly (winner flash), then the felt clears.
   // The FINAL trick lingers longer (SCORED_REVEAL_MS) so it stays on the felt
@@ -175,8 +203,6 @@ export function Table() {
     return () => clearTimeout(timer);
   }, [dealScored, dealIndex]);
 
-  /** Deal index whose scored overlay the user closed early. */
-  const [scoredClosedFor, setScoredClosedFor] = useState<number | null>(null);
   /** Host's "Stop game" confirmation dialog is open. */
   const [confirmStop, setConfirmStop] = useState(false);
   /** A non-host's "Leave game" confirmation dialog is open. */
@@ -233,8 +259,10 @@ export function Table() {
   const showMatchOverlay = view.winnerSide !== null;
   /** The score/match card is held back this render while the final trick shows. */
   const holding = scoredHeldFor === view.dealIndex;
-  const showScoredOverlay =
-    !showMatchOverlay && !holding && scoredResult !== null && scoredClosedFor !== view.dealIndex;
+  const showScoredOverlay = !showMatchOverlay && !holding && scoredResult !== null;
+  // Solo-vs-bots (one human, rest bots): the deal-results overlay is player-
+  // paced ("Jatka"); a multi-human game shows a next-deal countdown instead.
+  const soloVsBots = room.seats.filter((s) => s.kind === 'human').length === 1;
 
   let sheet: ReactElement | null = null;
   if (deal !== null && !showMatchOverlay) {
@@ -390,7 +418,8 @@ export function Table() {
           mySide={mySide}
           players={players}
           nameOf={nameOf}
-          onClose={() => setScoredClosedFor(view.dealIndex)}
+          solo={soloVsBots}
+          seated={seat !== null}
         />
       )}
       {showMatchOverlay && !holding && view.winnerSide !== null && (
