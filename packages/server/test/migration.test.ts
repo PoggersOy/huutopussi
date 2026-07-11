@@ -113,6 +113,45 @@ test('migrated matches table accepts finishMatch (final_scores column added)', (
   db.close();
 });
 
+/** The ACTUAL production schema that crash-looped boot: `deals` missing BOTH
+ *  `result` and `bid`, matches missing `final_scores`. Rows can't be preserved
+ *  (no `result` to source a NOT NULL column) so the table is recreated empty. */
+function seedAncientSchema(): void {
+  const raw = new Database(dbPath);
+  raw.exec(`
+    CREATE TABLE matches (
+      id TEXT PRIMARY KEY, room_id TEXT NOT NULL, config TEXT NOT NULL,
+      first_dealer INTEGER NOT NULL, status TEXT NOT NULL, winner_side INTEGER,
+      final_score0 INTEGER, final_score1 INTEGER, deals INTEGER NOT NULL DEFAULT 0,
+      started_at INTEGER NOT NULL, finished_at INTEGER
+    );
+    CREATE TABLE deals (
+      match_id INTEGER NOT NULL, deal_index INTEGER NOT NULL, dealer INTEGER NOT NULL,
+      declarer INTEGER NOT NULL, contract INTEGER NOT NULL, made INTEGER NOT NULL,
+      finished_at INTEGER NOT NULL, PRIMARY KEY (match_id, deal_index)
+    );
+    INSERT INTO deals (match_id, deal_index, dealer, declarer, contract, made, finished_at)
+      VALUES ('m0', 0, 0, 2, 185, 1, 1);
+  `);
+  raw.close();
+}
+
+test('opening the crash-loop legacy db (deals missing result) migrates and boots without throwing', () => {
+  seedAncientSchema();
+  const db = new Db(dbPath); // must NOT throw (this crash-looped production)
+
+  const cols = (db.raw.prepare('PRAGMA table_info(deals)').all() as Array<{ name: string }>).map(
+    (c) => c.name,
+  );
+  expect(cols).toContain('bid');
+  expect(cols).toContain('result');
+
+  const result: DealResult = { declarer: 2, contract: 185, bid: 100, made: true, sides: sides(3) };
+  expect(() => db.recordDealResult('m0', 1, 1, result)).not.toThrow();
+  expect(() => db.finishMatch('m0', 2, [10, 20, 185])).not.toThrow();
+  db.close();
+});
+
 test('migrate is idempotent and a no-op on a fresh db', () => {
   const db = new Db(dbPath); // fresh: SCHEMA already current
   const result: DealResult = { declarer: 0, contract: 60, bid: 60, made: false, sides: sides(2) };

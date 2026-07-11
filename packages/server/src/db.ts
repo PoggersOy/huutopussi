@@ -110,24 +110,23 @@ export class Db {
 
   /**
    * Idempotent schema migrations for databases created by an OLDER build.
-   * `CREATE TABLE IF NOT EXISTS` never alters an existing table, so any column
-   * or constraint added after a db was first created must be applied here or
-   * writes fail at runtime (e.g. the `deals.bid` column added later would throw
-   * "table deals has no column named bid" at the first deal that reaches
-   * scoring, stalling the game). Safe to run on every boot; a no-op on a db
-   * already at the current schema.
+   * `CREATE TABLE IF NOT EXISTS` never alters an existing table, so columns and
+   * constraints added after a db was first created must be applied here, or
+   * writes fail at runtime (e.g. an older `deals` table lacking the `bid`/
+   * `result` columns threw at the first deal that reached scoring, stalling the
+   * game on its last card). A migration must NEVER prevent boot — a throw here
+   * would crash-loop the whole server and take the site down — so the body is
+   * wrapped and failures are logged, not fatal. No-op on an up-to-date db.
    */
   private migrate(): void {
-    this.raw.transaction(() => {
-      // Additive nullable columns (plain ALTER … ADD COLUMN).
-      this.addColumnIfMissing('deals', 'bid', 'INTEGER');
-      this.addColumnIfMissing('matches', 'final_scores', 'TEXT');
-      // The original `deals` schema declared declarer/contract/made NOT NULL;
-      // contract-less (all-pass) deals record them as null, so relax to
-      // nullable by rebuilding the table (SQLite cannot drop a NOT NULL in
-      // place). Preserves existing rows.
-      this.relaxDealsNullability();
-    })();
+    try {
+      this.raw.transaction(() => {
+        this.addColumnIfMissing('matches', 'final_scores', 'TEXT');
+        this.rebuildDealsIfDrifted();
+      })();
+    } catch (err) {
+      console.error('[db] schema migration failed (continuing without it):', err);
+    }
   }
 
   private columnsOf(table: string): Array<{ name: string; notnull: number }> {
@@ -143,30 +142,58 @@ export class Db {
     }
   }
 
-  private relaxDealsNullability(): void {
-    const declarer = this.columnsOf('deals').find((c) => c.name === 'declarer');
-    if (!declarer || declarer.notnull === 0) return; // already nullable / fresh schema
-    // `bid` is guaranteed present here (addColumnIfMissing ran just above).
-    this.raw.exec(`
-      CREATE TABLE deals_new (
-        match_id    TEXT NOT NULL,
-        deal_index  INTEGER NOT NULL,
-        dealer      INTEGER NOT NULL,
-        declarer    INTEGER,
-        contract    INTEGER,
-        bid         INTEGER,
-        made        INTEGER,
-        result      TEXT NOT NULL,
-        finished_at INTEGER NOT NULL,
-        PRIMARY KEY (match_id, deal_index)
-      );
-      INSERT INTO deals_new
-        (match_id, deal_index, dealer, declarer, contract, bid, made, result, finished_at)
-        SELECT match_id, deal_index, dealer, declarer, contract, bid, made, result, finished_at
-        FROM deals;
-      DROP TABLE deals;
-      ALTER TABLE deals_new RENAME TO deals;
-    `);
+  /**
+   * `deals` is a rebuildable per-deal SUMMARY only — crash recovery replays
+   * `matches` + `deal_events`, never this table — so on ANY schema drift we
+   * recreate it to the current shape rather than assume the legacy columns
+   * (older builds variously lacked `bid`/`result` or declared declarer/
+   * contract/made NOT NULL). Rows are copied only when every NOT NULL column is
+   * present to source; otherwise the table starts empty. Losing legacy summary
+   * rows only affects the history screen for pre-migration deals.
+   */
+  private rebuildDealsIfDrifted(): void {
+    const cols = this.columnsOf('deals');
+    const names = cols.map((c) => c.name);
+    const CURRENT = [
+      'match_id',
+      'deal_index',
+      'dealer',
+      'declarer',
+      'contract',
+      'bid',
+      'made',
+      'result',
+      'finished_at',
+    ];
+    const declarer = cols.find((c) => c.name === 'declarer');
+    const upToDate =
+      names.length === CURRENT.length &&
+      CURRENT.every((c) => names.includes(c)) &&
+      declarer?.notnull === 0; // current schema makes it nullable
+    if (upToDate) return;
+
+    // NOT NULL columns with no default: rows are only preservable if present.
+    const required = ['match_id', 'deal_index', 'dealer', 'result', 'finished_at'];
+    const canPreserve = required.every((c) => names.includes(c));
+
+    this.raw.exec('ALTER TABLE deals RENAME TO deals_legacy;');
+    this.raw.exec(`CREATE TABLE deals (
+      match_id    TEXT NOT NULL,
+      deal_index  INTEGER NOT NULL,
+      dealer      INTEGER NOT NULL,
+      declarer    INTEGER,
+      contract    INTEGER,
+      bid         INTEGER,
+      made        INTEGER,
+      result      TEXT NOT NULL,
+      finished_at INTEGER NOT NULL,
+      PRIMARY KEY (match_id, deal_index)
+    );`);
+    if (canPreserve) {
+      const src = CURRENT.map((c) => (names.includes(c) ? c : 'NULL')).join(', ');
+      this.raw.exec(`INSERT INTO deals (${CURRENT.join(', ')}) SELECT ${src} FROM deals_legacy;`);
+    }
+    this.raw.exec('DROP TABLE deals_legacy;');
   }
 
   transaction<T>(fn: () => T): T {
