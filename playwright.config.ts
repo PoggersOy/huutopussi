@@ -8,10 +8,12 @@
  *    8197 with a fresh temp SQLite db. CI pre-builds and sets E2E_SKIP_BUILD=1.
  *  - Tests share that one server process (each test creates its own room), so
  *    they run serially with a single worker for determinism.
- *  - locale en-US pins the client's language detection to English; the specs
- *    assert against English UI strings.
+ *  - the app defaults to Finnish (a persisted `hp:lang` toggle, with no
+ *    browser-locale sniffing), so every context pre-seeds localStorage
+ *    `hp:lang=en` via englishStorageState; the specs assert English UI strings.
  */
 import { defineConfig, devices } from '@playwright/test';
+import { englishStorageState } from './e2e/helpers';
 
 const PORT = 8197;
 const BASE_URL = `http://127.0.0.1:${PORT}`;
@@ -20,7 +22,10 @@ export default defineConfig({
   testDir: './e2e',
   fullyParallel: false,
   workers: 1,
-  retries: 0,
+  // Two-browser-context specs (two-humans) are timing-sensitive; a rare
+  // intermittent shouldn't block the deploy gate. Locally keep 0 for fast,
+  // honest feedback.
+  retries: process.env.CI ? 2 : 0,
   forbidOnly: !!process.env.CI,
   /* Bots act with a humanizing 500-1500 ms delay; full deals take minutes. */
   timeout: 240_000,
@@ -29,6 +34,7 @@ export default defineConfig({
   use: {
     baseURL: BASE_URL,
     locale: 'en-US',
+    storageState: englishStorageState,
     trace: 'retain-on-failure',
   },
   projects: [

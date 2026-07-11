@@ -16,10 +16,26 @@
  */
 import { devices, expect, type Locator, type Page } from '@playwright/test';
 
+/**
+ * The client defaults to Finnish (persisted `hp:lang` toggle, no browser-locale
+ * sniffing since the i18n change), so every E2E context pre-seeds that toggle to
+ * English — the language every spec asserts against. Consumed by the project
+ * `use` in playwright.config.ts and by the manual contexts below. The origin
+ * MUST match playwright.config.ts BASE_URL.
+ */
+export const englishStorageState = {
+  cookies: [],
+  origins: [{ origin: 'http://127.0.0.1:8197', localStorage: [{ name: 'hp:lang', value: 'en' }] }],
+};
+
 // Device options for manually-created contexts (two-humans test). The device
 // descriptor's defaultBrowserType (webkit) is dropped — projects run chromium.
 const { defaultBrowserType: _ignored, ...iphone14 } = devices['iPhone 14'];
-export const mobileContextOptions = { ...iphone14, locale: 'en-US' };
+export const mobileContextOptions = {
+  ...iphone14,
+  locale: 'en-US',
+  storageState: englishStorageState,
+};
 
 export interface DriverState {
   /** True once this player has placed their one voluntary bid. */
@@ -100,6 +116,23 @@ async function tryClick(loc: Locator): Promise<boolean> {
   }
 }
 
+/**
+ * Tap a hand-fan card on its VISIBLE LEFT SLIVER, not its centre. The portrait
+ * fan overlaps cards by 62 % (.hand--dense) to 74 % (.hand--xdense) so they fit,
+ * which means a card's centre is covered by the neighbour stacked on top of it —
+ * a default (centre) click is intercepted by that neighbour and times out. Each
+ * card's left edge is on top of (and clear of) its neighbours, so that is where
+ * a human taps and where we click. Mirrors tryClick's swallow-and-retry.
+ */
+async function tapCard(loc: Locator): Promise<boolean> {
+  try {
+    await loc.first().click({ position: { x: 5, y: 24 }, timeout: 1_500 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function firstEnabled(loc: Locator): Promise<Locator | null> {
   const el = loc.first();
   if ((await el.count()) === 0) return null;
@@ -169,7 +202,7 @@ export async function actOnce(page: Page, state: DriverState): Promise<void> {
       } else {
         // Select one more card in the fan (all cards are tappable toggles here).
         const unpicked = page.locator('footer .hand__card:not(.hand__card--picked)');
-        if (await unpicked.count()) await tryClick(unpicked.first());
+        if (await unpicked.count()) await tapCard(unpicked.first());
       }
       return;
     }
@@ -215,13 +248,13 @@ async function playAnyLegalCard(page: Page): Promise<void> {
   if (card === null) return;
   // Pin the button by card code so re-renders between taps cannot swap cards.
   const btn = page.locator(`footer .hand__card:has(svg[data-card="${card}"])`);
-  if (!(await tryClick(btn))) return; // raise
+  if (!(await tapCard(btn))) return; // raise
   try {
     await expect(btn).toHaveClass(/hand__card--raised/, { timeout: 1_000 });
   } catch {
     return; // state moved on (update lowered the card) — retry next iteration
   }
-  await tryClick(btn); // play
+  await tapCard(btn); // play
 }
 
 /**
