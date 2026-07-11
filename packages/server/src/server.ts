@@ -1458,25 +1458,28 @@ export function createServer(opts: ServerOpts = {}): HpServer {
       return;
     }
     broadcastRoom(room); // connected flag changed
-    // Mid-turn disconnect: guarantee at least a full turn to reconnect before
-    // autoplay (reconnectGraceMs). When the room has autoplay off the present
-    // actor had no deadline (unlimited time); arm grace anyway so one dropped
-    // player can't freeze the table. A finite deadline further out than grace
-    // is kept (don't shorten a live turn).
+    // Mid-turn disconnect: guarantee a dropped actor a full turn to reconnect
+    // before autoplay (reconnectGraceMs) — but ONLY when nothing is already
+    // counting down. With autoplay on the present actor already holds a budget
+    // timer that will hand the seat to the fill-in bot; if a grace timer is
+    // already pending from an earlier drop, it will too. In both cases the
+    // existing timer must be left running: rescheduling on every socket close
+    // let a flapping connection perpetually reset the deadline, so the bot never
+    // took over and the table froze (see chaos.test.ts). Arming therefore only
+    // happens for an autoplay-off room, where a present actor has no deadline at
+    // all and one dropped player would otherwise freeze the table.
     if (
       room.status === 'playing' &&
       room.match &&
       session.seat !== null &&
       !session.botControlled &&
-      expectedActor(room.match) === session.seat
+      expectedActor(room.match) === session.seat &&
+      room.timers.turn === null
     ) {
       const grace = reconnectGraceMs(room);
-      const minDeadline = Date.now() + grace;
-      if (room.turnDeadline === null || room.turnDeadline < minDeadline) {
-        room.turnDeadline = minDeadline;
-        const seat = session.seat;
-        scheduleTurnExpiry(room, grace, () => onTurnExpired(room, seat));
-      }
+      room.turnDeadline = Date.now() + grace;
+      const seat = session.seat;
+      scheduleTurnExpiry(room, grace, () => onTurnExpired(room, seat));
     }
     armIdleTimerIfEmpty(room);
   }

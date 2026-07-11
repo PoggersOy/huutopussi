@@ -84,6 +84,23 @@ test('chaos match completes with consistent views', async () => {
   while (room.match !== null && room.match.winnerSide === null) {
     if (room.closed) throw new Error('room closed during chaos');
     if (Date.now() - start > 100_000) throw new Error('chaos match did not complete in time');
+
+    // Solo-vs-bots is player-paced between deals: the server arms no auto-advance
+    // timer (see isSoloVsBots), so the sole human must send `nextDeal` ("Jatka")
+    // or a match that needs more than one deal to reach winTarget never finishes.
+    // Drive it here, reconnecting the host if it dropped so it can issue it.
+    if (room.match.deal?.phase.name === 'scored') {
+      if (!hostConnected) {
+        host = await TestClient.connect(port);
+        const w = await host.hello({ sessionToken: token, roomCode: code });
+        expect(w.t).toBe('welcome');
+        hostConnected = true;
+      }
+      host.lobby({ type: 'nextDeal' });
+      await sleep(5);
+      continue;
+    }
+
     const dice = Math.random();
 
     if (spectator === null) {
