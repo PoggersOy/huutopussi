@@ -12,7 +12,7 @@ concurrency:
 jobs:
   ci:
     name: typecheck / lint / test / sim
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, prod-docker-01]
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -42,7 +42,7 @@ jobs:
 
   e2e:
     name: e2e (Playwright / chromium)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, prod-docker-01]
     timeout-minutes: 40
     needs: ci
     steps:
