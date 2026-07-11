@@ -5,7 +5,8 @@
  */
 import { type Card, DEFAULT_RULES, type DealView, type PlayerView, type Seat } from '@hp/engine';
 import type { RoomStatePublic, SeatInfo, ServerMsg, TurnInfo } from '@hp/protocol';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import i18n from '../src/i18n';
 import { Table } from '../src/screens/Table';
@@ -14,9 +15,10 @@ import { serverApply } from '../src/store';
 vi.mock('../src/socket', () => ({
   sendAction: vi.fn(() => 'action-id'),
   sendLobby: vi.fn(() => 'lobby-id'),
+  disconnect: vi.fn(),
 }));
 
-import { sendAction, sendLobby } from '../src/socket';
+import { disconnect, sendAction, sendLobby } from '../src/socket';
 
 function seatInfo(seat: Seat): SeatInfo {
   return { seat, nickname: `p${seat}`, kind: 'human', connected: true, botControlled: false };
@@ -132,7 +134,7 @@ describe('bidding sheet', () => {
         },
       ]),
     );
-    render(<Table />);
+    render(<Table />, { wrapper: MemoryRouter });
 
     expect(screen.getByText('High bid 60 — p1')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '+5' }));
@@ -158,7 +160,7 @@ describe('bidding sheet', () => {
         },
       ]),
     );
-    render(<Table />);
+    render(<Table />, { wrapper: MemoryRouter });
 
     expect(screen.getByText('Forced opening: you must bid at least 50')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Pass' })).toBeNull();
@@ -182,7 +184,7 @@ describe('bidding sheet', () => {
       ),
       { seat: 2, deadline: Date.now() + 45_000, hints: null },
     );
-    render(<Table />);
+    render(<Table />, { wrapper: MemoryRouter });
 
     // Appears both in the top bar and in the passive bidding sheet.
     expect(screen.getAllByText('No bids yet').length).toBeGreaterThan(0);
@@ -202,7 +204,7 @@ describe('two-step play', () => {
       ),
       myTurn([{ type: 'playCard', legal: ['S6'] }]),
     );
-    render(<Table />);
+    render(<Table />, { wrapper: MemoryRouter });
 
     const illegal = screen.getByRole('button', { name: 'HA' });
     expect((illegal as HTMLButtonElement).disabled).toBe(true);
@@ -225,7 +227,7 @@ describe('exchange sheet', () => {
       ),
       myTurn([{ type: 'giveCards', count: 3 }]),
     );
-    render(<Table />);
+    render(<Table />, { wrapper: MemoryRouter });
 
     expect(screen.getByText('Give 3 cards to the declarer (p2)')).toBeTruthy();
     const confirm = screen.getByRole('button', { name: /Confirm/ });
@@ -265,7 +267,7 @@ describe('declaration sheet', () => {
 
   it('offers own suits, whole ask and the half-ask picker from hints', () => {
     applyWelcome(declView(), declTurn());
-    render(<Table />);
+    render(<Table />, { wrapper: MemoryRouter });
 
     fireEvent.click(screen.getByRole('button', { name: /Hearts \+100/ }));
     expect(sendAction).toHaveBeenCalledWith({ type: 'declareOwn', suit: 'H' });
@@ -279,15 +281,18 @@ describe('declaration sheet', () => {
     expect(sendAction).toHaveBeenCalledWith({ type: 'askHalf', suit: 'S', rankHeld: 'K' });
   });
 
-  it('"Just lead" dismisses the sheet and leaves a reopen chip', () => {
+  it('lets you just lead a card while the declaration sheet is open', () => {
     applyWelcome(declView(), declTurn());
-    render(<Table />);
+    render(<Table />, { wrapper: MemoryRouter });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Just lead' }));
-    expect(screen.queryByText('Declaration')).toBeNull();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Declare…' }));
+    // The sheet is only a prompt: the hand stays live, so leading a card
+    // directly is how you decline to declare (no "just lead" button needed).
     expect(screen.getByText('Declaration')).toBeTruthy();
+
+    const card = screen.getByRole('button', { name: 'S6' });
+    fireEvent.click(card); // raise
+    fireEvent.click(card); // confirm
+    expect(sendAction).toHaveBeenCalledWith({ type: 'playCard', card: 'S6' });
   });
 });
 
@@ -313,7 +318,7 @@ describe('speech bubbles', () => {
       event: { type: 'bidPlaced', seat: 1, amount: 60 },
       turn: null,
     });
-    render(<Table />);
+    render(<Table />, { wrapper: MemoryRouter });
 
     expect(screen.getByText('60!')).toBeTruthy();
   });
@@ -332,7 +337,7 @@ describe('speech bubbles', () => {
       event: { type: 'trumpSet', suit: 'H', seat: 0, side: 0, how: 'own', points: 40 },
       turn: null,
     });
-    render(<Table />);
+    render(<Table />, { wrapper: MemoryRouter });
 
     // The whole announcement renders, carrying the special trump styling.
     const bubble = screen.getByText(/\+40/).closest('.bubble') as HTMLElement;
@@ -391,7 +396,7 @@ describe('overlays', () => {
       ),
       null,
     );
-    render(<Table />);
+    render(<Table />, { wrapper: MemoryRouter });
 
     expect(screen.getByText('Contract 60 made — p0')).toBeTruthy();
     expect(screen.getByText('Card points')).toBeTruthy();
@@ -399,6 +404,167 @@ describe('overlays', () => {
     expect(screen.getByText('-60')).toBeTruthy();
     expect(screen.getByText('No tricks!')).toBeTruthy();
     expect(screen.getByText('Standing: 120 — -60')).toBeTruthy();
+  });
+
+  it('holds the score card for a beat after the final trick, then reveals it', () => {
+    vi.useFakeTimers();
+    try {
+      // Live final trick: three cards down, my last card still in hand.
+      applyWelcome(
+        makeView(
+          makeDeal({
+            declarer: 0,
+            contract: 60,
+            bid: { seat: 0, amount: 60 },
+            trump: 'H',
+            tricksPlayed: 8,
+            tricksWon: { 0: 5, 1: 3, 2: 0, 3: 0 },
+            hand: ['H10'],
+            handCounts: { 0: 1, 1: 0, 2: 0, 3: 0 },
+            phase: {
+              name: 'follow',
+              leader: 1,
+              plays: [
+                { seat: 1, card: 'S6' },
+                { seat: 2, card: 'S7' },
+                { seat: 3, card: 'S8' },
+              ],
+            },
+          }),
+        ),
+        null,
+      );
+      render(<Table />, { wrapper: MemoryRouter });
+
+      // Playing the last card scores the deal: the server sends the cardPlayed
+      // event with a view already advanced to `scored`.
+      act(() => {
+        serverApply.update({
+          t: 'update',
+          seq: 2,
+          view: makeView(
+            makeDeal({
+              declarer: 0,
+              contract: 60,
+              bid: { seat: 0, amount: 60 },
+              trump: 'H',
+              tricksPlayed: 9,
+              tricksWon: { 0: 6, 1: 3, 2: 0, 3: 0 },
+              hand: [],
+              handCounts: { 0: 0, 1: 0, 2: 0, 3: 0 },
+              lastTrick: {
+                plays: [
+                  { seat: 1, card: 'S6' },
+                  { seat: 2, card: 'S7' },
+                  { seat: 3, card: 'S8' },
+                  { seat: 0, card: 'H10' },
+                ],
+                winner: 0,
+              },
+              phase: {
+                name: 'scored',
+                result: {
+                  declarer: 0,
+                  contract: 60,
+                  bid: 60,
+                  made: true,
+                  sides: [
+                    {
+                      cardPoints: 70,
+                      lastTrickBonus: 10,
+                      marriagePoints: 40,
+                      discardPoints: 0,
+                      rawTotal: 120,
+                      roundedTotal: 120,
+                      tricks: 9,
+                      porvoo: false,
+                      scoreDelta: 120,
+                    },
+                    {
+                      cardPoints: 10,
+                      lastTrickBonus: 0,
+                      marriagePoints: 0,
+                      discardPoints: 0,
+                      rawTotal: 10,
+                      roundedTotal: 10,
+                      tricks: 0,
+                      porvoo: false,
+                      scoreDelta: -60,
+                    },
+                  ],
+                },
+              },
+            }),
+            { scores: [120, -60] },
+          ),
+          event: { type: 'cardPlayed', seat: 0, card: 'H10' },
+          turn: null,
+        });
+      });
+
+      // Withheld at first so the final card + trick winner are visible.
+      expect(screen.queryByText('Card points')).toBeNull();
+
+      act(() => {
+        vi.advanceTimersByTime(3_000);
+      });
+      expect(screen.getByText('Card points')).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('shows the score card at once when a snapshot arrives already scored', () => {
+    // Reconnect/resync into an already-scored deal: no final trick to watch, so
+    // the score card must not be withheld.
+    applyWelcome(
+      makeView(
+        makeDeal({
+          declarer: 0,
+          contract: 60,
+          bid: { seat: 0, amount: 60 },
+          tricksPlayed: 9,
+          phase: {
+            name: 'scored',
+            result: {
+              declarer: 0,
+              contract: 60,
+              bid: 60,
+              made: true,
+              sides: [
+                {
+                  cardPoints: 70,
+                  lastTrickBonus: 10,
+                  marriagePoints: 40,
+                  discardPoints: 0,
+                  rawTotal: 120,
+                  roundedTotal: 120,
+                  tricks: 9,
+                  porvoo: false,
+                  scoreDelta: 120,
+                },
+                {
+                  cardPoints: 10,
+                  lastTrickBonus: 0,
+                  marriagePoints: 0,
+                  discardPoints: 0,
+                  rawTotal: 10,
+                  roundedTotal: 10,
+                  tricks: 0,
+                  porvoo: false,
+                  scoreDelta: -60,
+                },
+              ],
+            },
+          },
+        }),
+        { scores: [120, -60] },
+      ),
+      null,
+    );
+    render(<Table />, { wrapper: MemoryRouter });
+
+    expect(screen.getByText('Card points')).toBeTruthy();
   });
 
   it('shows the redeal countdown overlay when a redeal is demanded', () => {
@@ -411,7 +577,7 @@ describe('overlays', () => {
       event: { type: 'redealDemanded', seat: 1 },
       turn: null,
     });
-    render(<Table />);
+    render(<Table />, { wrapper: MemoryRouter });
 
     expect(screen.getByText('New deal')).toBeTruthy();
     expect(screen.getByText('p1 demanded a redeal')).toBeTruthy();
@@ -434,14 +600,14 @@ describe('overlays', () => {
       event: { type: 'dealStarted', dealIndex: 0, dealer: 3, deck: [] },
       turn: null,
     });
-    render(<Table />);
+    render(<Table />, { wrapper: MemoryRouter });
 
     expect(screen.queryByText('New deal')).toBeNull();
   });
 
   it('shows the match-ended overlay with the rematch button for the host', () => {
     applyWelcome(makeView(makeDeal(), { winnerSide: 0, scores: [505, 210] }), null);
-    render(<Table />);
+    render(<Table />, { wrapper: MemoryRouter });
 
     expect(screen.getByText('You win!')).toBeTruthy();
     expect(screen.getByText('Winners: p0 & p2')).toBeTruthy();
@@ -453,7 +619,7 @@ describe('overlays', () => {
 describe('host stop game', () => {
   it('the host stops the game only after confirming; cancel aborts', () => {
     applyWelcome(makeView(makeDeal()), null); // viewer is seat 0 = host, match ongoing
-    render(<Table />);
+    render(<Table />, { wrapper: MemoryRouter });
 
     // Opening the confirm does NOT stop the game on its own.
     fireEvent.click(screen.getByRole('button', { name: 'Stop game' }));
@@ -468,11 +634,14 @@ describe('host stop game', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Stop game' }));
     expect(sendLobby).toHaveBeenCalledWith({ type: 'stopMatch' });
     expect(screen.queryByText('Stop the game?')).toBeNull();
+    // ...and the host leaves for Home instead of waiting on the server's WS
+    // close (which a proxy can turn into an endless "reconnecting…").
+    expect(disconnect).toHaveBeenCalled();
   });
 
   it('hides the Stop button once the match is over', () => {
     applyWelcome(makeView(makeDeal(), { winnerSide: 0, scores: [505, 210] }), null);
-    render(<Table />);
+    render(<Table />, { wrapper: MemoryRouter });
     expect(screen.queryByRole('button', { name: 'Stop game' })).toBeNull();
   });
 
@@ -489,7 +658,7 @@ describe('host stop game', () => {
       turn: null,
     };
     serverApply.welcome(msg);
-    render(<Table />);
+    render(<Table />, { wrapper: MemoryRouter });
     expect(screen.queryByRole('button', { name: 'Stop game' })).toBeNull();
   });
 });

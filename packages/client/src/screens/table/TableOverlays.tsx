@@ -6,9 +6,11 @@
  * player (each seat is its own side).
  */
 import { type DealResult, SEATS, type Seat, type Side, sideCount, sideOf } from '@hp/engine';
+import type { MatchRatingResult } from '@hp/protocol';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { sendLobby } from '../../socket';
+import { useStore } from '../../store';
 
 function signed(n: number): string {
   return n > 0 ? `+${n}` : `${n}`;
@@ -185,6 +187,7 @@ export function MatchEndedOverlay({
   mySide,
   players,
   nameOf,
+  matchRating,
 }: {
   winnerSide: Side;
   scores: number[];
@@ -194,8 +197,11 @@ export function MatchEndedOverlay({
   mySide: Side;
   players: 2 | 3 | 4;
   nameOf: (seat: Seat) => string;
+  /** Post-match Elo outcome; null when the game had no rating payload. */
+  matchRating?: MatchRatingResult | null;
 }) {
   const { t } = useTranslation();
+  const signedIn = useStore((s) => s.auth.user !== null);
   const otherSide: Side = mySide === 0 ? 1 : 0;
   const winners = SEATS.slice(0, players)
     .filter((s) => sideOf(s, players) === winnerSide)
@@ -211,6 +217,12 @@ export function MatchEndedOverlay({
   const isHost = seat !== null && seat === hostSeat;
   const sides = Array.from({ length: sideCount({ players }) }, (_, i) => i as Side);
   const ranked = [...sides].sort((a, b) => (scores[b] ?? 0) - (scores[a] ?? 0));
+
+  // The signed-in viewer's Elo change (present only if this match was rated).
+  const myRating =
+    seat !== null && matchRating?.rated
+      ? matchRating.perSeat.find((p) => p.seat === seat)
+      : undefined;
 
   return (
     <div className="overlay" role="dialog" aria-modal="true">
@@ -235,6 +247,24 @@ export function MatchEndedOverlay({
               </span>
             ))}
           </p>
+        )}
+        {myRating ? (
+          <p className="overlay__elo">
+            <span className="dim">{t('rating.yourChange')}</span> <strong>{myRating.after}</strong>{' '}
+            <span className={myRating.delta >= 0 ? 'delta--pos' : 'delta--neg'}>
+              {signed(myRating.delta)}
+            </span>
+          </p>
+        ) : (
+          signedIn &&
+          matchRating &&
+          !matchRating.rated && (
+            <p className="dim tsheet__center">
+              <strong>{t('rating.unrated')}</strong>
+              <br />
+              {t('rating.unratedHint')}
+            </p>
+          )
         )}
         {isHost ? (
           <button

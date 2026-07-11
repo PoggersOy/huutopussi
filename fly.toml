@@ -12,6 +12,10 @@ primary_region = "arn"
 [env]
   PORT = "8080"
   DB_PATH = "/data/hp.db"
+  # Google Sign-In: set to your OAuth 2.0 Web client ID to enable login.
+  # This value is public (safe to commit). Leave unset to run guest-only.
+  # Authorized JavaScript origin in Google Cloud must be https://huutopussi.online
+  GOOGLE_CLIENT_ID = "871818276215-aokjrk34l0i6ajon7qpr7bok6q4gep8l.apps.googleusercontent.com"
 
 [mounts]
   source = "hp_data"

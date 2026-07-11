@@ -22,10 +22,11 @@ import {
   sideOf,
 } from '@hp/engine';
 import type { SeatInfo } from '@hp/protocol';
-import { type ReactElement, useEffect, useState } from 'react';
+import { type ReactElement, useEffect, useRef, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { CardBack, CardFace } from '../components/CardFace';
-import { sendAction, sendLobby } from '../socket';
+import { disconnect, sendAction, sendLobby } from '../socket';
 import { type CompletedTrick, type SpeechBubble, useStore } from '../store';
 import { DealScoredOverlay, MatchEndedOverlay, RedealOverlay } from './table/TableOverlays';
 import {
@@ -41,6 +42,12 @@ import { actorOf, feltSlot, SUIT_GLYPH, useNameOf } from './table/tableUtils';
 
 const BUBBLE_MS = 4_000;
 const TRICK_LINGER_MS = 1_300;
+/**
+ * After the FINAL trick of a deal, the score card is held back this long so the
+ * last card played + who took the trick stay visible before it covers the felt.
+ * The final trick's cards/flash linger on the felt for the same span.
+ */
+const SCORED_REVEAL_MS = 3_000;
 
 /**
  * Renders a speech bubble's text. The trump announcement gets special treatment:
@@ -102,6 +109,7 @@ function TurnCountdown({ deadline }: { deadline: number }): ReactElement | null 
 
 export function Table() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const view = useStore((s) => s.server.view);
   const room = useStore((s) => s.server.room);
   const seat = useStore((s) => s.server.seat);
@@ -114,7 +122,14 @@ export function Table() {
   const raiseCard = useStore((s) => s.raiseCard);
   const pending = useStore((s) => s.ui.pendingActionId) !== null;
   const redeal = useStore((s) => s.ui.redeal);
+  const matchRating = useStore((s) => s.ui.matchRating);
   const nameOf = useNameOf();
+
+  // Primitives the reveal/linger effects key off (computed before the early
+  // return so the hooks below always run). `dealScored` = the final trick has
+  // been played and the deal is now scored.
+  const dealScored = view?.deal?.phase.name === 'scored';
+  const dealIndex = view?.dealIndex ?? null;
 
   // Speech bubbles auto-dismiss.
   useEffect(() => {
@@ -125,14 +140,41 @@ export function Table() {
   }, [bubbles, dismissBubble]);
 
   // The completed trick lingers briefly (winner flash), then the felt clears.
+  // The FINAL trick lingers longer (SCORED_REVEAL_MS) so it stays on the felt
+  // for the whole beat the score card is held back.
   useEffect(() => {
     if (completedTrick === null) return;
-    const timer = setTimeout(() => clearCompletedTrick(completedTrick.id), TRICK_LINGER_MS);
+    const linger = dealScored ? SCORED_REVEAL_MS : TRICK_LINGER_MS;
+    const timer = setTimeout(() => clearCompletedTrick(completedTrick.id), linger);
     return () => clearTimeout(timer);
-  }, [completedTrick, clearCompletedTrick]);
+  }, [completedTrick, clearCompletedTrick, dealScored]);
 
-  /** "Just lead" hides the declaration sheet for this lead opportunity only. */
-  const [declDismissedKey, setDeclDismissedKey] = useState<string | null>(null);
+  /**
+   * Hold the score card back for a beat after the FINAL trick so the last card
+   * played + the trick-winner flash are seen before it covers the felt. We hold
+   * ONLY when the deal transitions into `scored` by live play — a snapshot that
+   * arrives already-scored (reconnect/resync) reveals at once. `scoredHeldFor`
+   * is the deal index currently being withheld (null = reveal now).
+   */
+  const [scoredHeldFor, setScoredHeldFor] = useState<number | null>(null);
+  const prevScoredRef = useRef<{ dealIndex: number | null; scored: boolean }>({
+    dealIndex: null,
+    scored: false,
+  });
+  useEffect(() => {
+    const prev = prevScoredRef.current;
+    prevScoredRef.current = { dealIndex, scored: dealScored };
+    const justScoredByPlay =
+      dealScored && !prev.scored && prev.dealIndex === dealIndex && dealIndex !== null;
+    if (!justScoredByPlay) {
+      if (!dealScored) setScoredHeldFor(null);
+      return;
+    }
+    setScoredHeldFor(dealIndex);
+    const timer = setTimeout(() => setScoredHeldFor(null), SCORED_REVEAL_MS);
+    return () => clearTimeout(timer);
+  }, [dealScored, dealIndex]);
+
   /** Deal index whose scored overlay the user closed early. */
   const [scoredClosedFor, setScoredClosedFor] = useState<number | null>(null);
   /** Host's "Stop game" confirmation dialog is open. */
@@ -172,14 +214,13 @@ export function Table() {
   const actor: Seat | null = turn?.seat ?? (deal !== null ? actorOf(deal, players) : null);
   const actorName = actor !== null ? nameOf(actor) : '';
 
-  const declKey = deal === null ? '' : `${view.dealIndex}:${deal.tricksPlayed}`;
-  const declSheetOpen = declHint !== null && declDismissedKey !== declKey;
-
   const isHost = seat !== null && room.hostSeat === seat;
   const scoredResult = deal !== null && deal.phase.name === 'scored' ? deal.phase.result : null;
   const showMatchOverlay = view.winnerSide !== null;
+  /** The score/match card is held back this render while the final trick shows. */
+  const holding = scoredHeldFor === view.dealIndex;
   const showScoredOverlay =
-    !showMatchOverlay && scoredResult !== null && scoredClosedFor !== view.dealIndex;
+    !showMatchOverlay && !holding && scoredResult !== null && scoredClosedFor !== view.dealIndex;
 
   let sheet: ReactElement | null = null;
   if (deal !== null && !showMatchOverlay) {
@@ -224,14 +265,8 @@ export function Table() {
         sheet = <AnswerWholeSheet hint={answerHint} actorName={actorName} config={view.config} />;
         break;
       case 'lead':
-        if (declSheetOpen && declHint !== null) {
-          sheet = (
-            <DeclarationSheet
-              hint={declHint}
-              config={view.config}
-              onDismiss={() => setDeclDismissedKey(declKey)}
-            />
-          );
+        if (declHint !== null) {
+          sheet = <DeclarationSheet hint={declHint} config={view.config} />;
         }
         break;
       default:
@@ -310,11 +345,6 @@ export function Table() {
                 <BubbleText bubble={myBubble} />
               </div>
             )}
-            {declHint !== null && !declSheetOpen && (
-              <button type="button" className="decl-chip" onClick={() => setDeclDismissedKey(null)}>
-                {t('sheet.declChip')}
-              </button>
-            )}
           </>
         )}
       </main>
@@ -346,7 +376,7 @@ export function Table() {
           onClose={() => setScoredClosedFor(view.dealIndex)}
         />
       )}
-      {showMatchOverlay && view.winnerSide !== null && (
+      {showMatchOverlay && !holding && view.winnerSide !== null && (
         <MatchEndedOverlay
           winnerSide={view.winnerSide}
           scores={view.scores}
@@ -355,6 +385,7 @@ export function Table() {
           mySide={mySide}
           players={players}
           nameOf={nameOf}
+          matchRating={matchRating}
         />
       )}
       {confirmStop && (
@@ -366,8 +397,16 @@ export function Table() {
               type="button"
               className="btn--danger"
               onClick={() => {
+                // Ask the server to abandon the match + close the room (drops the
+                // other players), then leave straight to Home. We navigate on our
+                // own instead of waiting for the server's WS close: that close
+                // code (4000) can be rewritten to 1006 by a proxy, in which case
+                // the socket layer would reconnect forever and strand the host on
+                // the "reconnecting…" banner.
                 sendLobby({ type: 'stopMatch' });
                 setConfirmStop(false);
+                disconnect();
+                navigate('/');
               }}
             >
               {t('table.stop')}

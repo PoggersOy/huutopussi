@@ -170,6 +170,51 @@ Plan: `docs/plan.md`. Rules: `docs/huutopussin-saannot.md`.
   8. Minor dead code (`Db.setRoomHost` unused; client `actorOf` re-derives the
      server-sent acting seat as a fallback).
 
+- 2026-07-11: **Recent-rooms list consolidated into the History screen.** The
+  Home screen's "Recent rooms" panel (best-effort localStorage codes, no liveness)
+  was removed; the History ("Pelihistoria") screen now leads with an **Open games**
+  section — the device's remembered room codes filtered to the ones the server
+  confirms are still live, each with status (lobby/in-progress), seat count, and a
+  one-tap rejoin — above the existing finished-match list. Liveness is a real
+  server answer via a new stateless `GET /api/rooms?codes=…` endpoint (outside the
+  frozen WS protocol; the room-bound WS singleton can't do a multi-room query),
+  which returns `{code,status,seatsFilled,seatsTotal}` for known-and-open codes
+  only (unknown/invalid codes omitted, ≤20 per probe). Also fixed: the server now
+  bundles a room's finished-match `history` into **every** welcome (was pushed only
+  on match-finish mid-connection), so the History list is complete per room on a
+  fresh device/reconnect. New client `api.ts`; `history.ts` recent-rooms helpers
+  unchanged (now consumed by History, not Home). Tests: server integration
+  `/api/rooms` case + client History open-games cases; `pnpm typecheck`/`lint`/
+  `test` (431 unit) green.
+
+- 2026-07-11: **Google Sign-In (optional) + chess.com-style Elo.** Players can
+  now sign in with Google (the only login method) to earn a persistent rating;
+  the guest "room link + nickname" flow is untouched, and login self-disables when
+  no `GOOGLE_CLIENT_ID` is configured (guest-only — the local/e2e default). Auth
+  uses the Google Identity Services **ID-token** flow (no callback route, cookies,
+  CSRF, or client secret): the client gets a Google ID token, POSTs it to
+  `/auth/google`, the server verifies it with `google-auth-library` (server-only
+  dep; engine stays zero-dep), upserts a `users` row keyed on the Google `sub`,
+  and issues its own **opaque app token** (only its sha256 hash stored, ~90-day
+  expiry, revocable) which the client keeps in localStorage and sends on the WS
+  `hello`. **Elo** is one unified pure module (`packages/server/src/elo.ts`)
+  covering 2p (1v1), 4p (2v2 pairs, both members get the full side delta) and 3p
+  (free-for-all ranked by score) via pairwise Elo with K scaled by `1/(n−1)`; the
+  official winner is **anchored** so a declarer-tiebreak win never costs rating.
+  chess.com-like K schedule (40 provisional / 20 / 10), a capped gains-only
+  win-streak bonus (≤ +10), rating floor 100, start 1000. A match is **rated only
+  when every active seat is a distinct signed-in human** (no bots, no guests, no
+  account twice) — AFK autoplay does NOT unrate (no loss-dodging). Ratings surface
+  on a `/profile` screen, as a post-match Elo delta in the match-ended overlay, and
+  next to names in the lobby (no leaderboard). Contract: additive optional fields
+  only (`hello.auth`, `SeatInfo.rating`/`provisional`, `update.ratings`);
+  `PROTOCOL_VERSION` intentionally NOT bumped so open PWA clients degrade to guest
+  rather than being force-closed. New tables `users`/`auth_tokens`/`rating_events`
+  + `sessions.user_id` (idempotent migrations). Tests: `elo.test.ts` (21),
+  `auth-elo.test.ts` (HTTP endpoints + rated/unrated full matches), migration case;
+  `pnpm typecheck`/`lint`/`test` green, 500-game sim clean, client+server build +
+  deployment smoke test pass. Design: [`docs/AUTH-ELO.md`](AUTH-ELO.md).
+
 ## Backlog (post-MVP)
 
 - **illisoft ruleset preset**: the user's old Huutopussi.exe (2002) help file

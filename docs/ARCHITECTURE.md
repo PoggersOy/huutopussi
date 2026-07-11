@@ -124,7 +124,7 @@ follow (× tricks) → scored`. Declarations happen only in the `lead` phase
 
 | File | Responsibility |
 | --- | --- |
-| `server.ts` | `createServer(opts)`: HTTP static host (SPA fallback for `/r/*`) + `/healthz` + WS `/ws`. Implements the protocol: parse → idempotency → `validateAction` → `applyEvent` (persisted) → one redacted `update` per recipient. Hints only to the acting seat. |
+| `server.ts` | `createServer(opts)`: HTTP static host (SPA fallback for `/r/*`) + `/healthz` + `GET /api/rooms` (live-room status probe for the History screen) + WS `/ws`. Implements the protocol: parse → idempotency → `validateAction` → `applyEvent` (persisted) → one redacted `update` per recipient. Hints only to the acting seat. |
 | `rooms.ts` | Room registry: 5-char crypto codes, seat bookkeeping, `RoomStatePublic` projection, per-room monotonic `seq`, the live `MatchState`, timer handles. |
 | `sessions.ts` | Sessions keyed by uuid token, bound to `(room, seat, nickname)`. Last-connect-wins rebinding. Per-session actionId LRU for idempotent replay. |
 | `timers.ts` | Turn deadlines, disconnect grace, autoplay policy, idle-room reaper. Host-editable turn timeout (separate from `RuleConfig`). |
@@ -141,7 +141,7 @@ comes **only** from `ActionHint`s.
 | Area | Files |
 | --- | --- |
 | Entry / routing | `App.tsx`, `main.tsx`, `screens/Room.tsx` (routes `/`, `/r/:code`; Lobby vs Table by room status) |
-| Network / state | `socket.ts` (typed WS client: backoff reconnect, per-room session tokens, uuid actionIds, wake-resync, ping), `store.ts` (two slices) |
+| Network / state | `socket.ts` (typed WS client: backoff reconnect, per-room session tokens, uuid actionIds, wake-resync, ping), `api.ts` (stateless HTTP probes outside the WS protocol — e.g. `GET /api/rooms` for the History screen's open-games list), `store.ts` (two slices) |
 | Screens | `screens/{Home,Lobby,Table,History}.tsx` |
 | Table internals | `screens/table/{TableSheets,TableOverlays,tableUtils,talonMemory}.ts(x)` — hint-driven bottom sheets, score/end overlays, 2-3p talon-reveal memory |
 | Components | `components/{CardFace,ConnectionPill,ConnectionBanner,MatchList,Toasts}.tsx` |

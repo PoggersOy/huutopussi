@@ -16,6 +16,7 @@ import * as fs from 'node:fs';
 import * as http from 'node:http';
 import { extname, join, normalize, resolve } from 'node:path';
 import {
+  activeSeats,
   allowedActions,
   applyEvent,
   type Card,
@@ -33,6 +34,9 @@ import {
   redactEventFor,
   redactViewFor,
   type Seat,
+  type Side,
+  sideCount,
+  sideOf,
   validateAction,
 } from '@hp/engine';
 import {
@@ -40,20 +44,26 @@ import {
   type ConfigPatch,
   clientMsgSchema,
   type LobbyCmd,
+  type MatchRatingResult,
   PROTOCOL_VERSION,
+  type SeatRatingResult,
   type ServerMsg,
   type TurnInfo,
 } from '@hp/protocol';
 import { type WebSocket, WebSocketServer } from 'ws';
+import { AUTH_TOKEN_TTL_MS, createGoogleVerifier, hashToken, mintToken } from './auth.js';
 import { computeBotAction, getBot, getFallbackBot } from './botRunner.js';
-import { Db, EVENT_RETENTION_MS } from './db.js';
+import { Db, EVENT_RETENTION_MS, type RatingUpdate, type UserRow } from './db.js';
+import { computeRatingChanges, PROVISIONAL_GAMES, type SideInput } from './elo.js';
 import {
   allSeatsFilled,
   anyHumanConnected,
   createRoom,
   generateRoomCode,
   hostSessionOf,
+  ROOM_CODE_ALPHABET,
   type Room,
+  type RoomStatus,
   type RoomTableSettings,
   roomPublic,
   sessionAtSeat,
@@ -77,6 +87,9 @@ import {
   type TimerConfig,
 } from './timers.js';
 
+/** Room-code validator for the /api/rooms probe (single source: the alphabet). */
+const ROOM_CODE_RE = new RegExp(`^[${ROOM_CODE_ALPHABET}]{5}$`);
+
 export interface ServerOpts {
   /** Bind host. Tests bind 127.0.0.1 (the default); prod passes 0.0.0.0. */
   host?: string;
@@ -92,6 +105,11 @@ export interface ServerOpts {
   maxRooms?: number;
   /** Cap on sessions per room; new guest joins are refused past it. */
   maxSessionsPerRoom?: number;
+  /**
+   * Google OAuth client id for Sign-In. When unset (null), login is disabled
+   * and the app runs guest-only — the natural mode for local dev and e2e.
+   */
+  googleClientId?: string | null;
 }
 
 export interface HpServer {
@@ -103,6 +121,17 @@ export interface HpServer {
   listen(): Promise<number>;
   port(): number;
   close(): Promise<void>;
+}
+
+/**
+ * Result of costing a finished match's ratings: the wire payload, the durable
+ * db updates, and the in-memory session-cache refreshes (kept separate so they
+ * can be applied at the right moments — writes inside the txn, cache after it).
+ */
+interface RatingPlan {
+  result: MatchRatingResult;
+  updates: RatingUpdate[];
+  cache: Array<{ session: Session; rating: number; provisional: boolean }>;
 }
 
 const ALL_CARDS: readonly Card[] = makeDeck();
@@ -174,6 +203,7 @@ const MIME: Record<string, string> = {
   '.woff2': 'font/woff2',
   '.map': 'application/json',
   '.txt': 'text/plain; charset=utf-8',
+  '.xml': 'application/xml; charset=utf-8',
 };
 
 export function createServer(opts: ServerOpts = {}): HpServer {
@@ -184,6 +214,8 @@ export function createServer(opts: ServerOpts = {}): HpServer {
   const maxRooms = opts.maxRooms ?? 1000;
   const maxSessionsPerRoom = opts.maxSessionsPerRoom ?? 64;
   const db = new Db(opts.dbPath ?? './data/hp.db');
+  const googleClientId = opts.googleClientId ?? null;
+  const verifyGoogle = createGoogleVerifier(googleClientId);
 
   const rooms = new Map<string, Room>(); // by code
   const roomsById = new Map<string, Room>();
@@ -247,7 +279,11 @@ export function createServer(opts: ServerOpts = {}): HpServer {
   function broadcastUpdate(
     room: Room,
     trigger: GameEvent | null,
-    options: { includeRoom?: boolean; origin?: { token: string; actionId: string } } = {},
+    options: {
+      includeRoom?: boolean;
+      origin?: { token: string; actionId: string };
+      ratings?: MatchRatingResult;
+    } = {},
   ): void {
     const state = room.match;
     if (!state) return;
@@ -276,6 +312,7 @@ export function createServer(opts: ServerOpts = {}): HpServer {
         event: trigger ? redactEventFor(trigger, viewer) : null,
         turn,
         ...(pub ? { room: pub } : {}),
+        ...(options.ratings ? { ratings: options.ratings } : {}),
       };
       const json = JSON.stringify(msg);
       if (isOrigin && options.origin) rememberResponse(s, options.origin.actionId, json);
@@ -436,6 +473,102 @@ export function createServer(opts: ServerOpts = {}): HpServer {
 
   // ── game flow ───────────────────────────────────────────────────────────────
 
+  /** Empty (unrated) plan — the common case (guest/bot present, or a tie seat). */
+  const UNRATED_PLAN: RatingPlan = {
+    result: { rated: false, perSeat: [] },
+    updates: [],
+    cache: [],
+  };
+
+  /**
+   * Cost the Elo of a just-finished match. Rated ONLY when every active seat is
+   * a distinct signed-in human (no bots, no guests, no account twice); any other
+   * shape returns the unrated plan (no rating/streak change). Pure reads +
+   * computation — persistence and cache application happen in the caller.
+   */
+  function planMatchRating(
+    room: Room,
+    matchId: string,
+    finalState: MatchState,
+    now: number,
+  ): RatingPlan {
+    const players = room.config.players;
+    if (finalState.winnerSide === null) return UNRATED_PLAN;
+    const seats = activeSeats(players);
+
+    // Eligibility + gather each seat's account, keyed by seat.
+    const userBySeat = new Map<Seat, UserRow>();
+    const seenUsers = new Set<string>();
+    for (const seat of seats) {
+      const s = sessionAtSeat(room, seat);
+      if (!s || s.kind !== 'human' || s.userId === null) return UNRATED_PLAN;
+      if (seenUsers.has(s.userId)) return UNRATED_PLAN; // same account in two seats
+      seenUsers.add(s.userId);
+      const u = db.getUserById(s.userId);
+      if (!u) return UNRATED_PLAN;
+      userBySeat.set(seat, u);
+    }
+
+    // Group seats into their sides (4p pairs; 2-3p one seat per side).
+    const n = sideCount(room.config);
+    const memberSeatsBySide: Seat[][] = Array.from({ length: n }, () => []);
+    for (const seat of seats) {
+      const bucket = memberSeatsBySide[sideOf(seat, players)];
+      if (bucket) bucket.push(seat);
+    }
+
+    const sides: SideInput[] = memberSeatsBySide.map((memberSeats, side) => ({
+      members: memberSeats.map((seat) => {
+        const u = userBySeat.get(seat);
+        if (!u) throw new Error('planMatchRating: missing user for seat');
+        return { rating: u.rating, gamesPlayed: u.gamesPlayed, streakBefore: u.winStreak };
+      }),
+      finalScore: finalState.scores[side] ?? 0,
+      isWinner: side === finalState.winnerSide,
+    }));
+
+    const changes = computeRatingChanges(sides);
+    const updates: RatingUpdate[] = [];
+    const perSeat: SeatRatingResult[] = [];
+    const cache: RatingPlan['cache'] = [];
+    memberSeatsBySide.forEach((memberSeats, side) => {
+      const sideChanges = changes[side];
+      memberSeats.forEach((seat, k) => {
+        const u = userBySeat.get(seat);
+        const r = sideChanges?.[k];
+        const s = sessionAtSeat(room, seat);
+        if (!u || !r || !s) throw new Error('planMatchRating: change/seat mismatch');
+        const isWin = side === finalState.winnerSide;
+        updates.push({
+          matchId,
+          userId: u.id,
+          seat,
+          ratingBefore: u.rating,
+          ratingAfter: r.newRating,
+          delta: r.delta,
+          newStreak: r.newStreak,
+          isWin,
+          createdAt: now,
+        });
+        perSeat.push({ seat, userId: u.id, before: u.rating, after: r.newRating, delta: r.delta });
+        cache.push({
+          session: s,
+          rating: r.newRating,
+          provisional: u.gamesPlayed + 1 < PROVISIONAL_GAMES,
+        });
+      });
+    });
+    return { result: { rated: true, perSeat }, updates, cache };
+  }
+
+  /** Applies a rating plan's in-memory session-cache refreshes (post-commit). */
+  function applyRatingCache(plan: RatingPlan): void {
+    for (const c of plan.cache) {
+      c.session.rating = c.rating;
+      c.session.provisional = c.provisional;
+    }
+  }
+
   /**
    * Applies an already-validated event chain: persist in ONE transaction,
    * update state, then broadcast exactly one 'update' per recipient.
@@ -453,6 +586,10 @@ export function createServer(opts: ServerOpts = {}): HpServer {
     let state = current;
     for (const e of events) state = applyEvent(state, e);
     const base = room.eventSeq;
+    // Cost the Elo BEFORE the transaction (pure reads + math); persist the
+    // rating rows INSIDE it so they commit atomically with finishMatch.
+    const matchEnding = events.some((e) => e.type === 'matchEnded');
+    const ratingPlan = matchEnding ? planMatchRating(room, matchId, state, Date.now()) : null;
     db.transaction(() => {
       events.forEach((e, i) => {
         db.appendEvent(matchId, base + i + 1, e);
@@ -463,9 +600,13 @@ export function createServer(opts: ServerOpts = {}): HpServer {
           db.finishMatch(matchId, e.winnerSide, state.scores);
         }
       });
+      if (ratingPlan?.result.rated) db.applyRatingResults(ratingPlan.updates);
     });
     room.eventSeq = base + events.length;
     room.match = state;
+    // Refresh cached ratings before the broadcast so a bundled roomPublic shows
+    // the post-match numbers in the lobby.
+    if (ratingPlan) applyRatingCache(ratingPlan);
 
     let includeRoom = forceRoom;
     if (state.winnerSide !== null && room.status !== 'finished') {
@@ -479,6 +620,7 @@ export function createServer(opts: ServerOpts = {}): HpServer {
     broadcastUpdate(room, events[0] ?? null, {
       includeRoom,
       ...(origin ? { origin } : {}),
+      ...(ratingPlan ? { ratings: ratingPlan.result } : {}),
     });
 
     if (state.winnerSide !== null) {
@@ -755,7 +897,14 @@ export function createServer(opts: ServerOpts = {}): HpServer {
   }
 
   function sessionRow(s: Session) {
-    return { token: s.token, roomId: s.roomId, seat: s.seat, nickname: s.nickname, kind: s.kind };
+    return {
+      token: s.token,
+      roomId: s.roomId,
+      seat: s.seat,
+      nickname: s.nickname,
+      kind: s.kind,
+      userId: s.userId,
+    };
   }
 
   /**
@@ -791,6 +940,12 @@ export function createServer(opts: ServerOpts = {}): HpServer {
       turn: buildTurnInfo(room, session.seat),
     };
     sendTo(session, msg);
+    // Bundle the room's finished-match summaries with every welcome. Previously
+    // 'history' was pushed ONLY when a match finished mid-connection, so a fresh
+    // device (or a reconnect after the fact) never saw a room's past results.
+    // Sending the authoritative set on welcome keeps the History screen complete
+    // per room, consistent with the full-snapshot-on-welcome model.
+    sendTo(session, { t: 'history', matches: db.matchSummaries(room.id) });
   }
 
   function bindSocket(session: Session, sock: WebSocket, room: Room): void {
@@ -809,6 +964,34 @@ export function createServer(opts: ServerOpts = {}): HpServer {
     clearIdleTimer(room);
   }
 
+  /** Resolve an app auth token to its account, or null (absent/expired/unknown). */
+  function resolveAuth(token: string | undefined): UserRow | null {
+    if (token === undefined) return null;
+    const userId = db.resolveAuthToken(hashToken(token), Date.now());
+    return userId === null ? null : db.getUserById(userId);
+  }
+
+  /**
+   * Bind a resolved account onto a session: id, cached rating/provisional, and a
+   * default nickname from the Google name when the client sent none. A null user
+   * (guest, or an unresolvable token) leaves the session untouched — a stale
+   * token never signs an already-bound session out.
+   */
+  function applyAuthToSession(
+    session: Session,
+    user: UserRow | null,
+    explicitNick: string | undefined,
+  ): void {
+    if (!user) return;
+    session.userId = user.id;
+    session.rating = user.rating;
+    session.provisional = user.gamesPlayed < PROVISIONAL_GAMES;
+    if (explicitNick === undefined && session.nickname === null && user.name) {
+      const nick = user.name.trim().slice(0, 20);
+      if (nick.length > 0) session.nickname = nick;
+    }
+  }
+
   function handleHello(
     sock: WebSocket,
     msg: Extract<ClientMsg, { t: 'hello' }>,
@@ -824,16 +1007,19 @@ export function createServer(opts: ServerOpts = {}): HpServer {
       return;
     }
 
+    // Resolve the (optional) signed-in account once; a bad/expired token is
+    // simply treated as a guest — it never rejects the join.
+    const authUser = resolveAuth(msg.auth);
+
     // Resume an existing session (reconnect), last-connect-wins.
     if (msg.sessionToken !== undefined) {
       const existing = sessionsByToken.get(msg.sessionToken);
       if (existing && existing.kind === 'human') {
         const room = roomsById.get(existing.roomId);
         if (room && !room.closed && (msg.roomCode === undefined || msg.roomCode === room.code)) {
-          if (msg.nickname !== undefined) {
-            existing.nickname = msg.nickname;
-            db.saveSession(sessionRow(existing));
-          }
+          if (msg.nickname !== undefined) existing.nickname = msg.nickname;
+          applyAuthToSession(existing, authUser, msg.nickname);
+          db.saveSession(sessionRow(existing));
           bindSocket(existing, sock, room);
           setBound(existing);
           // A returning player takes their seat back from the fill-in bot at
@@ -876,6 +1062,7 @@ export function createServer(opts: ServerOpts = {}): HpServer {
         nickname: msg.nickname ?? null,
         kind: 'human',
       });
+      applyAuthToSession(session, authUser, msg.nickname);
       room.sessions.set(session.token, session);
       sessionsByToken.set(session.token, session);
       db.saveSession(sessionRow(session));
@@ -913,6 +1100,7 @@ export function createServer(opts: ServerOpts = {}): HpServer {
       nickname: msg.nickname ?? null,
       kind: 'human',
     });
+    applyAuthToSession(session, authUser, msg.nickname);
     const room = createRoom({
       id: roomId,
       code,
@@ -1100,8 +1288,13 @@ export function createServer(opts: ServerOpts = {}): HpServer {
         streamFile(filePath, res);
         return;
       }
-      // SPA fallback: room links (/r/CODE) and the root serve index.html.
-      if (pathname === '/' || pathname.startsWith('/r/')) {
+      // SPA fallback: root, room links (/r/CODE) and app screens serve index.html.
+      if (
+        pathname === '/' ||
+        pathname.startsWith('/r/') ||
+        pathname === '/profile' ||
+        pathname === '/history'
+      ) {
         streamFile(join(dir, 'index.html'), res);
         return;
       }
@@ -1122,6 +1315,185 @@ export function createServer(opts: ServerOpts = {}): HpServer {
     });
   }
 
+  // ── HTTP: auth + profile JSON API ──────────────────────────────────────────
+
+  function sendHttpJson(res: http.ServerResponse, status: number, body: unknown): void {
+    res.writeHead(status, { 'content-type': 'application/json' });
+    res.end(JSON.stringify(body));
+  }
+
+  /** Read a size-capped JSON request body (POST endpoints only). */
+  function readJsonBody(req: http.IncomingMessage, maxBytes: number): Promise<unknown> {
+    return new Promise((resolvePromise, reject) => {
+      let size = 0;
+      const chunks: Buffer[] = [];
+      req.on('data', (c: Buffer) => {
+        size += c.length;
+        if (size > maxBytes) {
+          reject(new Error('body too large'));
+          req.destroy();
+          return;
+        }
+        chunks.push(c);
+      });
+      req.on('end', () => {
+        try {
+          const text = Buffer.concat(chunks).toString('utf8');
+          resolvePromise(text.length > 0 ? JSON.parse(text) : {});
+        } catch {
+          reject(new Error('bad json'));
+        }
+      });
+      req.on('error', reject);
+    });
+  }
+
+  /** Best-effort client IP (behind Fly's proxy). Used only for rate-limiting. */
+  function clientIp(req: http.IncomingMessage): string {
+    const fly = req.headers['fly-client-ip'];
+    if (typeof fly === 'string' && fly.length > 0) return fly;
+    const xff = req.headers['x-forwarded-for'];
+    if (typeof xff === 'string' && xff.length > 0) return xff.split(',')[0]?.trim() ?? 'unknown';
+    return req.socket.remoteAddress ?? 'unknown';
+  }
+
+  const authRate = new Map<string, { count: number; resetAt: number }>();
+  const AUTH_RATE_WINDOW_MS = 60_000;
+  const AUTH_RATE_MAX = 30; // per IP per minute across the auth endpoints
+
+  /** Fixed-window per-IP limiter for the auth endpoints; true = over the cap. */
+  function authRateLimited(req: http.IncomingMessage, now: number): boolean {
+    const ip = clientIp(req);
+    const bucket = authRate.get(ip);
+    if (!bucket || bucket.resetAt <= now) {
+      if (authRate.size > 5000) {
+        for (const [k, v] of authRate) if (v.resetAt <= now) authRate.delete(k);
+      }
+      authRate.set(ip, { count: 1, resetAt: now + AUTH_RATE_WINDOW_MS });
+      return false;
+    }
+    bucket.count += 1;
+    return bucket.count > AUTH_RATE_MAX;
+  }
+
+  function bearerToken(req: http.IncomingMessage): string | null {
+    const h = req.headers.authorization;
+    if (typeof h !== 'string') return null;
+    const m = /^Bearer (.+)$/.exec(h);
+    return m ? (m[1] ?? null) : null;
+  }
+
+  /** The user's own account view returned by the auth/profile endpoints. */
+  function publicUser(u: UserRow) {
+    return {
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      picture: u.picture,
+      rating: u.rating,
+      gamesPlayed: u.gamesPlayed,
+      wins: u.wins,
+      losses: u.losses,
+      winStreak: u.winStreak,
+      bestStreak: u.bestStreak,
+      provisional: u.gamesPlayed < PROVISIONAL_GAMES,
+    };
+  }
+
+  /** Handles /api/auth-config, /auth/*, /api/profile. Always ends the response. */
+  async function handleHttpAuth(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    url: URL,
+  ): Promise<void> {
+    const now = Date.now();
+    const path = url.pathname;
+
+    // Public: tells the client which Google client id to use (null = no login).
+    if (path === '/api/auth-config' && req.method === 'GET') {
+      sendHttpJson(res, 200, { googleClientId });
+      return;
+    }
+
+    if (authRateLimited(req, now)) {
+      sendHttpJson(res, 429, { error: 'rate_limited' });
+      return;
+    }
+
+    if (path === '/auth/google' && req.method === 'POST') {
+      if (!verifyGoogle) {
+        sendHttpJson(res, 503, { error: 'login_disabled' });
+        return;
+      }
+      let body: unknown;
+      try {
+        body = await readJsonBody(req, 16 * 1024);
+      } catch {
+        sendHttpJson(res, 400, { error: 'bad_request' });
+        return;
+      }
+      const credential =
+        typeof body === 'object' && body !== null && 'credential' in body
+          ? (body as { credential: unknown }).credential
+          : null;
+      if (typeof credential !== 'string' || credential.length === 0) {
+        sendHttpJson(res, 400, { error: 'bad_request' });
+        return;
+      }
+      const identity = await verifyGoogle(credential);
+      if (!identity) {
+        sendHttpJson(res, 401, { error: 'invalid_credential' });
+        return;
+      }
+      const user = db.upsertUserByGoogleSub({
+        id: randomUUID(),
+        googleSub: identity.sub,
+        email: identity.email,
+        name: identity.name,
+        picture: identity.picture,
+      });
+      const rawToken = mintToken();
+      db.createAuthToken(hashToken(rawToken), user.id, now + AUTH_TOKEN_TTL_MS);
+      sendHttpJson(res, 200, { token: rawToken, user: publicUser(user) });
+      return;
+    }
+
+    if (path === '/auth/me' && req.method === 'GET') {
+      const user = resolveAuth(bearerToken(req) ?? undefined);
+      if (!user) {
+        sendHttpJson(res, 401, { error: 'unauthorized' });
+        return;
+      }
+      sendHttpJson(res, 200, { user: publicUser(user) });
+      return;
+    }
+
+    if (path === '/auth/logout' && req.method === 'POST') {
+      const token = bearerToken(req);
+      if (token) db.deleteAuthToken(hashToken(token));
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
+    if (path === '/api/profile' && req.method === 'GET') {
+      const user = resolveAuth(bearerToken(req) ?? undefined);
+      if (!user) {
+        sendHttpJson(res, 401, { error: 'unauthorized' });
+        return;
+      }
+      sendHttpJson(res, 200, {
+        user: publicUser(user),
+        ratingEvents: db.getRatingEventsForUser(user.id, 50),
+      });
+      return;
+    }
+
+    sendHttpJson(res, 404, { error: 'not_found' });
+  }
+
+  // ── HTTP: healthz + static client (SPA fallback for /r/*) ───────────────────
+
   const httpServer = http.createServer((req, res) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
     if (url.pathname === '/healthz') {
@@ -1129,9 +1501,55 @@ export function createServer(opts: ServerOpts = {}): HpServer {
       res.end('{"ok":true}');
       return;
     }
+    // Auth + profile JSON API (handles its own methods, incl. POST).
+    if (
+      url.pathname === '/api/auth-config' ||
+      url.pathname === '/api/profile' ||
+      url.pathname.startsWith('/auth/')
+    ) {
+      void handleHttpAuth(req, res, url).catch(() => {
+        if (!res.headersSent) sendHttpJson(res, 500, { error: 'internal' });
+      });
+      return;
+    }
     if (req.method !== 'GET' && req.method !== 'HEAD') {
       res.writeHead(405, { 'content-type': 'text/plain' });
       res.end('method not allowed');
+      return;
+    }
+    // Room-status probe for the History screen's "open games" list. The client
+    // sends the codes it remembers (localStorage); we answer with the live
+    // status of the ones that still exist. Knowing a code already lets you join
+    // and see everything, so returning status + seat counts for a KNOWN code
+    // leaks nothing new (we omit nicknames and never confirm unknown codes).
+    if (url.pathname === '/api/rooms') {
+      const rawCodes = (url.searchParams.get('codes') ?? '').split(',');
+      const seen = new Set<string>();
+      const result: Array<{
+        code: string;
+        status: RoomStatus;
+        seatsFilled: number;
+        seatsTotal: number;
+      }> = [];
+      for (const raw of rawCodes) {
+        const code = raw.trim().toUpperCase();
+        // Cap the probe so a crafted query can't scan the whole room space.
+        if (seen.size >= 20) break;
+        if (code === '' || seen.has(code) || !ROOM_CODE_RE.test(code)) continue;
+        seen.add(code);
+        const room = rooms.get(code);
+        if (!room || room.closed) continue;
+        const seats = activeSeats(room.config.players);
+        const seatsFilled = seats.filter((seat) => sessionAtSeat(room, seat) !== null).length;
+        result.push({
+          code,
+          status: room.status,
+          seatsFilled,
+          seatsTotal: seats.length,
+        });
+      }
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ rooms: result }));
       return;
     }
     let pathname: string;
@@ -1250,8 +1668,15 @@ export function createServer(opts: ServerOpts = {}): HpServer {
         sessionsByToken.set(session.token, session);
       }
       if (state.winnerSide !== null) {
-        // Crash happened after the final event but before finalize: finish now.
-        db.finishMatch(rec.matchId, state.winnerSide, state.scores);
+        // Crash happened after the final event but before finalize: finish now,
+        // including the rating (a crash-during-finalize must not silently drop a
+        // rated result). Atomic: finishMatch + ratings commit together.
+        const plan = planMatchRating(room, rec.matchId, state, Date.now());
+        db.transaction(() => {
+          db.finishMatch(rec.matchId, state.winnerSide as Side, state.scores);
+          if (plan.result.rated) db.applyRatingResults(plan.updates);
+        });
+        applyRatingCache(plan);
         room.status = 'finished';
         db.setRoomStatus(room.id, 'finished');
       }

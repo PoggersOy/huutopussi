@@ -8,6 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "icons": "node scripts/generate-icons.mjs",
+    "og": "node scripts/generate-og.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

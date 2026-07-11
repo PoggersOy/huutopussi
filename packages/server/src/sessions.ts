@@ -19,6 +19,15 @@ export interface Session {
   seat: Seat | null;
   nickname: string | null;
   kind: SessionKind;
+  /** Signed-in account behind this session, or null for a guest/bot. */
+  userId: string | null;
+  /**
+   * Cached Elo of the signed-in account for lobby display. Refreshed at
+   * sign-in and after each rated match; null for guests/bots.
+   */
+  rating: number | null;
+  /** Cached provisional flag (account still below PROVISIONAL_GAMES). */
+  provisional: boolean;
   /** Live socket; null when disconnected (always null for bots). */
   socket: WebSocket | null;
   /** True while a disconnected/afk human's seat is autoplayed by a bot. */
@@ -40,6 +49,9 @@ export function createSession(init: {
   seat: Seat | null;
   nickname: string | null;
   kind: SessionKind;
+  userId?: string | null;
+  rating?: number | null;
+  provisional?: boolean;
 }): Session {
   return {
     token: init.token,
@@ -47,6 +59,9 @@ export function createSession(init: {
     seat: init.seat,
     nickname: init.nickname,
     kind: init.kind,
+    userId: init.userId ?? null,
+    rating: init.rating ?? null,
+    provisional: init.provisional ?? false,
     socket: null,
     botControlled: false,
     reclaimPending: false,

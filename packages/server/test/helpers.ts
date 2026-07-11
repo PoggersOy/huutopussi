@@ -124,6 +124,8 @@ export class TestClient {
       v?: number;
       /** Initial room config (create only): preset + overrides. */
       config?: ConfigPatch;
+      /** Opaque app auth token binding the connection to a signed-in account. */
+      auth?: string;
     } = {},
   ): Promise<ServerMsg> {
     const reply = this.next((m) => m.t === 'welcome' || m.t === 'error', 10_000, 'welcome');
@@ -134,6 +136,7 @@ export class TestClient {
       ...(opts.sessionToken !== undefined ? { sessionToken: opts.sessionToken } : {}),
       ...(opts.nickname !== undefined ? { nickname: opts.nickname } : {}),
       ...(opts.config !== undefined ? { config: opts.config } : {}),
+      ...(opts.auth !== undefined ? { auth: opts.auth } : {}),
     });
     return reply;
   }

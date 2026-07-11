@@ -120,7 +120,15 @@ export function roomPublic(room: Room): RoomStatePublic {
   const seats = activeSeats(room.config.players).map((seat): SeatInfo => {
     const s = sessionAtSeat(room, seat);
     if (!s) {
-      return { seat, nickname: null, kind: 'empty', connected: false, botControlled: false };
+      return {
+        seat,
+        nickname: null,
+        kind: 'empty',
+        connected: false,
+        botControlled: false,
+        rating: null,
+        provisional: false,
+      };
     }
     return {
       seat,
@@ -128,6 +136,9 @@ export function roomPublic(room: Room): RoomStatePublic {
       kind: s.kind,
       connected: s.kind === 'bot' ? true : isConnected(s),
       botControlled: s.botControlled,
+      // Only signed-in humans have a rating; guests/bots show null.
+      rating: s.kind === 'human' ? s.rating : null,
+      provisional: s.kind === 'human' ? s.provisional : false,
     };
   });
   const host = hostSessionOf(room);

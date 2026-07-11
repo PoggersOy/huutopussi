@@ -19,9 +19,34 @@
     "codePlaceholder": "Room code",
     "join": "Join",
     "language": "Language",
-    "recentRooms": "Recent rooms",
     "historyLink": "Match history",
     "install": "Install the app"
+  },
+  "auth": {
+    "signInPrompt": "Sign in to earn a rating",
+    "signOut": "Sign out",
+    "signedIn": "Signed in",
+    "profile": "Profile"
+  },
+  "profile": {
+    "title": "Profile",
+    "rating": "Rating",
+    "provisional": "provisional",
+    "provisionalHint": "Provisional until {{n}} rated games played",
+    "games": "Games",
+    "wins": "Wins",
+    "losses": "Losses",
+    "winStreak": "Win streak",
+    "bestStreak": "Best streak",
+    "recent": "Recent rated matches",
+    "noGames": "No rated matches yet — play a game where every seat is signed in.",
+    "signInRequired": "Sign in with Google to see your profile.",
+    "back": "Back"
+  },
+  "rating": {
+    "unrated": "Unrated match",
+    "unratedHint": "Elo counts only when every seat is a distinct signed-in player.",
+    "yourChange": "Your rating"
   },
   "room": {
     "joinTitle": "Join room {{code}}",
@@ -152,6 +177,11 @@
   "history": {
     "title": "Match history",
     "empty": "No matches played yet.",
+    "openGames": "Open games",
+    "finished": "Finished",
+    "statusLobby": "In lobby",
+    "statusPlaying": "In progress",
+    "seats": "{{filled}}/{{total}} seated",
     "result": "Side {{side}} won",
     "deals_one": "{{count}} deal",
     "deals_other": "{{count}} deals"
@@ -246,9 +276,7 @@
     "declTitle": "Declaration",
     "askWholeBtn": "Ask partner for a marriage",
     "halfPrompt": "Which half do you ask your partner for?",
-    "justLead": "Just lead",
-    "answerTitle": "Choose the marriage to reveal",
-    "declChip": "Declare…"
+    "answerTitle": "Choose the marriage to reveal"
   },
   "overlay": {
     "cardPoints": "Card points",

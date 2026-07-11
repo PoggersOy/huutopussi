@@ -35,6 +35,35 @@ test('healthz responds', async () => {
   expect(await res.json()).toEqual({ ok: true });
 });
 
+test('GET /api/rooms reports live rooms and omits unknown/invalid codes', async () => {
+  // A live room in the lobby: creating it auto-seats the host at seat 0, so it
+  // has one occupant of four.
+  const host = await TestClient.connect(port);
+  await host.hello({ nickname: 'Ann', config: { preset: 'paamuoto' } });
+  const code = host.roomCode;
+
+  // Probe the live code, an unknown-but-valid code, and a malformed one.
+  const res = await fetch(`http://127.0.0.1:${port}/api/rooms?codes=${code},ZZZZZ,not-a-code`);
+  expect(res.status).toBe(200);
+  expect(res.headers.get('content-type')).toContain('application/json');
+  const body = (await res.json()) as {
+    rooms: Array<{ code: string; status: string; seatsFilled: number; seatsTotal: number }>;
+  };
+  // Only the real room comes back; unknown/invalid codes are silently dropped.
+  expect(body.rooms).toEqual([{ code, status: 'lobby', seatsFilled: 1, seatsTotal: 4 }]);
+
+  // Lowercase input is normalized to the canonical upper-case code.
+  const lower = await fetch(`http://127.0.0.1:${port}/api/rooms?codes=${code.toLowerCase()}`);
+  const lowerBody = (await lower.json()) as { rooms: Array<{ code: string }> };
+  expect(lowerBody.rooms.map((r) => r.code)).toEqual([code]);
+
+  // No codes → empty list, still a well-formed 200.
+  const none = await fetch(`http://127.0.0.1:${port}/api/rooms`);
+  expect((await none.json()) as unknown).toEqual({ rooms: [] });
+
+  host.close();
+});
+
 test('a malformed percent-encoded path is a 400, not a process crash', async () => {
   // decodeURIComponent throws URIError on a lone/incomplete escape; uncaught in
   // the request listener it would terminate the whole server.

@@ -7,13 +7,108 @@
       name="viewport"
       content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
     />
+
+    <!-- Primary SEO -->
+    <title>Huutopussi – pelaa suomalaista tikkipeliä verkossa kavereiden kanssa</title>
+    <meta
+      name="description"
+      content="Huutopussi on suomalainen tikkipeli, jota pelaat kavereiden kanssa suoraan selaimessa. Luo huone, jaa linkki ja aloita heti – ei asennusta, ilmainen, toimii myös yksin botteja vastaan."
+    />
+    <meta
+      name="keywords"
+      content="Huutopussi, tikkipeli, korttipeli, suomalainen korttipeli, verkkopeli, moninpeli, selainpeli"
+    />
+    <meta name="author" content="Poggers" />
+    <meta name="application-name" content="Huutopussi" />
+    <meta name="generator" content="Vite" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
+    <meta name="google" content="notranslate" />
+    <link rel="canonical" href="https://huutopussi.online/" />
+
+    <!-- hreflang: the same URL serves Finnish and English (the app toggles in-page). -->
+    <link rel="alternate" hreflang="fi" href="https://huutopussi.online/" />
+    <link rel="alternate" hreflang="en" href="https://huutopussi.online/" />
+    <link rel="alternate" hreflang="x-default" href="https://huutopussi.online/" />
+
+    <!-- Open Graph (Facebook, WhatsApp, LinkedIn, Slack, …) -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Huutopussi" />
+    <meta property="og:title" content="Huutopussi – suomalainen tikkipeli verkossa" />
+    <meta
+      property="og:description"
+      content="Pelaa suomalaista tikkipeliä kavereiden kanssa suoraan selaimessa. Luo huone, jaa linkki ja aloita heti – ilmaiseksi, ilman asennusta."
+    />
+    <meta property="og:url" content="https://huutopussi.online/" />
+    <meta property="og:image" content="https://huutopussi.online/og-image.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Huutopussi – korttiviuhka vihreällä pelipöydällä" />
+    <meta property="og:locale" content="fi_FI" />
+    <meta property="og:locale:alternate" content="en_US" />
+
+    <!-- Twitter / X -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Huutopussi – suomalainen tikkipeli verkossa" />
+    <meta
+      name="twitter:description"
+      content="Pelaa suomalaista tikkipeliä kavereiden kanssa suoraan selaimessa. Luo huone, jaa linkki ja aloita heti."
+    />
+    <meta name="twitter:image" content="https://huutopussi.online/og-image.png" />
+    <meta name="twitter:image:alt" content="Huutopussi – korttiviuhka vihreällä pelipöydällä" />
+
+    <!-- PWA / mobile chrome -->
     <meta name="theme-color" content="#0b3d2e" />
+    <meta name="color-scheme" content="dark light" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Huutopussi" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="format-detection" content="telephone=no" />
+
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
-    <title>Huutopussi</title>
+
+    <!-- Structured data: a free browser game (schema.org). -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "WebSite",
+            "@id": "https://huutopussi.online/#website",
+            "url": "https://huutopussi.online/",
+            "name": "Huutopussi",
+            "inLanguage": ["fi", "en"],
+            "description": "Suomalainen tikkipeli, jota pelataan verkossa kavereiden kanssa."
+          },
+          {
+            "@type": ["WebApplication", "GameApplication"],
+            "@id": "https://huutopussi.online/#app",
+            "name": "Huutopussi",
+            "url": "https://huutopussi.online/",
+            "description": "Huutopussi on suomalainen tikkipeli, jota pelataan verkossa kavereiden kanssa suoraan selaimessa – ilmaiseksi ja ilman asennusta.",
+            "applicationCategory": "GameApplication",
+            "operatingSystem": "Any (web browser)",
+            "browserRequirements": "Requires JavaScript and WebSocket support",
+            "inLanguage": ["fi", "en"],
+            "image": "https://huutopussi.online/og-image.png",
+            "screenshot": "https://huutopussi.online/og-image.png",
+            "isAccessibleForFree": true,
+            "offers": {
+              "@type": "Offer",
+              "price": "0",
+              "priceCurrency": "EUR"
+            },
+            "publisher": {
+              "@type": "Organization",
+              "name": "Poggers",
+              "url": "https://huutopussi.online/"
+            }
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

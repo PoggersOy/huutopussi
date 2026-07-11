@@ -116,4 +116,37 @@ describe('reconnect vs terminal close', () => {
     vi.advanceTimersByTime(backoffDelay(1));
     expect(MockWebSocket.instances.length).toBe(opened + 1); // reconnected
   });
+
+  it('treats a terminal error MESSAGE as a dead-end, even when the close is a bare 1006', () => {
+    // Proxy rewrites the app close code (4004) to 1006, but the JSON error
+    // frame still lands: the client must stop retrying on the message alone.
+    connect('ABCDE');
+    const sock = MockWebSocket.instances.at(-1);
+    if (!sock) throw new Error('no socket opened');
+    sock.fireOpen();
+    sock.onmessage?.({ data: JSON.stringify({ t: 'error', code: 'error.roomNotFound' }) });
+
+    expect(useStore.getState().server.fatal).toBe('error.roomNotFound');
+    const opened = MockWebSocket.instances.length;
+    sock.fireClose(1006); // the follow-up close, code stripped by the proxy
+    vi.advanceTimersByTime(10_000);
+    expect(MockWebSocket.instances.length).toBe(opened); // never retried
+  });
+
+  it('leaves a normal (non-terminal) error message on the reconnect path', () => {
+    connect('ABCDE');
+    const sock = MockWebSocket.instances.at(-1);
+    if (!sock) throw new Error('no socket opened');
+    sock.fireOpen();
+    sock.onmessage?.({ data: JSON.stringify({ t: 'error', code: 'error.mustHeadTrick' }) });
+
+    expect(useStore.getState().server.fatal).toBeNull(); // just a toast, keep playing
+  });
+
+  it('disconnect() wipes the room slice so Home shows no reconnecting banner', () => {
+    // biome-ignore lint/suspicious/noExplicitAny: minimal room stub for the reset assertion
+    useStore.setState((s) => ({ server: { ...s.server, room: { code: 'ABCDE' } as any } }));
+    disconnect();
+    expect(useStore.getState().server.room).toBeNull();
+  });
 });

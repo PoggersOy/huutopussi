@@ -1,12 +1,13 @@
 /**
- * Home: nickname (persisted) + create room + join by code + recent rooms +
- * language toggle + subtle PWA install affordance.
+ * Home: nickname (persisted) + create room + join by code + language toggle +
+ * subtle PWA install affordance. Rejoinable/past games live on the History
+ * screen (reached via the link below), not here.
  */
 import { type FormEvent, useEffect, useState, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
+import { AuthPanel } from '../components/AuthPanel';
 import { ConnectionPill } from '../components/ConnectionPill';
-import { loadRecentRooms, type RecentRoom } from '../history';
 import { LANGUAGES, setLanguage } from '../i18n';
 import { installAvailable, promptInstall, subscribeInstall } from '../install';
 import { connect } from '../socket';
@@ -41,7 +42,6 @@ export function Home() {
   const [creating, setCreating] = useState(false);
   /** Game mode for a new room (2/3/4 pelaajaa) — sent in the hello config. */
   const [players, setPlayers] = useState<2 | 3 | 4>(4);
-  const [recents] = useState<RecentRoom[]>(loadRecentRooms);
   const canInstall = useSyncExternalStore(subscribeInstall, installAvailable);
   const createdCode = useStore((s) => s.server.room?.code);
 
@@ -68,16 +68,6 @@ export function Home() {
     if (trimmed !== '') navigate(`/r/${trimmed}`);
   }
 
-  function onOpenRecent(roomCode: string): void {
-    persistNickname();
-    navigate(`/r/${roomCode}`);
-  }
-
-  const dateFmt = new Intl.DateTimeFormat(i18n.language, {
-    dateStyle: 'short',
-    timeStyle: 'short',
-  });
-
   return (
     <div className="screen">
       <header className="screen__top">
@@ -88,6 +78,7 @@ export function Home() {
         <p className="dim">{t('home.tagline')}</p>
       </header>
       <main className="screen__main">
+        <AuthPanel />
         <div className="panel stack">
           <label className="stack">
             <span className="dim">{t('home.nickname')}</span>
@@ -131,25 +122,6 @@ export function Home() {
             {t('home.join')}
           </button>
         </form>
-        {recents.length > 0 && (
-          <section className="panel stack">
-            <h2 style={{ fontSize: 'var(--fs-md)' }}>{t('home.recentRooms')}</h2>
-            <ul className="list">
-              {recents.map((room) => (
-                <li key={room.code}>
-                  <button
-                    type="button"
-                    className="list__row"
-                    onClick={() => onOpenRecent(room.code)}
-                  >
-                    <strong className="room-code">{room.code}</strong>
-                    <span className="dim">{dateFmt.format(room.at)}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
         <button type="button" className="btn--ghost" onClick={() => navigate('/history')}>
           {t('home.historyLink')}
         </button>

@@ -36,7 +36,9 @@ export default defineConfig({
         // navigation while offline serves index.html, which renders the
         // "disconnected" state until the socket reconnects.
         navigateFallback: 'index.html',
-        navigateFallbackDenylist: [/^\/ws/],
+        // Never serve the SPA shell for the WS upgrade or the server JSON APIs
+        // (auth/profile/health) — those must reach the server, not the SW.
+        navigateFallbackDenylist: [/^\/ws/, /^\/auth/, /^\/api/, /^\/healthz/],
       },
     }),
   ],
@@ -45,6 +47,8 @@ export default defineConfig({
     // in production (the server serves this package's dist/).
     proxy: {
       '/ws': { target: 'ws://localhost:8080', ws: true },
+      '/api': { target: 'http://localhost:8080' },
+      '/auth': { target: 'http://localhost:8080' },
     },
   },
   build: {

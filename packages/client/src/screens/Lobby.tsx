@@ -17,6 +17,7 @@ import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ConnectionPill } from '../components/ConnectionPill';
 import { MatchList } from '../components/MatchList';
+import { RatingBadge } from '../components/RatingBadge';
 import { loadRoomHistory } from '../history';
 import { sendLobby } from '../socket';
 import { useStore } from '../store';
@@ -150,7 +151,12 @@ function SeatCard({
       {info.kind === 'empty' ? (
         <span className="dim">{t('lobby.empty')}</span>
       ) : (
-        <strong className="seat-card__name">{name}</strong>
+        <strong className="seat-card__name">
+          {name}
+          {info.kind === 'human' && (
+            <RatingBadge rating={info.rating} provisional={info.provisional} />
+          )}
+        </strong>
       )}
       {badges.length > 0 && <span className="dim seat-card__badges">{badges.join(' · ')}</span>}
       <div className="seat-card__actions">

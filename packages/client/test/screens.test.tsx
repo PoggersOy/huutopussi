@@ -21,24 +21,25 @@ beforeEach(async () => {
   localStorage.clear();
   serverApply.reset();
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 describe('Home', () => {
-  it('lists recent rooms from localStorage', () => {
+  it('does not list rooms on Home (they live on History now)', () => {
+    // Even with remembered rooms, Home shows no room list — it moved to History.
     recordRecentRoom('AB2CD', Date.UTC(2026, 6, 1));
     recordRecentRoom('QWXYZ', Date.UTC(2026, 6, 2));
     window.history.pushState({}, '', '/');
     render(<App />);
-    expect(screen.getByText('Recent rooms')).toBeTruthy();
-    const rows = screen.getAllByRole('button', { name: /AB2CD|QWXYZ/ });
-    expect(rows).toHaveLength(2);
-    expect(rows[0]?.textContent).toContain('QWXYZ'); // newest first
+    expect(screen.queryByText('Recent rooms')).toBeNull();
+    expect(screen.queryByRole('button', { name: /AB2CD|QWXYZ/ })).toBeNull();
   });
 
-  it('hides the recents panel and install button by default', () => {
+  it('hides the install button by default', () => {
     window.history.pushState({}, '', '/');
     render(<App />);
-    expect(screen.queryByText('Recent rooms')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Install the app' })).toBeNull();
   });
 });
@@ -75,6 +76,48 @@ describe('History screen', () => {
     window.history.pushState({}, '', '/history');
     render(<App />);
     expect(screen.getByText('No matches played yet.')).toBeTruthy();
+  });
+
+  it('lists live rooms from /api/rooms with a rejoin button, newest first', async () => {
+    recordRecentRoom('AB2CD', Date.UTC(2026, 6, 1));
+    recordRecentRoom('QWXYZ', Date.UTC(2026, 6, 2)); // newest → probed first
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        rooms: [
+          { code: 'QWXYZ', status: 'playing', seatsFilled: 4, seatsTotal: 4 },
+          { code: 'AB2CD', status: 'lobby', seatsFilled: 2, seatsTotal: 4 },
+        ],
+      }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    window.history.pushState({}, '', '/history');
+    render(<App />);
+
+    expect(await screen.findByText('Open games')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /QWXYZ/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /AB2CD/ })).toBeTruthy();
+    expect(screen.getByText(/In progress/)).toBeTruthy();
+    expect(screen.getByText(/In lobby/)).toBeTruthy();
+    expect(screen.getByText(/4\/4 seated/)).toBeTruthy();
+    // Probed exactly the remembered codes (newest first), one request.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith('/api/rooms?codes=QWXYZ%2CAB2CD');
+  });
+
+  it('shows no open-games section when the probe returns nothing', async () => {
+    recordRecentRoom('AB2CD', Date.UTC(2026, 6, 1));
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ rooms: [] }) }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    window.history.pushState({}, '', '/history');
+    render(<App />);
+    // The probe fired…
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    // …but with no live rooms and no finished matches, we fall to the empty state.
+    expect(screen.getByText('No matches played yet.')).toBeTruthy();
+    expect(screen.queryByText('Open games')).toBeNull();
   });
 });
 

@@ -17,6 +17,7 @@
     "@hp/engine": "workspace:*",
     "@hp/protocol": "workspace:*",
     "better-sqlite3": "^12.2.0",
+    "google-auth-library": "^10.9.0",
     "ws": "^8.18.3"
   },
   "devDependencies": {

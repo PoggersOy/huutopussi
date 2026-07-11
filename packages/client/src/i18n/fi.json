@@ -19,9 +19,34 @@
     "codePlaceholder": "Huonekoodi",
     "join": "Liity",
     "language": "Kieli",
-    "recentRooms": "Viimeisimmät huoneet",
     "historyLink": "Pelihistoria",
     "install": "Asenna sovellus"
+  },
+  "auth": {
+    "signInPrompt": "Kirjaudu kerätäksesi ratingia",
+    "signOut": "Kirjaudu ulos",
+    "signedIn": "Kirjautunut",
+    "profile": "Profiili"
+  },
+  "profile": {
+    "title": "Profiili",
+    "rating": "Rating",
+    "provisional": "alustava",
+    "provisionalHint": "Alustava kunnes {{n}} rankattua peliä pelattu",
+    "games": "Pelit",
+    "wins": "Voitot",
+    "losses": "Häviöt",
+    "winStreak": "Voittoputki",
+    "bestStreak": "Paras putki",
+    "recent": "Viimeisimmät rankatut ottelut",
+    "noGames": "Ei vielä rankattuja otteluita — pelaa peli, jossa jokainen paikka on kirjautunut.",
+    "signInRequired": "Kirjaudu Googlella nähdäksesi profiilisi.",
+    "back": "Takaisin"
+  },
+  "rating": {
+    "unrated": "Ei-rankattu ottelu",
+    "unratedHint": "Elo lasketaan vain kun jokainen paikka on eri kirjautunut pelaaja.",
+    "yourChange": "Ratingisi"
   },
   "room": {
     "joinTitle": "Liity huoneeseen {{code}}",
@@ -152,6 +177,11 @@
   "history": {
     "title": "Pelihistoria",
     "empty": "Ei vielä pelattuja pelejä.",
+    "openGames": "Avoimet pelit",
+    "finished": "Päättyneet",
+    "statusLobby": "Aulassa",
+    "statusPlaying": "Peli käynnissä",
+    "seats": "{{filled}}/{{total}} paikkaa",
     "result": "Puoli {{side}} voitti",
     "deals_one": "{{count}} jako",
     "deals_other": "{{count}} jakoa"
@@ -246,9 +276,7 @@
     "declTitle": "Julistus",
     "askWholeBtn": "Kysy parilta kokonaista",
     "halfPrompt": "Kumpaa puolikasta kysyt parilta?",
-    "justLead": "Aja vain",
-    "answerTitle": "Valitse avioliitto, jonka näytät",
-    "declChip": "Julistus…"
+    "answerTitle": "Valitse avioliitto, jonka näytät"
   },
   "overlay": {
     "cardPoints": "Korttipisteet",

@@ -19,7 +19,13 @@ import {
   type Suit,
   type TrickPlay,
 } from '@hp/engine';
-import type { MatchSummary, RoomStatePublic, ServerMsg, TurnInfo } from '@hp/protocol';
+import type {
+  MatchRatingResult,
+  MatchSummary,
+  RoomStatePublic,
+  ServerMsg,
+  TurnInfo,
+} from '@hp/protocol';
 import { create } from 'zustand';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -27,6 +33,33 @@ import { create } from 'zustand';
 export interface ServerError {
   code: string;
   params?: Record<string, string | number>;
+}
+
+/** A signed-in Google account, as returned by /auth/me and /auth/google. */
+export interface AuthUser {
+  id: string;
+  name: string | null;
+  email: string | null;
+  picture: string | null;
+  rating: number;
+  gamesPlayed: number;
+  wins: number;
+  losses: number;
+  winStreak: number;
+  bestStreak: number;
+  provisional: boolean;
+}
+
+export type AuthStatus = 'loading' | 'anon' | 'authing' | 'signed-in';
+
+export interface AuthSlice {
+  status: AuthStatus;
+  /** The signed-in account, or null when signed out. */
+  user: AuthUser | null;
+  /** Google client id from /api/auth-config; null = login disabled (guest-only). */
+  googleClientId: string | null;
+  /** True once GIS has loaded + initialised and the Sign-In button can render. */
+  loginReady: boolean;
 }
 
 export interface ServerSlice {
@@ -100,11 +133,18 @@ export interface UiSlice {
   redeal: { seat: Seat; until: number } | null;
   /** Latest match summaries for the current room ('history' messages). */
   history: MatchSummary[] | null;
+  /**
+   * Rating outcome of the just-finished match (from the `update` carrying
+   * `matchEnded`). Drives the Elo delta in the match-ended overlay; cleared on
+   * a fresh snapshot / new match.
+   */
+  matchRating: MatchRatingResult | null;
 }
 
 interface Store {
   server: ServerSlice;
   ui: UiSlice;
+  auth: AuthSlice;
   // ui actions (safe to call from components)
   selectCard(card: Card | null): void;
   toggleSelectedCard(card: Card, max: number): void;
@@ -141,6 +181,14 @@ const initialUi: UiSlice = {
   completedTrick: null,
   redeal: null,
   history: null,
+  matchRating: null,
+};
+
+const initialAuth: AuthSlice = {
+  status: 'loading',
+  user: null,
+  googleClientId: null,
+  loginReady: false,
 };
 
 /**
@@ -158,6 +206,7 @@ const TOAST_LIMIT = 5;
 export const useStore = create<Store>()((set) => ({
   server: initialServer,
   ui: initialUi,
+  auth: initialAuth,
 
   selectCard: (card) => set((s) => ({ ui: { ...s.ui, selectedCard: card } })),
   toggleSelectedCard: (card, max) =>
@@ -334,6 +383,7 @@ export const serverApply = {
         bubbles: [],
         completedTrick: null,
         redeal: null,
+        matchRating: null,
       },
     }));
   },
@@ -376,6 +426,22 @@ export const serverApply = {
           : msg.event?.type === 'dealStarted'
             ? null
             : s.ui.redeal;
+      // Post-match Elo: keep the ratings payload for the overlay; a new deal
+      // (rematch) clears it.
+      const matchRating =
+        msg.ratings !== undefined
+          ? msg.ratings
+          : msg.event?.type === 'dealStarted'
+            ? null
+            : s.ui.matchRating;
+      // Reflect the signed-in viewer's new rating on their account chip at once.
+      const authUser = s.auth.user;
+      const mine =
+        msg.ratings?.rated && authUser
+          ? msg.ratings.perSeat.find((p) => p.userId === authUser.id)
+          : undefined;
+      const auth =
+        mine && authUser ? { ...s.auth, user: { ...authUser, rating: mine.after } } : s.auth;
       return {
         server: {
           ...s.server,
@@ -384,6 +450,7 @@ export const serverApply = {
           turn: msg.turn,
           room: msg.room ?? s.server.room,
         },
+        auth,
         ui: {
           ...s.ui,
           // Any accepted state change resolves the pending spinner: either our
@@ -395,6 +462,7 @@ export const serverApply = {
           bubbles: [...kept, ...incoming],
           completedTrick,
           redeal,
+          matchRating,
           toasts: toast
             ? [...s.ui.toasts, { ...toast, id: ++toastSeq }].slice(-TOAST_LIMIT)
             : s.ui.toasts,
@@ -437,6 +505,38 @@ export const serverApply = {
 
   /** Full reset (leaving a room / connecting somewhere else). */
   reset(): void {
-    useStore.setState({ server: initialServer, ui: { ...initialUi } });
+    useStore.setState((s) => ({ server: initialServer, ui: { ...initialUi }, auth: s.auth }));
+  },
+};
+
+// ── Auth-slice writers (auth layer ONLY — see auth.ts) ───────────────────────
+
+export const authApply = {
+  /** The public client id from /api/auth-config (null → login disabled). */
+  setClientId(googleClientId: string | null): void {
+    useStore.setState((s) => ({
+      auth: {
+        ...s.auth,
+        googleClientId,
+        // Boot finished with no signed-in user → settle into the anonymous state.
+        status: s.auth.user ? 'signed-in' : s.auth.status === 'loading' ? 'anon' : s.auth.status,
+      },
+    }));
+  },
+
+  setStatus(status: AuthStatus): void {
+    useStore.setState((s) => ({ auth: { ...s.auth, status } }));
+  },
+
+  /** GIS has loaded and initialised; the Sign-In button can now be rendered. */
+  setLoginReady(): void {
+    useStore.setState((s) => ({ auth: { ...s.auth, loginReady: true } }));
+  },
+
+  /** Set (or clear) the signed-in account. */
+  setUser(user: AuthUser | null): void {
+    useStore.setState((s) => ({
+      auth: { ...s.auth, user, status: user ? 'signed-in' : 'anon' },
+    }));
   },
 };

@@ -152,6 +152,68 @@ test('opening the crash-loop legacy db (deals missing result) migrates and boots
   db.close();
 });
 
+/** A pre-auth db: `sessions` without `user_id`, and no users/auth/rating tables. */
+function seedPreAuthSchema(): void {
+  const raw = new Database(dbPath);
+  raw.exec(`
+    CREATE TABLE sessions (
+      token TEXT PRIMARY KEY, room_id TEXT NOT NULL, seat INTEGER,
+      nickname TEXT, kind TEXT NOT NULL,
+      created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+    );
+    INSERT INTO sessions (token, room_id, seat, nickname, kind, created_at, updated_at)
+      VALUES ('t0', 'r0', 0, 'old-guest', 'human', 1, 1);
+  `);
+  raw.close();
+}
+
+test('opening a pre-auth db adds sessions.user_id, creates the account tables, keeps data', () => {
+  seedPreAuthSchema();
+  const db = new Db(dbPath); // runs SCHEMA (new tables) + migrate (user_id column)
+
+  const cols = (db.raw.prepare('PRAGMA table_info(sessions)').all() as Array<{ name: string }>).map(
+    (c) => c.name,
+  );
+  expect(cols).toContain('user_id');
+
+  // The legacy guest row survives, defaulting user_id to null.
+  const legacy = db.raw
+    .prepare('SELECT nickname, user_id FROM sessions WHERE token = ?')
+    .get('t0') as { nickname: string; user_id: string | null } | undefined;
+  expect(legacy?.nickname).toBe('old-guest');
+  expect(legacy?.user_id).toBeNull();
+
+  // The new account tables exist and their helpers work end-to-end.
+  const user = db.upsertUserByGoogleSub({
+    id: 'u1',
+    googleSub: 'sub-1',
+    email: 'a@b.test',
+    name: 'A',
+    picture: null,
+  });
+  expect(user.rating).toBe(1000);
+  db.createAuthToken('hash-1', 'u1', Date.now() + 60_000);
+  expect(db.resolveAuthToken('hash-1', Date.now())).toBe('u1');
+  expect(db.resolveAuthToken('hash-1', Date.now() + 120_000)).toBeNull(); // expired
+
+  db.applyRatingResults([
+    {
+      matchId: 'm1',
+      userId: 'u1',
+      seat: 0,
+      ratingBefore: 1000,
+      ratingAfter: 1020,
+      delta: 20,
+      newStreak: 1,
+      isWin: true,
+      createdAt: 5,
+    },
+  ]);
+  expect(db.getUserById('u1')?.rating).toBe(1020);
+  expect(db.getRatingEventsForUser('u1', 10)).toHaveLength(1);
+  db.close();
+});
+
 test('migrate is idempotent and a no-op on a fresh db', () => {
   const db = new Db(dbPath); // fresh: SCHEMA already current
   const result: DealResult = { declarer: 0, contract: 60, bid: 60, made: false, sides: sides(2) };

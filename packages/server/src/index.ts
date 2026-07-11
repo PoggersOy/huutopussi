@@ -30,6 +30,8 @@ function main(): void {
     port: Number(process.env.PORT ?? 8080),
     dbPath: process.env.DB_PATH ?? './data/hp.db',
     staticDir: existsSync(clientDist) ? clientDist : null,
+    // Optional: enables Google Sign-In. Unset → guest-only (login disabled).
+    googleClientId: process.env.GOOGLE_CLIENT_ID ?? null,
   });
   server
     .listen()

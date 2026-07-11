@@ -181,6 +181,14 @@ input::placeholder {
   transform: translateY(calc(var(--card-h) * -0.22));
 }
 
+/* Grey out illegal cards via a filter only — never opacity. Hand cards overlap
+   in the fan, and a semi-transparent card lets the neighbour behind it bleed
+   through its middle, which reads as a rendering glitch. Override the global
+   button:disabled fade here so the brightness/saturate cue does all the work. */
+.hand__card:disabled {
+  opacity: 1;
+}
+
 .hand__card--dim svg {
   filter: brightness(0.55) saturate(0.6);
 }
@@ -559,4 +567,107 @@ input::placeholder {
   padding: var(--space-3);
   -webkit-user-select: text;
   user-select: text;
+}
+
+/* ── Auth + rating ── */
+
+.rating-badge {
+  display: inline-block;
+  margin-left: var(--space-1);
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-1);
+  background: var(--surface-strong);
+  color: var(--gold);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+.auth-panel {
+  align-items: center;
+}
+
+.auth-panel__btn {
+  min-height: 40px;
+  display: flex;
+  justify-content: center;
+}
+
+.auth-chip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.auth-chip__avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  flex: none;
+}
+
+.auth-chip__id {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.auth-chip__id strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.auth-chip__actions {
+  display: flex;
+  gap: var(--space-1);
+  flex: none;
+}
+
+/* ── Profile screen ── */
+
+.profile__head {
+  align-items: center;
+  text-align: center;
+}
+
+.profile__rating {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.profile__rating-num {
+  font-family: var(--font-display);
+  font-size: var(--fs-xl);
+  font-weight: 700;
+  color: var(--gold);
+}
+
+.profile__stats {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-around;
+  gap: var(--space-3);
+}
+
+.profile__stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 56px;
+}
+
+.profile__stat-value {
+  font-size: var(--fs-lg);
+  font-weight: 700;
+}
+
+.overlay__elo {
+  text-align: center;
+  font-size: var(--fs-lg);
 }

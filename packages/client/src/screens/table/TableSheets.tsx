@@ -364,15 +364,7 @@ export function ContractSheet({
 
 // ── Declaration (lead with canDeclare) ───────────────────────────────────────
 
-export function DeclarationSheet({
-  hint,
-  config,
-  onDismiss,
-}: {
-  hint: DeclHint;
-  config: RuleConfig;
-  onDismiss: () => void;
-}) {
+export function DeclarationSheet({ hint, config }: { hint: DeclHint; config: RuleConfig }) {
   const { t } = useTranslation();
   const pending = usePending();
   const [halfPicker, setHalfPicker] = useState(false);
@@ -405,39 +397,34 @@ export function DeclarationSheet({
           </button>
         </>
       ) : (
-        <>
-          <div className="tsheet__grid">
-            {hint.ownSuits.map((suit) => (
-              <button
-                type="button"
-                key={suit}
-                className="btn--primary"
-                disabled={pending}
-                onClick={() => sendAction({ type: 'declareOwn', suit })}
-              >
-                <span className={`suit--${suit} tsheet__glyph`}>{SUIT_GLYPH[suit]}</span>
-                {t(`suit.${suit}`)} +{marriageValue(suit, config)}
-              </button>
-            ))}
-            {hint.canAskWhole && (
-              <button
-                type="button"
-                disabled={pending}
-                onClick={() => sendAction({ type: 'askWhole' })}
-              >
-                {t('sheet.askWholeBtn')}
-              </button>
-            )}
-            {hint.halfAsks.length > 0 && (
-              <button type="button" disabled={pending} onClick={() => setHalfPicker(true)}>
-                {t('action.askHalf')}…
-              </button>
-            )}
-          </div>
-          <button type="button" className="btn--ghost tsheet__big" onClick={onDismiss}>
-            {t('sheet.justLead')}
-          </button>
-        </>
+        <div className="tsheet__grid">
+          {hint.ownSuits.map((suit) => (
+            <button
+              type="button"
+              key={suit}
+              className="btn--primary"
+              disabled={pending}
+              onClick={() => sendAction({ type: 'declareOwn', suit })}
+            >
+              <span className={`suit--${suit} tsheet__glyph`}>{SUIT_GLYPH[suit]}</span>
+              {t(`suit.${suit}`)} +{marriageValue(suit, config)}
+            </button>
+          ))}
+          {hint.canAskWhole && (
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => sendAction({ type: 'askWhole' })}
+            >
+              {t('sheet.askWholeBtn')}
+            </button>
+          )}
+          {hint.halfAsks.length > 0 && (
+            <button type="button" disabled={pending} onClick={() => setHalfPicker(true)}>
+              {t('action.askHalf')}…
+            </button>
+          )}
+        </div>
       )}
     </SheetShell>
   );

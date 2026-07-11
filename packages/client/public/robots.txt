@@ -1,0 +1,11 @@
+# Huutopussi — https://huutopussi.online
+# Room links (/r/CODE) are ephemeral, private tables and the WS/API endpoints
+# carry no crawlable content, so keep them out of the index. Everything else is
+# open.
+User-agent: *
+Allow: /
+Disallow: /r/
+Disallow: /api/
+Disallow: /ws
+
+Sitemap: https://huutopussi.online/sitemap.xml

@@ -16,6 +16,7 @@ import { dirname } from 'node:path';
 import type { DealResult, GameEvent, RuleConfig, Seat, Side } from '@hp/engine';
 import type { MatchSummary } from '@hp/protocol';
 import Database from 'better-sqlite3';
+import { STARTING_RATING } from './elo.js';
 import type { RoomTableSettings } from './rooms.js';
 import type { SessionKind } from './sessions.js';
 
@@ -73,6 +74,46 @@ CREATE TABLE IF NOT EXISTS deal_events (
   created_at INTEGER NOT NULL,
   PRIMARY KEY (match_id, seq)
 );
+-- Google-linked accounts and their Elo. Keyed on the Google 'sub' (stable),
+-- never email (emails change/recycle). Guests never get a row here.
+CREATE TABLE IF NOT EXISTS users (
+  id           TEXT PRIMARY KEY,
+  google_sub   TEXT NOT NULL UNIQUE,
+  email        TEXT,
+  name         TEXT,
+  picture      TEXT,
+  rating       INTEGER NOT NULL,
+  games_played INTEGER NOT NULL DEFAULT 0,
+  wins         INTEGER NOT NULL DEFAULT 0,
+  losses       INTEGER NOT NULL DEFAULT 0,
+  win_streak   INTEGER NOT NULL DEFAULT 0,
+  best_streak  INTEGER NOT NULL DEFAULT 0,
+  created_at   INTEGER NOT NULL,
+  updated_at   INTEGER NOT NULL
+);
+-- Opaque app session tokens. Only the sha256 hash is stored, so a db leak
+-- yields no usable tokens. Revocation = delete the row.
+CREATE TABLE IF NOT EXISTS auth_tokens (
+  token_hash   TEXT PRIMARY KEY,
+  user_id      TEXT NOT NULL,
+  created_at   INTEGER NOT NULL,
+  expires_at   INTEGER NOT NULL,
+  last_used_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_auth_tokens_user ON auth_tokens(user_id);
+-- Durable per-match rating deltas (profile screen + reconnect-after-finish).
+CREATE TABLE IF NOT EXISTS rating_events (
+  match_id      TEXT NOT NULL,
+  user_id       TEXT NOT NULL,
+  seat          INTEGER NOT NULL,
+  rating_before INTEGER NOT NULL,
+  rating_after  INTEGER NOT NULL,
+  delta         INTEGER NOT NULL,
+  streak_after  INTEGER NOT NULL,
+  created_at    INTEGER NOT NULL,
+  PRIMARY KEY (match_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_rating_events_user ON rating_events(user_id, created_at);
 `;
 
 export interface SessionRow {
@@ -81,6 +122,47 @@ export interface SessionRow {
   seat: Seat | null;
   nickname: string | null;
   kind: SessionKind;
+  /** Signed-in account behind this session, or null for a guest. */
+  userId: string | null;
+}
+
+/** A user account row (camelCased). */
+export interface UserRow {
+  id: string;
+  googleSub: string;
+  email: string | null;
+  name: string | null;
+  picture: string | null;
+  rating: number;
+  gamesPlayed: number;
+  wins: number;
+  losses: number;
+  winStreak: number;
+  bestStreak: number;
+}
+
+/** One persisted per-match rating change for a user. */
+export interface RatingEventRow {
+  matchId: string;
+  seat: Seat;
+  ratingBefore: number;
+  ratingAfter: number;
+  delta: number;
+  streakAfter: number;
+  createdAt: number;
+}
+
+/** A single participant's rating outcome, written at match end. */
+export interface RatingUpdate {
+  matchId: string;
+  userId: string;
+  seat: Seat;
+  ratingBefore: number;
+  ratingAfter: number;
+  delta: number;
+  newStreak: number;
+  isWin: boolean;
+  createdAt: number;
 }
 
 export interface RecoveredMatch {
@@ -128,6 +210,8 @@ export class Db {
         // Turn pacing (autoplay + timeout); nullable so pre-feature rooms
         // recover with the server default (see activeMatches / server.ts).
         this.addColumnIfMissing('rooms', 'table_settings', 'TEXT');
+        // Links a live session to a signed-in account; null = guest.
+        this.addColumnIfMissing('sessions', 'user_id', 'TEXT');
         this.rebuildDealsIfDrifted();
       })();
     } catch (err) {
@@ -266,12 +350,13 @@ export class Db {
     const now = Date.now();
     this.raw
       .prepare(
-        `INSERT INTO sessions (token, room_id, seat, nickname, kind, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO sessions (token, room_id, seat, nickname, kind, user_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(token) DO UPDATE
-           SET seat = excluded.seat, nickname = excluded.nickname, updated_at = excluded.updated_at`,
+           SET seat = excluded.seat, nickname = excluded.nickname,
+               user_id = excluded.user_id, updated_at = excluded.updated_at`,
       )
-      .run(row.token, row.roomId, row.seat, row.nickname, row.kind, now, now);
+      .run(row.token, row.roomId, row.seat, row.nickname, row.kind, row.userId, now, now);
   }
 
   deleteSession(token: string): void {
@@ -384,7 +469,7 @@ export class Db {
       'SELECT seq, event FROM deal_events WHERE match_id = ? ORDER BY seq ASC',
     );
     const sessionStmt = this.raw.prepare(
-      'SELECT token, room_id, seat, nickname, kind FROM sessions WHERE room_id = ?',
+      'SELECT token, room_id, seat, nickname, kind, user_id FROM sessions WHERE room_id = ?',
     );
     return rows.map((r) => {
       const eventRows = eventStmt.all(r.match_id) as Array<{ seq: number; event: string }>;
@@ -394,6 +479,7 @@ export class Db {
         seat: number | null;
         nickname: string | null;
         kind: string;
+        user_id: string | null;
       }>;
       const last = eventRows[eventRows.length - 1];
       return {
@@ -415,6 +501,7 @@ export class Db {
           seat: s.seat === null ? null : (s.seat as Seat),
           nickname: s.nickname,
           kind: s.kind === 'bot' ? 'bot' : 'human',
+          userId: s.user_id,
         })),
       };
     });
@@ -432,4 +519,188 @@ export class Db {
       .run(cutoffMs);
     return res.changes;
   }
+
+  // ── users / auth tokens / ratings ────────────────────────────────────────────
+
+  /**
+   * Insert a user (with the starting rating) on first sign-in, or refresh the
+   * profile fields (email/name/picture) on a returning sign-in. Keyed on the
+   * Google `sub`. Returns the full current row.
+   */
+  upsertUserByGoogleSub(profile: {
+    id: string;
+    googleSub: string;
+    email: string | null;
+    name: string | null;
+    picture: string | null;
+  }): UserRow {
+    const now = Date.now();
+    this.raw
+      .prepare(
+        `INSERT INTO users (id, google_sub, email, name, picture, rating, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(google_sub) DO UPDATE
+           SET email = excluded.email, name = excluded.name,
+               picture = excluded.picture, updated_at = excluded.updated_at`,
+      )
+      .run(
+        profile.id,
+        profile.googleSub,
+        profile.email,
+        profile.name,
+        profile.picture,
+        STARTING_RATING,
+        now,
+        now,
+      );
+    const row = this.getUserByGoogleSub(profile.googleSub);
+    if (!row) throw new Error('upsertUserByGoogleSub: row missing after upsert');
+    return row;
+  }
+
+  getUserByGoogleSub(googleSub: string): UserRow | null {
+    return this.mapUser(
+      this.raw.prepare('SELECT * FROM users WHERE google_sub = ?').get(googleSub) as
+        | UserDbRow
+        | undefined,
+    );
+  }
+
+  getUserById(id: string): UserRow | null {
+    return this.mapUser(
+      this.raw.prepare('SELECT * FROM users WHERE id = ?').get(id) as UserDbRow | undefined,
+    );
+  }
+
+  private mapUser(row: UserDbRow | undefined): UserRow | null {
+    if (!row) return null;
+    return {
+      id: row.id,
+      googleSub: row.google_sub,
+      email: row.email,
+      name: row.name,
+      picture: row.picture,
+      rating: row.rating,
+      gamesPlayed: row.games_played,
+      wins: row.wins,
+      losses: row.losses,
+      winStreak: row.win_streak,
+      bestStreak: row.best_streak,
+    };
+  }
+
+  createAuthToken(tokenHash: string, userId: string, expiresAt: number): void {
+    this.raw
+      .prepare(
+        `INSERT INTO auth_tokens (token_hash, user_id, created_at, expires_at, last_used_at)
+         VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run(tokenHash, userId, Date.now(), expiresAt, Date.now());
+  }
+
+  /** Resolve a token hash to its user id if present and unexpired; touches last_used_at. */
+  resolveAuthToken(tokenHash: string, nowMs: number): string | null {
+    const row = this.raw
+      .prepare('SELECT user_id, expires_at FROM auth_tokens WHERE token_hash = ?')
+      .get(tokenHash) as { user_id: string; expires_at: number } | undefined;
+    if (!row || row.expires_at <= nowMs) return null;
+    this.raw
+      .prepare('UPDATE auth_tokens SET last_used_at = ? WHERE token_hash = ?')
+      .run(nowMs, tokenHash);
+    return row.user_id;
+  }
+
+  deleteAuthToken(tokenHash: string): void {
+    this.raw.prepare('DELETE FROM auth_tokens WHERE token_hash = ?').run(tokenHash);
+  }
+
+  /** Removes expired auth tokens; returns the number deleted. */
+  pruneExpiredTokens(nowMs: number): number {
+    return this.raw.prepare('DELETE FROM auth_tokens WHERE expires_at <= ?').run(nowMs).changes;
+  }
+
+  /**
+   * Apply the rating outcomes of one finished, rated match: bump each user's
+   * rating / games / W-L / streak and append an immutable rating_event. Call
+   * inside the match-end transaction (better-sqlite3 is synchronous).
+   */
+  applyRatingResults(updates: RatingUpdate[]): void {
+    const userStmt = this.raw.prepare(
+      `UPDATE users
+         SET rating = ?, games_played = games_played + 1,
+             wins = wins + ?, losses = losses + ?,
+             win_streak = ?, best_streak = MAX(best_streak, ?), updated_at = ?
+       WHERE id = ?`,
+    );
+    const eventStmt = this.raw.prepare(
+      `INSERT OR REPLACE INTO rating_events
+         (match_id, user_id, seat, rating_before, rating_after, delta, streak_after, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    );
+    for (const u of updates) {
+      userStmt.run(
+        u.ratingAfter,
+        u.isWin ? 1 : 0,
+        u.isWin ? 0 : 1,
+        u.newStreak,
+        u.newStreak,
+        u.createdAt,
+        u.userId,
+      );
+      eventStmt.run(
+        u.matchId,
+        u.userId,
+        u.seat,
+        u.ratingBefore,
+        u.ratingAfter,
+        u.delta,
+        u.newStreak,
+        u.createdAt,
+      );
+    }
+  }
+
+  /** A user's recent rating changes, newest first (for the profile screen). */
+  getRatingEventsForUser(userId: string, limit: number): RatingEventRow[] {
+    const rows = this.raw
+      .prepare(
+        `SELECT match_id, seat, rating_before, rating_after, delta, streak_after, created_at
+         FROM rating_events WHERE user_id = ? ORDER BY created_at DESC LIMIT ?`,
+      )
+      .all(userId, limit) as Array<{
+      match_id: string;
+      seat: number;
+      rating_before: number;
+      rating_after: number;
+      delta: number;
+      streak_after: number;
+      created_at: number;
+    }>;
+    return rows.map((r) => ({
+      matchId: r.match_id,
+      seat: r.seat as Seat,
+      ratingBefore: r.rating_before,
+      ratingAfter: r.rating_after,
+      delta: r.delta,
+      streakAfter: r.streak_after,
+      createdAt: r.created_at,
+    }));
+  }
+}
+
+/** Raw users-table row shape (snake_case) for internal mapping. */
+interface UserDbRow {
+  id: string;
+  google_sub: string;
+  email: string | null;
+  name: string | null;
+  picture: string | null;
+  rating: number;
+  games_played: number;
+  wins: number;
+  losses: number;
+  win_streak: number;
+  best_streak: number;
+  created_at: number;
+  updated_at: number;
 }

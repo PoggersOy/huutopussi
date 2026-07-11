@@ -26,6 +26,7 @@ import {
   PROTOCOL_VERSION,
   type ServerMsg,
 } from '@hp/protocol';
+import { getAuthToken } from './auth';
 import { recordRoomHistory } from './history';
 import { serverApply, useStore } from './store';
 
@@ -54,6 +55,15 @@ export const TERMINAL_CLOSE: Readonly<Record<number, string>> = {
   4004: 'error.roomNotFound', // room does not exist
   4006: 'error.roomFull', // room at its session cap
 };
+
+/**
+ * The same dead-end reasons as codes, for when the server delivers one as an
+ * `error` *message* rather than (only) a WS close code. This is the backstop
+ * for proxies that rewrite the application close code (4000/4004…) to a bare
+ * 1006: the JSON error frame still arrives, so we can stop retrying on it
+ * instead of reconnecting into the same gone room forever.
+ */
+export const TERMINAL_ERROR_CODES: ReadonlySet<string> = new Set(Object.values(TERMINAL_CLOSE));
 
 /** sessionStorage key holding this tab's session token for a room. */
 export function sessionKey(roomCode: string): string {
@@ -135,6 +145,10 @@ function openSocket(): void {
     if (desired.roomCode !== undefined) hello.roomCode = desired.roomCode;
     if (desired.sessionToken !== undefined) hello.sessionToken = desired.sessionToken;
     if (desired.nickname !== undefined) hello.nickname = desired.nickname;
+    // The signed-in account token (if any) binds this connection to the user;
+    // read fresh so a sign-in/out between connects is always reflected.
+    const authToken = getAuthToken();
+    if (authToken !== null) hello.auth = authToken;
     // Only meaningful when creating a room (no roomCode yet).
     if (desired.roomCode === undefined && desired.config !== undefined) {
       hello.config = desired.config;
@@ -219,6 +233,16 @@ function handleMessage(msg: ServerMsg): void {
       serverApply.update(msg);
       break;
     case 'error':
+      if (TERMINAL_ERROR_CODES.has(msg.code)) {
+        // Dead-end reason as a message: stop the reconnect loop (as onclose
+        // does for the matching close code) and surface it to the UI. Clearing
+        // `desired` also neutralizes the socket close that follows — a 1006
+        // from a code-rewriting proxy would otherwise reschedule a reconnect.
+        desired = null;
+        clearTimers();
+        serverApply.setFatal(msg.code);
+        break;
+      }
       serverApply.error(msg);
       break;
     case 'history': {
@@ -288,8 +312,10 @@ export function disconnect(): void {
   ws?.close();
   ws = null;
   desired = null;
-  serverApply.setConnected(false);
-  serverApply.setFatal(null);
+  // Wipe the room slice, not just the flags: a navigate-to-Home right after
+  // this must not leave a stale `room` behind, or the ConnectionBanner would
+  // render "reconnecting…" on the home screen (connected=false, room≠null).
+  serverApply.reset();
 }
 
 /**

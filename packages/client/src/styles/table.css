@@ -156,9 +156,24 @@
   top: 21%;
 }
 
+/* The seat the table is waiting on gets a breathing gold glow so it's obvious
+   at a glance whose turn it is. Opponent panels pulse their border + halo; your
+   own hand footer pulses in sync (see .thand--turn) since you have no panel. */
 .opp--turn {
   border-color: var(--gold);
-  box-shadow: 0 0 10px rgba(212, 175, 55, 0.4);
+  animation: turn-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes turn-pulse {
+  0%,
+  100% {
+    border-color: var(--gold-soft);
+    box-shadow: 0 0 6px rgba(212, 175, 55, 0.3);
+  }
+  50% {
+    border-color: var(--gold);
+    box-shadow: 0 0 18px 3px rgba(212, 175, 55, 0.75);
+  }
 }
 
 .opp__name {
@@ -455,20 +470,6 @@
   font-size: var(--fs-xs);
 }
 
-/* Reopen chip after "Just lead" dismissed the declaration sheet. */
-.decl-chip {
-  position: absolute;
-  z-index: 4;
-  left: var(--space-2);
-  bottom: var(--space-2);
-  padding: var(--space-1) var(--space-3);
-  font-size: var(--fs-xs);
-  font-weight: 600;
-  border-color: var(--gold-soft);
-  color: var(--gold);
-  background: rgba(0, 0, 0, 0.35);
-}
-
 /* ── 2-3p felt fixtures: koinipakka / dummy pile counts + open-talon strip ── */
 
 /* Talon + dummy pile counts, tucked top-left so they clear the seat panels
@@ -618,8 +619,25 @@
   background: rgba(0, 0, 0, 0.24);
 }
 
+/* Your turn: the hand footer lights up and breathes in sync with the opponent
+   pulse (same 1.5s heartbeat) so it's unmistakable the table is waiting on you.
+   The glow rises off the top edge into the felt. */
 .thand--turn {
-  border-top-color: var(--gold-soft);
+  border-top: 2px solid var(--gold);
+  background: rgba(212, 175, 55, 0.12);
+  animation: hand-turn-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes hand-turn-pulse {
+  0%,
+  100% {
+    box-shadow: 0 -3px 12px -2px rgba(212, 175, 55, 0.28);
+    background: rgba(212, 175, 55, 0.08);
+  }
+  50% {
+    box-shadow: 0 -6px 22px 0 rgba(212, 175, 55, 0.6);
+    background: rgba(212, 175, 55, 0.16);
+  }
 }
 
 .thand__hint {
@@ -908,6 +926,18 @@
 @media (prefers-reduced-motion: reduce) {
   .turn-timer--urgent {
     animation: none;
+  }
+
+  /* Active-turn highlights: hold the "bright" end of the pulse, no breathing. */
+  .opp--turn {
+    animation: none;
+    border-color: var(--gold);
+    box-shadow: 0 0 14px 2px rgba(212, 175, 55, 0.6);
+  }
+
+  .thand--turn {
+    animation: none;
+    box-shadow: 0 -4px 16px -2px rgba(212, 175, 55, 0.45);
   }
 }
 

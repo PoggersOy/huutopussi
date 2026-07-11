@@ -5,6 +5,11 @@
  * Extended 2026-07-10 (user-authorized contract change) for the illisoft
  * ruleset (docs/illisoft-saannot-spec.md): 2/3/4-player modes, koinipakka
  * discard, contract-less deals, lobby-configurable rule variants.
+ * Extended 2026-07-11 (user-authorized) for Google login + Elo: an optional
+ * `hello.auth` token (client→server), optional `SeatInfo.rating`/`provisional`
+ * and an optional `update.ratings` post-match payload (server→client). All
+ * additive and optional — PROTOCOL_VERSION intentionally NOT bumped so open
+ * clients degrade to guest rather than being force-closed.
  *
  * Direction rules:
  *  - Client→server messages are UNTRUSTED: they are parsed with zod
@@ -191,6 +196,13 @@ export const clientMsgSchema = z.discriminatedUnion('t', [
     sessionToken: z.string().uuid().optional(),
     nickname: nicknameSchema.optional(),
     /**
+     * Opaque app auth token (see /auth/google). When present and valid, the
+     * server binds this connection to the signed-in account and defaults the
+     * nickname to the Google name. A stale/invalid token degrades to guest —
+     * it never rejects the join. Optional, so pre-auth clients omit it.
+     */
+    auth: z.string().optional(),
+    /**
      * Initial room config (preset + overrides), applied at creation exactly
      * like a lobby setConfig patch. Only meaningful when creating a room
      * (roomCode omitted); ignored on join/rejoin.
@@ -254,6 +266,10 @@ export interface SeatInfo {
   connected: boolean;
   /** True while a disconnected human's seat is being autoplayed by a bot. */
   botControlled: boolean;
+  /** Elo of the signed-in account in this seat; null for guests/bots. */
+  rating?: number | null;
+  /** True while that account is still provisional (< PROVISIONAL_GAMES games). */
+  provisional?: boolean;
 }
 
 export interface RoomStatePublic {
@@ -289,6 +305,25 @@ export interface MatchSummary {
   deals: number;
 }
 
+/** Per-seat rating outcome of a finished match. */
+export interface SeatRatingResult {
+  seat: Seat;
+  userId: string;
+  before: number;
+  after: number;
+  delta: number;
+}
+
+/**
+ * Rating outcome attached to the `update` that carries the `matchEnded` event.
+ * `rated: false` (with an empty `perSeat`) means the match did not count —
+ * bots, guests, or the same account in two seats. Only signed-in seats appear.
+ */
+export interface MatchRatingResult {
+  rated: boolean;
+  perSeat: SeatRatingResult[];
+}
+
 export type ServerMsg =
   | {
       t: 'welcome';
@@ -315,6 +350,8 @@ export type ServerMsg =
       event: GameEvent | null;
       turn: TurnInfo | null;
       room?: RoomStatePublic;
+      /** Present only on the update carrying a `matchEnded` event. */
+      ratings?: MatchRatingResult;
     }
   | {
       t: 'error';
