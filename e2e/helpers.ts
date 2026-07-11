@@ -16,25 +16,12 @@
  */
 import { devices, expect, type Locator, type Page } from '@playwright/test';
 
-/**
- * The client defaults to Finnish (persisted `hp:lang` toggle, no browser-locale
- * sniffing since the i18n change), so every E2E context pre-seeds that toggle to
- * English — the language every spec asserts against. Consumed by the project
- * `use` in playwright.config.ts and by the manual contexts below. The origin
- * MUST match playwright.config.ts BASE_URL.
- */
-export const englishStorageState = {
-  cookies: [],
-  origins: [{ origin: 'http://127.0.0.1:8197', localStorage: [{ name: 'hp:lang', value: 'en' }] }],
-};
-
 // Device options for manually-created contexts (two-humans test). The device
 // descriptor's defaultBrowserType (webkit) is dropped — projects run chromium.
 const { defaultBrowserType: _ignored, ...iphone14 } = devices['iPhone 14'];
 export const mobileContextOptions = {
   ...iphone14,
   locale: 'en-US',
-  storageState: englishStorageState,
 };
 
 export interface DriverState {
@@ -53,9 +40,33 @@ export function newDriver(page: Page): Driver {
 
 // ── Lobby flows ──────────────────────────────────────────────────────────────
 
+/**
+ * Open the Home screen and GUARANTEE the English UI the specs assert against.
+ *
+ * The client defaults to Finnish and switches to English only from a persisted
+ * `hp:lang` toggle (browser-locale detection was removed). Pre-seeding that
+ * localStorage value via Playwright `storageState` is not reliable: the seed is
+ * applied before app-boot on fast hardware but the slower/contended CI runners
+ * boot Finnish before it lands, breaking every English selector. So instead of
+ * racing the seed we deterministically flip the on-screen language toggle when
+ * Home didn't already render English. `setLanguage` persists `hp:lang=en`, so
+ * later reloads/navigations in this context stay English with no further action.
+ */
+export async function gotoEnglish(page: Page, path = '/'): Promise<void> {
+  await page.goto(path);
+  const createEn = page.getByRole('button', { name: 'Create a room', exact: true });
+  const createFi = page.getByRole('button', { name: 'Luo huone', exact: true });
+  // Wait for Home to render in EITHER language before deciding.
+  await expect(createEn.or(createFi)).toBeVisible();
+  if (await createFi.count()) {
+    await page.getByRole('button', { name: 'EN', exact: true }).click();
+    await expect(createEn).toBeVisible();
+  }
+}
+
 /** Home → nickname → "Create a room" → lobby. Returns the room code. */
 export async function createRoom(page: Page, nickname: string): Promise<string> {
-  await page.goto('/');
+  await gotoEnglish(page);
   await page.getByPlaceholder('Your name').fill(nickname);
   await page.getByRole('button', { name: 'Create a room', exact: true }).click();
   await page.waitForURL(/\/r\/[A-HJ-NP-Z2-9]{5}$/, { timeout: 20_000 });
@@ -67,7 +78,7 @@ export async function createRoom(page: Page, nickname: string): Promise<string> 
 
 /** Home → nickname → room code → "Join" → lobby of that room. */
 export async function joinRoomViaHome(page: Page, code: string, nickname: string): Promise<void> {
-  await page.goto('/');
+  await gotoEnglish(page);
   await page.getByPlaceholder('Your name').fill(nickname);
   await page.getByPlaceholder('Room code').fill(code);
   await page.getByRole('button', { name: 'Join', exact: true }).click();

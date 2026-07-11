@@ -9,11 +9,12 @@
  *  - Tests share that one server process (each test creates its own room), so
  *    they run serially with a single worker for determinism.
  *  - the app defaults to Finnish (a persisted `hp:lang` toggle, with no
- *    browser-locale sniffing), so every context pre-seeds localStorage
- *    `hp:lang=en` via englishStorageState; the specs assert English UI strings.
+ *    browser-locale sniffing), so the lobby helpers force English at runtime via
+ *    the on-screen toggle (see gotoEnglish); the specs assert English UI strings.
+ *    A pre-seeded storageState is deliberately NOT used — Playwright applies it
+ *    before app-boot only on fast hardware, so it booted Finnish on CI runners.
  */
 import { defineConfig, devices } from '@playwright/test';
-import { englishStorageState } from './e2e/helpers';
 
 const PORT = 8197;
 const BASE_URL = `http://127.0.0.1:${PORT}`;
@@ -34,7 +35,6 @@ export default defineConfig({
   use: {
     baseURL: BASE_URL,
     locale: 'en-US',
-    storageState: englishStorageState,
     trace: 'retain-on-failure',
   },
   projects: [

@@ -6,6 +6,7 @@
  *    gracefully when the SW cannot take control in this environment).
  */
 import { expect, test } from '@playwright/test';
+import { gotoEnglish } from './helpers';
 
 test('manifest is reachable and complete', async ({ request }) => {
   const res = await request.get('/manifest.webmanifest');
@@ -30,7 +31,7 @@ test('service worker registers; offline navigation serves the cached shell', asy
   page,
   context,
 }) => {
-  await page.goto('/');
+  await gotoEnglish(page);
   await expect(page.getByRole('heading', { name: 'Huutopussi' })).toBeVisible();
 
   const swSupported = await page.evaluate(() => 'serviceWorker' in navigator);
