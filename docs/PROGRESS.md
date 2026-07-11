@@ -23,7 +23,7 @@ Plan: `docs/plan.md`. Rules: `docs/huutopussin-saannot.md`.
   green, fuzz harness (2k games verified). Protocol package authored by architect
   (snapshot-per-change sync model — supersedes plan's event+gap scheme).
   GitHub repo created: BigTimeSam/huutopussi (private); CI/CD + Fly.io deploy and
-  huutopussi.com domain are the new deployment targets.
+  huutopussi.online domain are the new deployment targets.
 - 2026-07-10 20:05: **50k fuzz gate PASSED** — 50,000 games (seed 1000), 558,320
   deals, 23.9M actions, 30.9M events, zero invariant violations, 50.6 games/s.
   P2 gate formally satisfied. Full-stack workflow WF-2 running (server, client,
@@ -148,7 +148,7 @@ Plan: `docs/plan.md`. Rules: `docs/huutopussin-saannot.md`.
   server 19, bots 15), `pnpm sim --games 5000 --seed 31337 --bots mixed` clean
   (73 games/s, 1.88M events, 0 violations), `docker build` → image serves
   SPA+WS+`/healthz`, Playwright 5/5. **GitHub Actions CI green** (typecheck/lint/
-  test/sim + Playwright e2e jobs). Domain corrected to **huutopussi.com** across
+  test/sim + Playwright e2e jobs). Domain corrected to **huutopussi.online** across
   README/PROGRESS (an infra agent had guessed `.online`); deploy runbook in README.
 
   Open low-severity polish (non-blocking, deferred to P7):

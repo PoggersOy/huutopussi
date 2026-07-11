@@ -50,7 +50,7 @@ seeded simulation on every push and PR.
 1. Open the deployed site and enter a nickname (no account needed — a session
    token in localStorage identifies you).
 2. Create a room; you get a 5-character code and a shareable link
-   (`https://huutopussi.com/r/CODE`).
+   (`https://huutopussi.online/r/CODE`).
 3. Send the link to friends; anyone opening it joins the room lobby. Fill
    empty seats with bots if you are fewer than four.
 4. The host starts the match. If someone drops (phone locked, tunnel, …) the
@@ -96,7 +96,7 @@ fly tokens create deploy --app huutopussi
 # New repository secret, name: FLY_API_TOKEN, value: the token (FlyV1 …)
 ```
 
-### Custom domain: huutopussi.com
+### Custom domain: huutopussi.online
 
 Point the domain straight at Fly (DNS-only, no proxy) so Fly can issue and
 renew a Let's Encrypt cert over HTTP-01. The IPs below are **examples** — read
@@ -109,21 +109,21 @@ fly ips list --app huutopussi
 #   v6  2a09:8280:...    (dedicated)
 
 # 2. Register the hostnames with Fly (this prints the exact DNS records to add)
-fly certs add huutopussi.com --app huutopussi
-fly certs add www.huutopussi.com --app huutopussi
+fly certs add huutopussi.online --app huutopussi
+fly certs add www.huutopussi.online --app huutopussi
 
-# 3. At your DNS registrar for the zone huutopussi.com, add (DNS-only, NOT proxied):
-#      A     huutopussi.com      -> <v4 from step 1>
-#      AAAA  huutopussi.com      -> <v6 from step 1>
-#      CNAME www.huutopussi.com  -> huutopussi.com
+# 3. At your DNS registrar for the zone huutopussi.online, add (DNS-only, NOT proxied):
+#      A     huutopussi.online      -> <v4 from step 1>
+#      AAAA  huutopussi.online      -> <v6 from step 1>
+#      CNAME www.huutopussi.online  -> huutopussi.online
 #    (fly certs add in step 2 may instead ask for an _acme-challenge CNAME —
 #     use whatever that command prints; it is authoritative.)
 
 # 4. Watch until issued, then verify HTTPS + health through the domain
-fly certs check huutopussi.com --app huutopussi     # Status = Issued (a few min)
-curl -sI https://huutopussi.com/healthz             # HTTP/2 200
+fly certs check huutopussi.online --app huutopussi     # Status = Issued (a few min)
+curl -sI https://huutopussi.online/healthz             # HTTP/2 200
 
-# 5. Share https://huutopussi.com — create a room, send friends the /r/CODE link.
+# 5. Share https://huutopussi.online — create a room, send friends the /r/CODE link.
 ```
 
 If you front the domain with Cloudflare, set the records **DNS-only** (grey
