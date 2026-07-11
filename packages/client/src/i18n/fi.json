@@ -261,7 +261,10 @@
     "timeLeft": "{{n}} sekuntia aikaa toimia",
     "stop": "Lopeta peli",
     "stopTitle": "Lopetetaanko peli?",
-    "stopConfirm": "Tämä päättää pelin kaikilta ja sulkee huoneen."
+    "stopConfirm": "Tämä päättää pelin kaikilta ja sulkee huoneen.",
+    "leave": "Poistu pelistä",
+    "leaveTitle": "Poistutaanko pelistä?",
+    "leaveConfirm": "Botti pelaa korttisi. Voit palata milloin tahansa huonelinkillä."
   },
   "bubble": {
     "bid": "{{amount}}!",
@@ -302,10 +305,10 @@
     "rounded": "Pyöristettynä",
     "tricks": "Käännöt",
     "delta": "Muutos",
+    "matchTotal": "Yhteensä",
     "contractless": "Kaikki sanoivat ohi — ei huutajaa",
     "contractMade": "Sopimus {{contract}} täyttyi — {{name}}",
     "contractFailed": "Sopimus {{contract}} kaatui — {{name}}",
-    "standing": "Tilanne: {{us}} — {{them}}",
     "nextDeal": "Seuraava jako alkaa hetken kuluttua…",
     "redealTitle": "Uusi jako",
     "redealBy": "{{name}} vaati uutta jakoa",
@@ -314,7 +317,8 @@
     "victory": "Te voititte!",
     "defeat": "Vastustajat voittivat",
     "winners": "Voittajat: {{names}}",
-    "waitRematch": "Odotetaan, että isäntä käynnistää uusinnan…"
+    "waitRematch": "Odotetaan, että isäntä käynnistää uusinnan…",
+    "backToMenu": "Takaisin valikkoon"
   },
   "event": {
     "redealDemanded": "Uusi jako vaadittu",

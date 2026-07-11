@@ -500,6 +500,7 @@ input::placeholder {
 }
 
 .rules-overlay__panel {
+  position: relative;
   width: 100%;
   max-width: 380px;
   max-height: 86vh;
@@ -507,12 +508,38 @@ input::placeholder {
   padding: var(--space-5);
   border: 1px solid var(--gold-soft);
   border-radius: var(--radius-3);
-  background: var(--surface-strong);
+  /* Opaque felt (not the translucent --surface-strong) so the lobby behind it
+     never bleeds through and muddies the text. */
+  background: var(--felt-800);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
   gap: var(--space-4);
 }
 
 .rules-overlay__panel h2 {
   text-align: center;
+  /* Keep the centred title clear of the corner × button. */
+  padding: 0 var(--space-5);
+}
+
+/* Corner dismiss button — borderless icon, sits in the panel's top-right. */
+.rules-overlay__close {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  width: 36px;
+  height: 36px;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-1);
+  font-size: var(--fs-lg);
+  line-height: 1;
+  color: var(--text-dim);
+}
+
+.rules-overlay__close:hover {
+  color: var(--text);
 }
 
 .rules-overlay__preset {

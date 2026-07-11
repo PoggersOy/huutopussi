@@ -16,7 +16,7 @@ vi.mock('../src/socket', () => ({
   resync: vi.fn(),
 }));
 
-import { sendLobby } from '../src/socket';
+import { disconnect, sendLobby } from '../src/socket';
 
 function seat(n: 0 | 1 | 2 | 3, kind: SeatKind, nickname: string | null = null): SeatInfo {
   return { seat: n, nickname, kind, connected: kind === 'human', botControlled: false };
@@ -134,7 +134,38 @@ describe('View all rules overlay', () => {
     expect(dialog.queryByText('Talon size')).toBeNull();
     expect(dialog.getByText('Cards exchanged')).toBeTruthy();
 
-    fireEvent.click(dialog.getByRole('button', { name: 'Close' }));
+    // Two dismiss affordances share the "Close" name: the corner × and the
+    // footer button. Either closes the overlay.
+    const closeButtons = dialog.getAllByRole('button', { name: 'Close' });
+    expect(closeButtons).toHaveLength(2);
+    const [cornerClose] = closeButtons;
+    if (!cornerClose) throw new Error('expected a corner close button');
+    fireEvent.click(cornerClose);
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('closes on a backdrop click but not on a click inside the panel', () => {
+    welcome(partialSeats, 0);
+    renderLobby();
+    fireEvent.click(screen.getByRole('button', { name: 'View all rules in play' }));
+
+    const backdrop = screen.getByRole('dialog');
+    // A click that originates inside the panel must not dismiss.
+    fireEvent.click(within(backdrop).getByText('Rules in play'));
+    expect(screen.queryByRole('dialog')).toBeTruthy();
+
+    // A click on the backdrop itself dismisses.
+    fireEvent.click(backdrop);
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('closes on the Escape key', () => {
+    welcome(partialSeats, 0);
+    renderLobby();
+    fireEvent.click(screen.getByRole('button', { name: 'View all rules in play' }));
+    expect(screen.queryByRole('dialog')).toBeTruthy();
+
+    fireEvent.keyDown(window, { key: 'Escape' });
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
@@ -171,5 +202,12 @@ describe('Lobby as guest', () => {
     renderLobby();
     fireEvent.click(screen.getByRole('button', { name: 'Stand up' }));
     expect(sendLobby).toHaveBeenCalledWith({ type: 'leaveSeat' });
+  });
+
+  it('offers a Back-to-menu escape so a guest is never trapped waiting on the host', () => {
+    welcome(partialSeats, null);
+    renderLobby();
+    fireEvent.click(screen.getByRole('button', { name: 'Back to menu' }));
+    expect(disconnect).toHaveBeenCalled();
   });
 });

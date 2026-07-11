@@ -111,8 +111,23 @@ export function Room() {
   if (status === undefined) {
     return (
       <div className="screen">
-        <div className="screen__main" style={{ justifyContent: 'center', alignItems: 'center' }}>
+        <div
+          className="screen__main stack"
+          style={{ justifyContent: 'center', alignItems: 'center', textAlign: 'center' }}
+        >
           <p className="dim">{t('connection.connecting')}</p>
+          {/* Reconnect retries forever if the server is unreachable — always keep
+              a way back so the user isn't stranded on "Connecting…". */}
+          <button
+            type="button"
+            className="btn--ghost"
+            onClick={() => {
+              disconnect();
+              navigate('/');
+            }}
+          >
+            {t('common.back')}
+          </button>
         </div>
       </div>
     );

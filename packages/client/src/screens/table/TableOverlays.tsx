@@ -153,23 +153,14 @@ export function DealScoredOverlay({
                 </td>
               ))}
             </tr>
+            <tr className="score__matchtotal">
+              <th>{t('overlay.matchTotal')}</th>
+              {order.map((side) => (
+                <td key={side}>{scores[side] ?? 0}</td>
+              ))}
+            </tr>
           </tbody>
         </table>
-        <p className="tsheet__center">
-          <strong>
-            {players === 4
-              ? t('overlay.standing', {
-                  us: scores[mySide] ?? 0,
-                  them: scores[mySide === 0 ? 1 : 0] ?? 0,
-                })
-              : order.map((side, i) => (
-                  <span key={side}>
-                    {i > 0 && ' · '}
-                    {sideLabel(side)} {scores[side] ?? 0}
-                  </span>
-                ))}
-          </strong>
-        </p>
         <p className="dim tsheet__center">{t('overlay.nextDeal')}</p>
         <button type="button" className="btn--ghost" onClick={onClose}>
           {t('common.close')}
@@ -188,6 +179,7 @@ export function MatchEndedOverlay({
   players,
   nameOf,
   matchRating,
+  onLeave,
 }: {
   winnerSide: Side;
   scores: number[];
@@ -199,6 +191,8 @@ export function MatchEndedOverlay({
   nameOf: (seat: Seat) => string;
   /** Post-match Elo outcome; null when the game had no rating payload. */
   matchRating?: MatchRatingResult | null;
+  /** Tear down the connection and return to the home screen. */
+  onLeave: () => void;
 }) {
   const { t } = useTranslation();
   const signedIn = useStore((s) => s.auth.user !== null);
@@ -277,6 +271,11 @@ export function MatchEndedOverlay({
         ) : (
           <p className="dim tsheet__center">{t('overlay.waitRematch')}</p>
         )}
+        {/* Always an escape hatch: if the host never starts a rematch (e.g. left
+            and a bot is filling in), nobody should be stranded on this screen. */}
+        <button type="button" className="btn--ghost" onClick={onLeave}>
+          {t('overlay.backToMenu')}
+        </button>
       </div>
     </div>
   );

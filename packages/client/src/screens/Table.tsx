@@ -179,12 +179,26 @@ export function Table() {
   const [scoredClosedFor, setScoredClosedFor] = useState<number | null>(null);
   /** Host's "Stop game" confirmation dialog is open. */
   const [confirmStop, setConfirmStop] = useState(false);
+  /** A non-host's "Leave game" confirmation dialog is open. */
+  const [confirmLeave, setConfirmLeave] = useState(false);
+
+  /** Tear down the connection and go home (used by leave / match-over exit). */
+  const leaveToHome = (): void => {
+    disconnect();
+    navigate('/');
+  };
 
   if (view === null || room === null) {
     return (
       <div className="screen">
-        <div className="screen__main" style={{ justifyContent: 'center', alignItems: 'center' }}>
+        <div
+          className="screen__main stack"
+          style={{ justifyContent: 'center', alignItems: 'center', textAlign: 'center' }}
+        >
           <p className="dim">{t('common.loading')}</p>
+          <button type="button" className="btn--ghost" onClick={leaveToHome}>
+            {t('common.back')}
+          </button>
         </div>
       </div>
     );
@@ -286,14 +300,17 @@ export function Table() {
           (the grid template has exactly four rows: header / felt / sheet / hand). */}
       <div className="ttop-wrap">
         <TopBar view={view} mySide={mySide} actor={actor} myTurn={myTurn} nameOf={nameOf} />
-        {isHost && view.winnerSide === null && (
+        {view.winnerSide === null && (
           <div className="thostbar">
+            {/* The host stops the game for everyone; anyone else can bail out to
+                the menu (a bot fills their seat) so no one is stuck if the host
+                goes silent. */}
             <button
               type="button"
               className="btn--ghost thostbar__stop"
-              onClick={() => setConfirmStop(true)}
+              onClick={() => (isHost ? setConfirmStop(true) : setConfirmLeave(true))}
             >
-              {t('table.stop')}
+              {isHost ? t('table.stop') : t('table.leave')}
             </button>
           </div>
         )}
@@ -386,6 +403,7 @@ export function Table() {
           players={players}
           nameOf={nameOf}
           matchRating={matchRating}
+          onLeave={leaveToHome}
         />
       )}
       {confirmStop && (
@@ -405,13 +423,37 @@ export function Table() {
                 // the "reconnecting…" banner.
                 sendLobby({ type: 'stopMatch' });
                 setConfirmStop(false);
-                disconnect();
-                navigate('/');
+                leaveToHome();
               }}
             >
               {t('table.stop')}
             </button>
             <button type="button" className="btn--ghost" onClick={() => setConfirmStop(false)}>
+              {t('common.cancel')}
+            </button>
+          </div>
+        </div>
+      )}
+      {confirmLeave && (
+        <div className="overlay" role="dialog" aria-modal="true">
+          <div className="overlay__panel stack">
+            <h2>{t('table.leaveTitle')}</h2>
+            <p className="tsheet__center">{t('table.leaveConfirm')}</p>
+            <button
+              type="button"
+              className="btn--danger"
+              onClick={() => {
+                // Just this player leaves — no server command needed; the server
+                // sees the drop and a bot fills the seat. We navigate ourselves
+                // rather than wait on the WS close (a proxy can turn it into an
+                // endless "reconnecting…").
+                setConfirmLeave(false);
+                leaveToHome();
+              }}
+            >
+              {t('table.leave')}
+            </button>
+            <button type="button" className="btn--ghost" onClick={() => setConfirmLeave(false)}>
               {t('common.cancel')}
             </button>
           </div>

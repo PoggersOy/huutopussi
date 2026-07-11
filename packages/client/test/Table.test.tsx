@@ -392,7 +392,7 @@ describe('overlays', () => {
             },
           },
         }),
-        { scores: [120, -60] },
+        { scores: [130, -70] },
       ),
       null,
     );
@@ -403,7 +403,9 @@ describe('overlays', () => {
     expect(screen.getByText('+120')).toBeTruthy();
     expect(screen.getByText('-60')).toBeTruthy();
     expect(screen.getByText('No tricks!')).toBeTruthy();
-    expect(screen.getByText('Standing: 120 — -60')).toBeTruthy();
+    // Running match totals now render as the table's final "Total" row.
+    expect(screen.getByText('130')).toBeTruthy();
+    expect(screen.getByText('-70')).toBeTruthy();
   });
 
   it('holds the score card for a beat after the final trick, then reveals it', () => {
@@ -614,6 +616,38 @@ describe('overlays', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Rematch' }));
     expect(sendLobby).toHaveBeenCalledWith({ type: 'rematch' });
   });
+
+  it('offers a Back-to-menu escape on match-over even to a non-host waiting on the rematch', () => {
+    const guestRoom = { ...room, hostSeat: 1 as Seat };
+    const msg: Extract<ServerMsg, { t: 'welcome' }> = {
+      t: 'welcome',
+      v: 1,
+      sessionToken: '123e4567-e89b-42d3-a456-426614174000',
+      room: guestRoom,
+      seat: 0,
+      seq: 1,
+      view: makeView(makeDeal(), { winnerSide: 0, scores: [505, 210] }),
+      turn: null,
+    };
+    serverApply.welcome(msg);
+    render(<Table />, { wrapper: MemoryRouter });
+
+    // The non-host has no rematch button, only the waiting note — but must still
+    // have a way out so a silent host can't strand them here.
+    expect(screen.queryByRole('button', { name: 'Rematch' })).toBeNull();
+    expect(screen.getByText('Waiting for the host to start a rematch…')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Back to menu' }));
+    expect(disconnect).toHaveBeenCalled();
+  });
+
+  it('also gives the host a Back-to-menu button alongside rematch', () => {
+    applyWelcome(makeView(makeDeal(), { winnerSide: 0, scores: [505, 210] }), null);
+    render(<Table />, { wrapper: MemoryRouter });
+
+    expect(screen.getByRole('button', { name: 'Rematch' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Back to menu' }));
+    expect(disconnect).toHaveBeenCalled();
+  });
 });
 
 describe('host stop game', () => {
@@ -660,5 +694,35 @@ describe('host stop game', () => {
     serverApply.welcome(msg);
     render(<Table />, { wrapper: MemoryRouter });
     expect(screen.queryByRole('button', { name: 'Stop game' })).toBeNull();
+  });
+
+  it('gives a non-host a Leave button that bails out only after confirming', () => {
+    const guestRoom = { ...room, hostSeat: 1 as Seat };
+    const msg: Extract<ServerMsg, { t: 'welcome' }> = {
+      t: 'welcome',
+      v: 1,
+      sessionToken: '123e4567-e89b-42d3-a456-426614174000',
+      room: guestRoom,
+      seat: 0,
+      seq: 1,
+      view: makeView(makeDeal()),
+      turn: null,
+    };
+    serverApply.welcome(msg);
+    render(<Table />, { wrapper: MemoryRouter });
+
+    // Non-host sees Leave (not Stop); opening the confirm doesn't leave yet.
+    fireEvent.click(screen.getByRole('button', { name: 'Leave game' }));
+    expect(screen.getByText('Leave the game?')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByText('Leave the game?')).toBeNull();
+    expect(disconnect).not.toHaveBeenCalled();
+
+    // Confirming tears down the connection (a bot fills the seat server-side).
+    fireEvent.click(screen.getByRole('button', { name: 'Leave game' }));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Leave game' }));
+    expect(disconnect).toHaveBeenCalled();
+    expect(sendLobby).not.toHaveBeenCalled();
   });
 });

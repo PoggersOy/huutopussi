@@ -261,7 +261,10 @@
     "timeLeft": "{{n}} seconds left to act",
     "stop": "Stop game",
     "stopTitle": "Stop the game?",
-    "stopConfirm": "This ends the game for everyone and closes the room."
+    "stopConfirm": "This ends the game for everyone and closes the room.",
+    "leave": "Leave game",
+    "leaveTitle": "Leave the game?",
+    "leaveConfirm": "A bot will play your hand. You can rejoin any time with the room link."
   },
   "bubble": {
     "bid": "{{amount}}!",
@@ -302,10 +305,10 @@
     "rounded": "Rounded",
     "tricks": "Tricks",
     "delta": "Change",
+    "matchTotal": "Total",
     "contractless": "Everyone passed — no declarer",
     "contractMade": "Contract {{contract}} made — {{name}}",
     "contractFailed": "Contract {{contract}} failed — {{name}}",
-    "standing": "Standing: {{us}} — {{them}}",
     "nextDeal": "Next deal starts in a moment…",
     "redealTitle": "New deal",
     "redealBy": "{{name}} demanded a redeal",
@@ -314,7 +317,8 @@
     "victory": "You win!",
     "defeat": "The opponents win",
     "winners": "Winners: {{names}}",
-    "waitRematch": "Waiting for the host to start a rematch…"
+    "waitRematch": "Waiting for the host to start a rematch…",
+    "backToMenu": "Back to menu"
   },
   "event": {
     "redealDemanded": "Redeal demanded",

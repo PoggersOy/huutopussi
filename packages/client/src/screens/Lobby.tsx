@@ -13,7 +13,7 @@ import type {
   TableSettings,
   TableSettingsPatch,
 } from '@hp/protocol';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { ConnectionPill } from '../components/ConnectionPill';
@@ -25,6 +25,7 @@ import { useStore } from '../store';
 
 export function Lobby() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const room = useStore((s) => s.server.room);
   const mySeat = useStore((s) => s.server.seat);
   if (room === null) return null;
@@ -82,6 +83,20 @@ export function Lobby() {
             {t('lobby.waitingForHost')}
           </p>
         )}
+        {/* An escape hatch for everyone: never trap a guest in a lobby whose host
+            never starts (leaving drops the seat; the browser back button alone
+            shouldn't be the only way out). */}
+        <button
+          type="button"
+          className="btn--ghost"
+          style={{ width: '100%' }}
+          onClick={() => {
+            disconnect();
+            navigate('/');
+          }}
+        >
+          {t('overlay.backToMenu')}
+        </button>
       </footer>
     </div>
   );
@@ -538,6 +553,15 @@ function AllRulesOverlay({ config, onClose }: { config: RuleConfig; onClose: () 
   const yn = (b: boolean): string => t(b ? 'rules.yes' : 'rules.no');
   const is4p = config.players === 4;
 
+  // Dismiss on Escape, mirroring the click-outside affordance below.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   const deal: Array<[string, string]> = [
     [t('config.players'), t('config.playersOpt', { n: config.players })],
   ];
@@ -712,8 +736,25 @@ function AllRulesOverlay({ config, onClose }: { config: RuleConfig; onClose: () 
   );
 
   return (
-    <div className="rules-overlay" role="dialog" aria-modal="true">
+    // biome-ignore lint/a11y/useKeyWithClickEvents: keyboard users dismiss via Escape (handled above) or the × / Close buttons; this is the click-outside touch affordance
+    <div
+      className="rules-overlay"
+      role="dialog"
+      aria-modal="true"
+      // Click the dimmed backdrop (but not the panel) to dismiss.
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
       <div className="rules-overlay__panel stack">
+        <button
+          type="button"
+          className="btn--ghost rules-overlay__close"
+          aria-label={t('common.close')}
+          onClick={onClose}
+        >
+          ✕
+        </button>
         <h2>{t('rules.title')}</h2>
         <p className="dim rules-overlay__preset">{presetLabel}</p>
         {sections.map(([title, rows]) => (
