@@ -2,6 +2,20 @@
 
 Online multiplayer Finnish card game (Huutopussi) for mobile browsers. TypeScript monorepo, pnpm workspaces.
 
+## Canonical agent guide
+The full, tool-neutral onboarding guide is **`AGENTS.md`** (imported below so it
+loads automatically). It holds the golden rules, repo map, commands, and a doc
+index. Read it, then open the one deep doc your task needs:
+
+- `AGENTS.md` — start here (golden rules, repo map, commands, "where do I change X").
+- `docs/ARCHITECTURE.md` — system map + the journey of one action + file-by-file responsibilities.
+- `docs/TASK-RECIPES.md` — ordered checklists for common changes (rules, i18n, bots, screens…).
+- `docs/GLOSSARY.md` — Finnish/domain terms → code symbols.
+- `docs/TESTING.md` — test taxonomy, fuzz invariants, how to add/reproduce a test.
+- `docs/README.md` — the full doc index.
+
+@AGENTS.md
+
 ## Source-of-truth documents
 - `docs/plan.md` — approved implementation plan (architecture, protocol, phases). Follow it.
 - `docs/huutopussin-saannot.md` — complete game rules + variations. **Rules disputes are settled by this document**; the engine implements the "päämuoto" column of its section 10 by default via `RuleConfig`.

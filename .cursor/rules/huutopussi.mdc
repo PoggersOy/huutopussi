@@ -1,0 +1,28 @@
+---
+description: Huutopussi Online — canonical agent guidance (routes to AGENTS.md)
+alwaysApply: true
+---
+
+# Huutopussi Online
+
+The canonical, tool-neutral guide for working in this repo is **`AGENTS.md`** at
+the repo root. Read it first; it is the single source of truth. Task recipes are
+in `docs/TASK-RECIPES.md`, the system map in `docs/ARCHITECTURE.md`, and the
+domain glossary in `docs/GLOSSARY.md`.
+
+Non-negotiables (see `AGENTS.md` §3 for detail):
+
+- **Frozen contracts** — do not change exported types/schemas in
+  `packages/engine/src/{types,config,deck}.ts` or `packages/protocol/src/index.ts`
+  without explicit instruction.
+- **Engine is pure & deterministic** — zero deps, no clock/randomness/I/O; it
+  returns `RuleError` values and never throws for rule violations.
+- **Legality is server-authoritative** — the client enables moves only from
+  server-sent `ActionHint`s; never recompute legality locally.
+- **Hidden info has one redaction choke point** (`engine/src/view.ts`); `hints`
+  go only to the acting seat.
+- **No user-facing English in engine/server** — emit i18n keys; translations live
+  in `packages/client/src/i18n/{fi,en}.json`.
+- **Commit directly to `main`** (no branches/PRs); only commit when asked.
+- Before finishing: `pnpm typecheck && pnpm lint && pnpm test`, plus
+  `pnpm sim -- --games 500 --seed 42` if the engine changed.

@@ -9,6 +9,19 @@ bots, fi/en i18n, reconnection handling, and persistent score history.
 Rules source of truth: [`docs/huutopussin-saannot.md`](docs/huutopussin-saannot.md).
 Architecture and plan: [`docs/plan.md`](docs/plan.md).
 
+## Working on the code (humans & AI agents)
+
+This repo is set up for cost-effective AI-assisted development. Start with
+**[`AGENTS.md`](AGENTS.md)** — the tool-neutral guide (golden rules, repo map,
+commands) read by Claude Code, Cursor, Copilot, Codex, and others. Then open the
+one deep doc your task needs:
+
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — system map + the journey of one action + file-by-file responsibilities.
+- [`docs/TASK-RECIPES.md`](docs/TASK-RECIPES.md) — ordered checklists for common changes.
+- [`docs/GLOSSARY.md`](docs/GLOSSARY.md) — Finnish/domain terms → code symbols.
+- [`docs/TESTING.md`](docs/TESTING.md) — test taxonomy + fuzz invariants.
+- [`docs/README.md`](docs/README.md) — the full doc index.
+
 ## Repository layout
 
 | Package | What it is |
