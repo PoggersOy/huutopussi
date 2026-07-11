@@ -5,7 +5,15 @@
  * mode: 4p shows the classic us/them pair columns, 2-3p one column per
  * player (each seat is its own side).
  */
-import { type DealResult, SEATS, type Seat, type Side, sideCount, sideOf } from '@hp/engine';
+import {
+  type DealResult,
+  type RedealReason,
+  SEATS,
+  type Seat,
+  type Side,
+  sideCount,
+  sideOf,
+} from '@hp/engine';
 import type { MatchRatingResult } from '@hp/protocol';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -23,14 +31,24 @@ function signed(n: number): string {
  * store clears it (and this overlay unmounts) the instant `dealStarted` lands,
  * so the number is a friendly estimate, not the authority on when cards return.
  */
+/** The exact condition each redeal reason met → its i18n clause key. */
+const REDEAL_REASON_KEY: Record<RedealReason, string> = {
+  fourSixes: 'overlay.redealReasonFourSixes',
+  threeSixes: 'overlay.redealReasonThreeSixes',
+  noneAboveJack: 'overlay.redealReasonNoneAboveJack',
+};
+
 export function RedealOverlay({
   seat,
   until,
+  reason,
   nameOf,
 }: {
   seat: Seat;
   /** Epoch ms the fresh deal is expected (store's REDEAL_COUNTDOWN_MS ahead). */
   until: number;
+  /** The specific condition the demanding hand met, straight from the event. */
+  reason: RedealReason;
   nameOf: (seat: Seat) => string;
 }) {
   const { t } = useTranslation();
@@ -45,7 +63,12 @@ export function RedealOverlay({
     <div className="overlay" role="dialog" aria-modal="true">
       <div className="overlay__panel stack">
         <h2>{t('overlay.redealTitle')}</h2>
-        <p className="tsheet__center">{t('overlay.redealBy', { name: nameOf(seat) })}</p>
+        <p className="tsheet__center">
+          {t('overlay.redealByReason', {
+            name: nameOf(seat),
+            reason: t(REDEAL_REASON_KEY[reason]),
+          })}
+        </p>
         <p className="redeal__count" aria-live="polite">
           {secs > 0 ? t('overlay.redealIn', { n: secs }) : t('overlay.redealingNow')}
         </p>
@@ -104,6 +127,62 @@ function NextDealPrompt({ solo, seated }: { solo: boolean; seated: boolean }) {
     >
       {t('overlay.continue')}
     </button>
+  );
+}
+
+/**
+ * On-demand current standings ("Näytä tilanne"): the running match total for
+ * every side, best first, with the viewer's own row highlighted. The top bar
+ * now shows only this device's own score, so this is where you check everyone
+ * else. 4p rows are the pair ("Anni & Ben"); 2-3p each seat is its own side.
+ */
+export function StandingsOverlay({
+  scores,
+  mySide,
+  players,
+  nameOf,
+  onClose,
+}: {
+  /** Running match totals (index === side). */
+  scores: number[];
+  mySide: Side;
+  players: 2 | 3 | 4;
+  nameOf: (seat: Seat) => string;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  const sideMembers = (side: Side): string =>
+    SEATS.slice(0, players)
+      .filter((s) => sideOf(s, players) === side)
+      .map((s) => nameOf(s))
+      .join(' & ');
+  const sides = Array.from({ length: sideCount({ players }) }, (_, i) => i as Side);
+  const ranked = [...sides].sort((a, b) => (scores[b] ?? 0) - (scores[a] ?? 0));
+  const MEDALS = ['🥇', '🥈', '🥉'];
+
+  return (
+    <div className="overlay" role="dialog" aria-modal="true">
+      <div className="overlay__panel stack">
+        <h2>{t('overlay.standingsTitle')}</h2>
+        <ul className="overlay__standings">
+          {ranked.map((side, i) => (
+            <li
+              key={side}
+              className={`overlay__rank${side === mySide ? ' overlay__rank--you' : ''}`}
+            >
+              <span className="overlay__rank-medal" aria-hidden="true">
+                {MEDALS[i] ?? ''}
+              </span>
+              <span className="overlay__rank-name">{sideMembers(side)}</span>
+              <span className="overlay__rank-score">{scores[side] ?? 0}</span>
+            </li>
+          ))}
+        </ul>
+        <button type="button" className="btn--ghost" onClick={onClose}>
+          {t('common.close')}
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -170,21 +249,44 @@ export function MatchEndedOverlay({
 }) {
   const { t } = useTranslation();
   const signedIn = useStore((s) => s.auth.user !== null);
-  const otherSide: Side = mySide === 0 ? 1 : 0;
-  const winners = SEATS.slice(0, players)
-    .filter((s) => sideOf(s, players) === winnerSide)
-    .map((s) => nameOf(s))
-    .join(' & ');
+  /** 4p plays in pairs ("us/them"); 2-3p is every player for themselves. */
+  const isTeam = players === 4;
+
+  // The members of a side, joined: a pair like "Anni & Ben" in 4p, or a single
+  // name in 2-3p (where each seat is its own side).
+  const sideMembers = (side: Side): string =>
+    SEATS.slice(0, players)
+      .filter((s) => sideOf(s, players) === side)
+      .map((s) => nameOf(s))
+      .join(' & ');
+
   const won = seat !== null && winnerSide === mySide;
   const title =
     seat === null
-      ? t('table.matchOver', { side: winnerSide + 1 })
-      : won
-        ? t('overlay.victory')
-        : t('overlay.defeat');
+      ? t('overlay.matchOver')
+      : isTeam
+        ? won
+          ? t('overlay.winTeam') // "Te voititte!"
+          : t('overlay.loseTeam') // "Te hävisitte!"
+        : won
+          ? t('overlay.winSolo') // "Sinä voitit!"
+          : t('overlay.loseSolo'); // "Sinä hävisit!"
   const isHost = seat !== null && seat === hostSeat;
+
+  // Final standings, best score first — but the actual winner (decided by the
+  // engine's tiebreak, not by raw points) always takes gold, even on an exact tie.
   const sides = Array.from({ length: sideCount({ players }) }, (_, i) => i as Side);
-  const ranked = [...sides].sort((a, b) => (scores[b] ?? 0) - (scores[a] ?? 0));
+  const ranked = [...sides].sort((a, b) => {
+    if (a === winnerSide) return -1;
+    if (b === winnerSide) return 1;
+    return (scores[b] ?? 0) - (scores[a] ?? 0);
+  });
+  const MEDALS = ['🥇', '🥈', '🥉'];
+
+  // Name the winners only where the title doesn't already: the 4p winning pair,
+  // and for a spectator (for whom nobody is "you"). In 2-3p the singular title
+  // plus the gold medal below say it all.
+  const showWinners = isTeam || seat === null;
 
   // The signed-in viewer's Elo change (present only if this match was rated).
   const myRating =
@@ -196,26 +298,25 @@ export function MatchEndedOverlay({
     <div className="overlay" role="dialog" aria-modal="true">
       <div className="overlay__panel stack">
         <h2 className={won ? 'overlay__win' : undefined}>{title}</h2>
-        <p className="tsheet__center">{t('overlay.winners', { names: winners })}</p>
-        {players === 4 ? (
-          <>
-            <p className="overlay__final">
-              {scores[mySide] ?? 0} — {scores[otherSide] ?? 0}
-            </p>
-            <p className="dim tsheet__center">
-              {t('table.us')} — {t('table.them')}
-            </p>
-          </>
-        ) : (
-          <p className="overlay__final">
-            {ranked.map((side, i) => (
-              <span key={side} className={side === winnerSide ? 'overlay__win' : undefined}>
-                {i > 0 && ' · '}
-                {nameOf(side as Seat)} {scores[side] ?? 0}
-              </span>
-            ))}
+        {showWinners && (
+          <p className="tsheet__center">
+            {t('overlay.winners', { names: sideMembers(winnerSide) })}
           </p>
         )}
+        <ul className="overlay__standings">
+          {ranked.map((side, i) => (
+            <li
+              key={side}
+              className={`overlay__rank${side === winnerSide ? ' overlay__rank--winner' : ''}`}
+            >
+              <span className="overlay__rank-medal" aria-hidden="true">
+                {MEDALS[i] ?? ''}
+              </span>
+              <span className="overlay__rank-name">{sideMembers(side)}</span>
+              <span className="overlay__rank-score">{scores[side] ?? 0}</span>
+            </li>
+          ))}
+        </ul>
         {myRating ? (
           <p className="overlay__elo">
             <span className="dim">{t('rating.yourChange')}</span> <strong>{myRating.after}</strong>{' '}
@@ -229,8 +330,6 @@ export function MatchEndedOverlay({
           !matchRating.rated && (
             <p className="dim tsheet__center">
               <strong>{t('rating.unrated')}</strong>
-              <br />
-              {t('rating.unratedHint')}
             </p>
           )
         )}

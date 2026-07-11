@@ -1,6 +1,7 @@
 /** Shared helpers for the Table screen and its sheets/overlays. */
 import { type DealView, nextSeat, partnerOf, type Seat, type Suit } from '@hp/engine';
 import { useTranslation } from 'react-i18next';
+import { botNameOf, useBotNames } from '../../botNames';
 import { useStore } from '../../store';
 
 export const SUIT_GLYPH: Record<Suit, string> = { H: '♥', D: '♦', C: '♣', S: '♠' };
@@ -18,11 +19,21 @@ export function feltSlot(me: Seat, other: Seat, players: 2 | 3 | 4): 0 | 1 | 2 |
   return rel as 0 | 1 | 2 | 3;
 }
 
-/** Seat display name: nickname when seated, localized seat label otherwise. */
+/**
+ * Seat display name: a localized bot name for bot seats, the human's nickname
+ * when seated, and a localized seat label otherwise.
+ */
 export function useNameOf(): (seat: Seat) => string {
   const room = useStore((s) => s.server.room);
   const { t } = useTranslation();
-  return (seat) => room?.seats[seat]?.nickname ?? t('table.seat', { seat: seat + 1 });
+  const botNames = useBotNames();
+  return (seat) => {
+    const info = room?.seats[seat];
+    if (info?.kind === 'bot') {
+      return botNameOf(room?.seats ?? [], seat, botNames) ?? t('lobby.bot');
+    }
+    return info?.nickname ?? t('table.seat', { seat: seat + 1 });
+  };
 }
 
 /**

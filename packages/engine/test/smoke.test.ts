@@ -672,7 +672,9 @@ describe('redeal demand', () => {
       canDemandRedeal: true,
       forced: true,
     });
-    expect(act(ctx, 1, { type: 'demandRedeal' })).toEqual([{ type: 'redealDemanded', seat: 1 }]);
+    expect(act(ctx, 1, { type: 'demandRedeal' })).toEqual([
+      { type: 'redealDemanded', seat: 1, reason: 'threeSixes' },
+    ]);
     expect(ctx.state.deal).toBeNull();
     expect(ctx.state.dealer).toBe(0);
     expect(ctx.state.dealIndex).toBe(0);
@@ -692,7 +694,9 @@ describe('redeal demand', () => {
     act(ctx, 3, { type: 'pass' });
     // seat 0 (nothing above jack) may demand on its first turn even after bids
     expect(allowedActions(ctx.state, 0)[0]).toMatchObject({ canDemandRedeal: true });
-    expect(act(ctx, 0, { type: 'demandRedeal' })).toEqual([{ type: 'redealDemanded', seat: 0 }]);
+    expect(act(ctx, 0, { type: 'demandRedeal' })).toEqual([
+      { type: 'redealDemanded', seat: 0, reason: 'noneAboveJack' },
+    ]);
     expect(ctx.state.deal).toBeNull();
 
     // Fresh deal, same deck: a second bidding turn closes the window for seat 1.

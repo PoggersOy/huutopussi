@@ -44,7 +44,7 @@
 /** Rating assigned to a brand-new account. */
 export const STARTING_RATING = 1000;
 /** Below this many rated games a player is "provisional" (faster K, `?` badge). */
-export const PROVISIONAL_GAMES = 30;
+export const PROVISIONAL_GAMES = 10;
 /** K for provisional players (< PROVISIONAL_GAMES games). */
 export const K_PROVISIONAL = 40;
 /** K for established players below the high-rating tier. */

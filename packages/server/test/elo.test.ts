@@ -39,9 +39,9 @@ describe('building blocks', () => {
   });
 
   test('kFactor schedule: provisional / established / high-tier boundaries', () => {
-    expect(kFactor(1000, 5)).toBe(K_PROVISIONAL); // < 30 games
-    expect(kFactor(1000, 29)).toBe(K_PROVISIONAL);
-    expect(kFactor(1000, 30)).toBe(K_ESTABLISHED); // boundary → established
+    expect(kFactor(1000, 5)).toBe(K_PROVISIONAL); // < 10 games
+    expect(kFactor(1000, 9)).toBe(K_PROVISIONAL);
+    expect(kFactor(1000, 10)).toBe(K_ESTABLISHED); // boundary → established
     expect(kFactor(2099, 40)).toBe(K_ESTABLISHED);
     expect(kFactor(2100, 40)).toBe(K_HIGH); // boundary → high tier
     expect(kFactor(2100, 5)).toBe(K_PROVISIONAL); // provisional overrides rating

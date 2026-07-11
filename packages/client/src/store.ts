@@ -14,6 +14,7 @@ import {
   type PlayerView,
   partnerOf,
   type Rank,
+  type RedealReason,
   SEATS,
   type Seat,
   type Suit,
@@ -130,7 +131,7 @@ export interface UiSlice {
    * expected. Drives the table's countdown overlay; cleared when `dealStarted`
    * arrives. Set for ALL clients (the `redealDemanded` event is broadcast).
    */
-  redeal: { seat: Seat; until: number } | null;
+  redeal: { seat: Seat; until: number; reason: RedealReason } | null;
   /** Latest match summaries for the current room ('history' messages). */
   history: MatchSummary[] | null;
   /**
@@ -425,7 +426,11 @@ export const serverApply = {
       // Redeal countdown: arm on the demand, clear when the fresh deal starts.
       const redeal =
         msg.event?.type === 'redealDemanded'
-          ? { seat: msg.event.seat, until: Date.now() + REDEAL_COUNTDOWN_MS }
+          ? {
+              seat: msg.event.seat,
+              until: Date.now() + REDEAL_COUNTDOWN_MS,
+              reason: msg.event.reason,
+            }
           : msg.event?.type === 'dealStarted'
             ? null
             : s.ui.redeal;

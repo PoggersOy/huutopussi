@@ -1244,7 +1244,7 @@ describe('event redaction (redactEventFor)', () => {
       }
     }
     const synthetic: GameEvent[] = [
-      { type: 'redealDemanded', seat: 2 },
+      { type: 'redealDemanded', seat: 2, reason: 'fourSixes' },
       { type: 'matchEnded', winnerSide: 1 },
       { type: 'answeredWhole', seat: 3, suit: null },
     ];

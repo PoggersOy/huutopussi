@@ -2,7 +2,7 @@
  * History deal-browser: a full-screen modal that pages through every deal of a
  * FINISHED match, showing that deal's score breakdown — the same table shown
  * live as "Jako laskettu". Swipe left/right on touch, arrow keys on desktop, or
- * use the prev/next arrows and the dots. Reads only the persisted MatchSummary
+ * use the prev/next arrows. Reads only the persisted MatchSummary
  * (names, players and per-deal DealResults captured at match end); running
  * totals are recomputed cumulatively from each deal's per-side scoreDelta.
  */
@@ -10,6 +10,7 @@ import { type DealResult, partnerOf, type Seat, type Side } from '@hp/engine';
 import type { MatchSummary } from '@hp/protocol';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { summaryNames, useBotNames } from '../botNames';
 import { DealBreakdownTable, DealContractLine } from './DealBreakdownTable';
 
 const SWIPE_THRESHOLD_PX = 48;
@@ -35,6 +36,7 @@ export function DealHistoryBrowser({
   onClose: () => void;
 }) {
   const { t } = useTranslation();
+  const botNames = useBotNames();
   const deals = match.dealResults ?? [];
   const players = match.players ?? 4;
   const sideCount = players === 4 ? 2 : players;
@@ -57,7 +59,10 @@ export function DealHistoryBrowser({
   if (count === 0) return null; // caller only opens when deals exist
   const go = (delta: number) => setIdx((i) => Math.max(0, Math.min(count - 1, i + delta)));
   const order = Array.from({ length: sideCount }, (_, i) => i as Side);
-  const nameOf = (seat: Seat): string => match.names?.[seat] ?? t('table.seat', { seat: seat + 1 });
+  // Bot seats stored no name; give them their localized bot name, matching the
+  // live table. A truly unknown seat still falls back to a generic seat label.
+  const display = summaryNames(match.names, botNames, t('lobby.bot'));
+  const nameOf = (seat: Seat): string => display[seat] ?? t('table.seat', { seat: seat + 1 });
   const sideLabel = (side: Side): string =>
     players === 4
       ? `${nameOf(side as Seat)} & ${nameOf(partnerOf(side as Seat))}`
@@ -104,19 +109,6 @@ export function DealHistoryBrowser({
           >
             ‹
           </button>
-          <div className="deal-dots">
-            {deals.map((_, i) => (
-              <button
-                type="button"
-                // biome-ignore lint/suspicious/noArrayIndexKey: deals are a fixed, ordered list
-                key={i}
-                className={i === idx ? 'deal-dot deal-dot--on' : 'deal-dot'}
-                aria-label={t('history.dealTitle', { n: i + 1, total: count })}
-                aria-current={i === idx}
-                onClick={() => setIdx(i)}
-              />
-            ))}
-          </div>
           <button
             type="button"
             className="btn--ghost deal-nav__arrow"

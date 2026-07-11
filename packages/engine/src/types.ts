@@ -217,6 +217,15 @@ export interface DealResult {
 
 // ── Events (the only way state changes; emitted by validateAction) ───────────
 
+/**
+ * The specific hand condition that qualified a redeal demand (see
+ * `RuleConfig.redealCondition`). `fourSixes` — all four sixes (illisoft; in 4p
+ * the pair's combined hands). `threeSixes` / `noneAboveJack` — the two branches
+ * of päämuoto's rule (≥3 sixes, or no card above a jack), reported separately so
+ * the UI can name the exact one.
+ */
+export type RedealReason = 'fourSixes' | 'threeSixes' | 'noneAboveJack';
+
 export type GameEvent =
   /**
    * `deck` is the full 36-card permutation. Layout: active hands seat-major
@@ -224,8 +233,12 @@ export type GameEvent =
    * the talon (2-3p, config.talonSize cards). 4p: seat s gets deck[9s..9s+8].
    */
   | { type: 'dealStarted'; dealIndex: number; dealer: Seat; deck: Card[] }
-  /** A qualifying seat demanded a redeal; a fresh dealStarted follows. */
-  | { type: 'redealDemanded'; seat: Seat }
+  /**
+   * A qualifying seat demanded a redeal; a fresh dealStarted follows. `reason`
+   * is the specific condition the hand met — clients surface it to explain the
+   * demand (the seat's cards themselves stay hidden).
+   */
+  | { type: 'redealDemanded'; seat: Seat; reason: RedealReason }
   | { type: 'bidPlaced'; seat: Seat; amount: number }
   | { type: 'passed'; seat: Seat }
   /**

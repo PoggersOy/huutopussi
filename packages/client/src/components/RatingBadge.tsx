@@ -1,6 +1,7 @@
-/** Small Elo pill; a provisional rating shows a trailing `?`. Renders nothing
- *  for guests/bots (null rating). Pass `label` (e.g. "ELO") to prefix the value
- *  as its own field, "ELO: 1000" — inline lists omit it and show the bare number. */
+/** Small Elo pill; a provisional rating flags itself via the hover title only.
+ *  Renders nothing for guests/bots (null rating). Pass `label` (e.g. "ELO") to
+ *  prefix the value as its own field, "ELO: 1000" — inline lists omit it and
+ *  show the bare number. */
 import { useTranslation } from 'react-i18next';
 
 export function RatingBadge({
@@ -21,7 +22,6 @@ export function RatingBadge({
     >
       {label != null ? `${label}: ` : ''}
       {rating}
-      {provisional ? '?' : ''}
     </span>
   );
 }

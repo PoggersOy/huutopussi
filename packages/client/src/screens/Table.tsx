@@ -25,10 +25,15 @@ import type { SeatInfo } from '@hp/protocol';
 import { type ReactElement, useEffect, useRef, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { CardBack, CardFace } from '../components/CardFace';
+import { CardBack, CardFace, CardStack } from '../components/CardFace';
 import { disconnect, sendAction, sendLobby } from '../socket';
 import { type CompletedTrick, type SpeechBubble, useStore } from '../store';
-import { DealScoredOverlay, MatchEndedOverlay, RedealOverlay } from './table/TableOverlays';
+import {
+  DealScoredOverlay,
+  MatchEndedOverlay,
+  RedealOverlay,
+  StandingsOverlay,
+} from './table/TableOverlays';
 import {
   AnswerWholeSheet,
   BiddingSheet,
@@ -207,6 +212,8 @@ export function Table() {
   const [confirmStop, setConfirmStop] = useState(false);
   /** A non-host's "Leave game" confirmation dialog is open. */
   const [confirmLeave, setConfirmLeave] = useState(false);
+  /** The on-demand full-standings overlay ("Näytä tilanne") is open. */
+  const [showStandings, setShowStandings] = useState(false);
 
   /** Tear down the connection and go home (used by leave / match-over exit). */
   const leaveToHome = (): void => {
@@ -263,6 +270,10 @@ export function Table() {
   // Solo-vs-bots (one human, rest bots): the deal-results overlay is player-
   // paced ("Jatka"); a multi-human game shows a next-deal countdown instead.
   const soloVsBots = room.seats.filter((s) => s.kind === 'human').length === 1;
+  // My own seat was handed to a fill-in bot (I idled past the turn timeout).
+  // Offer an always-visible "I'm back" button to reclaim control instantly —
+  // even off-turn, so the bot won't play my next turn either.
+  const iAmAway = seat !== null && room.seats[seat]?.botControlled === true;
 
   let sheet: ReactElement | null = null;
   if (deal !== null && !showMatchOverlay) {
@@ -327,15 +338,23 @@ export function Table() {
       {/* TopBar + host strip share one grid row so the felt keeps the 1fr track
           (the grid template has exactly four rows: header / felt / sheet / hand). */}
       <div className="ttop-wrap">
-        <TopBar view={view} mySide={mySide} actor={actor} myTurn={myTurn} nameOf={nameOf} />
+        <TopBar view={view} me={me} mySide={mySide} actor={actor} myTurn={myTurn} nameOf={nameOf} />
         {view.winnerSide === null && (
           <div className="thostbar">
-            {/* The host stops the game for everyone; anyone else can bail out to
-                the menu (a bot fills their seat) so no one is stuck if the host
-                goes silent. */}
+            {/* Left: on-demand full standings (the header now shows only YOUR
+                score). Right: the host stops the game for everyone; anyone else
+                can bail out to the menu (a bot fills their seat) so no one is
+                stuck if the host goes silent. */}
             <button
               type="button"
-              className="btn--ghost thostbar__stop"
+              className="btn--ghost thostbar__btn"
+              onClick={() => setShowStandings(true)}
+            >
+              {t('table.standings')}
+            </button>
+            <button
+              type="button"
+              className="btn--ghost thostbar__btn"
               onClick={() => (isHost ? setConfirmStop(true) : setConfirmLeave(true))}
             >
               {isHost ? t('table.stop') : t('table.leave')}
@@ -408,8 +427,23 @@ export function Table() {
         />
       </footer>
 
+      {iAmAway && !showMatchOverlay && (
+        <button
+          type="button"
+          className="table-reclaim"
+          onClick={() => sendLobby({ type: 'reclaimSeat' })}
+        >
+          {t('table.imBack')}
+        </button>
+      )}
+
       {redeal !== null && !showMatchOverlay && (
-        <RedealOverlay seat={redeal.seat} until={redeal.until} nameOf={nameOf} />
+        <RedealOverlay
+          seat={redeal.seat}
+          until={redeal.until}
+          reason={redeal.reason}
+          nameOf={nameOf}
+        />
       )}
       {showScoredOverlay && scoredResult !== null && (
         <DealScoredOverlay
@@ -433,6 +467,15 @@ export function Table() {
           nameOf={nameOf}
           matchRating={matchRating}
           onLeave={leaveToHome}
+        />
+      )}
+      {showStandings && (
+        <StandingsOverlay
+          scores={view.scores}
+          mySide={mySide}
+          players={players}
+          nameOf={nameOf}
+          onClose={() => setShowStandings(false)}
         />
       )}
       {confirmStop && (
@@ -496,12 +539,15 @@ export function Table() {
 
 function TopBar({
   view,
+  me,
   mySide,
   actor,
   myTurn,
   nameOf,
 }: {
   view: PlayerView;
+  /** The seat this device plays (spectators watch from seat 0). */
+  me: Seat;
   mySide: Side;
   actor: Seat | null;
   myTurn: boolean;
@@ -509,11 +555,10 @@ function TopBar({
 }) {
   const { t } = useTranslation();
   const deal = view.deal;
-  const players = view.config.players;
   const trump = deal?.trump ?? null;
-  const otherSide = mySide === 0 ? 1 : 0;
-  const usScore = view.scores[mySide] ?? 0;
-  const themScore = view.scores[otherSide] ?? 0;
+  // Only THIS device's own running total; the full standings for every side are
+  // a tap away via "Näytä tilanne" in the strip below.
+  const myScore = view.scores[mySide] ?? 0;
 
   let contractLabel: string | null = null;
   if (deal !== null) {
@@ -529,46 +574,24 @@ function TopBar({
     }
   }
 
-  // 4p: us/them. 2-3p: every seat is its own side — per-player labels, me first.
-  const mySeatFirst =
-    players === 4
-      ? []
-      : [...activeSeats(players)].sort(
-          (a, b) => ((a - mySide + players) % players) - ((b - mySide + players) % players),
-        );
-
   return (
     <header className="ttop">
-      <div className="ttop__row">
-        <span>
-          {players === 4 ? (
-            <>
-              <strong>
-                {t('table.us')} {usScore}
-              </strong>
-              <span className="dim">
-                {' · '}
-                {t('table.them')} {themScore}
-              </span>
-            </>
-          ) : (
-            mySeatFirst.map((seat, i) => (
-              <span key={seat} className={seat === (mySide as Seat) ? undefined : 'dim'}>
-                {i > 0 && ' · '}
-                {nameOf(seat)} {view.scores[sideOf(seat, players)] ?? 0}
-              </span>
-            ))
-          )}
-        </span>
+      {/* Grid `1fr auto 1fr`: the two side columns are equal, so the trump label
+          in the middle sits dead-centre on the screen whatever the name/deal
+          widths are. */}
+      <div className="ttop__row ttop__row--main">
+        <strong className="ttop__me-score">
+          {nameOf(me)} {myScore}
+        </strong>
         {/* key on `trump` remounts the chip when trump changes, restarting the
-            attention flash (see `.ttop__trump` in table.css). */}
+            attention flash (see `.ttop__trump--on` in table.css). */}
         <span
           key={trump ?? 'none'}
-          className={trump !== null ? `ttop__trump suit--${trump}` : 'dim'}
+          className={`ttop__trump${trump !== null ? ` ttop__trump--on suit--${trump}` : ' ttop__trump--off dim'}`}
         >
           {trump !== null ? `${SUIT_GLYPH[trump]} ${t(`suit.${trump}`)}` : t('table.noTrump')}
         </span>
-        <span className="dim">{t('table.deal', { n: view.dealIndex + 1 })}</span>
+        <span className="ttop__deal dim">{t('table.deal', { n: view.dealIndex + 1 })}</span>
       </div>
       <div className="ttop__row">
         <span className="dim">{contractLabel ?? t('sheet.noBids')}</span>
@@ -705,7 +728,7 @@ function FeltPiles({ deal }: { deal: DealView }) {
     <div className="felt-piles">
       {showTalon && (
         <div className="felt-pile">
-          <CardBack width="var(--card-w-opp)" />
+          <CardStack count={deal.talonCount as number} width="var(--card-w-opp)" />
           <span className="dim">
             {t('table.talon')} {deal.talonCount}
           </span>
@@ -713,7 +736,7 @@ function FeltPiles({ deal }: { deal: DealView }) {
       )}
       {showDummy && (
         <div className="felt-pile">
-          <CardBack width="var(--card-w-opp)" />
+          <CardStack count={deal.dummyHandCount as number} width="var(--card-w-opp)" />
           <span className="dim">
             {t('table.dummy')} {deal.dummyHandCount}
           </span>

@@ -7,9 +7,10 @@
  *    exact trick (same cards in the same order, same winning card — read from
  *    the "Last trick" peek) and show the same match scores.
  *
- * Bert deterministically takes seat 2 (the first "Sit here" in a guest's DOM
- * is the top slot = seat 2), making Anna (seat 0) and Bert partners — so both
- * top bars must report identical Us/Them numbers.
+ * Bert is auto-seated on join at the first free seat (seat 1 — Anna holds the
+ * host seat 0), so the two humans are opponents. No deal is scored within the
+ * three-trick window, so both clients still read 0 for every side; the per-trick
+ * score check is a cheap "no phantom score" guard, not a partnership assertion.
  */
 import { expect, test } from '@playwright/test';
 import {
@@ -20,8 +21,8 @@ import {
   joinRoomViaHome,
   mobileContextOptions,
   newDriver,
+  ownScore,
   startMatch,
-  topScores,
   tryReadLastTrick,
 } from './helpers';
 
@@ -39,9 +40,8 @@ test('two humans + two bots stay consistent through bidding and three tricks', a
     const code = await createRoom(pageA, 'Anna');
     await joinRoomViaHome(pageB, code, 'Bert');
 
-    // Bert sits down (first empty slot in a guest's view = seat 2, Anna's
-    // partner); wait until Anna's lobby shows him before adding bots.
-    await pageB.getByRole('button', { name: 'Sit here', exact: true }).first().click();
+    // Bert is auto-seated on join (first free seat = seat 1); wait until Anna's
+    // lobby shows him before adding the two bots.
     await expect(pageA.getByText('Bert')).toBeVisible();
     await addBots(pageA, 2);
     await startMatch(pageA);
@@ -103,10 +103,11 @@ test('two humans + two bots stay consistent through bidding and three tricks', a
       expect(agreedKey).toContain('*'); // exactly one winner-marked card
       prevKey = agreedKey;
 
-      // Same match scores on both screens (Anna and Bert are partners).
-      const scoresA = await topScores(pageA);
-      const scoresB = await topScores(pageB);
-      expect(scoresB).toEqual(scoresA);
+      // No deal has scored yet in this window, so both clients read 0 for their
+      // own side — a cheap phantom-score guard across the two screens.
+      const scoreA = await ownScore(pageA);
+      const scoreB = await ownScore(pageB);
+      expect(scoreB).toEqual(scoreA);
     }
   } finally {
     await ctxA.close();

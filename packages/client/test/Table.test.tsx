@@ -576,13 +576,16 @@ describe('overlays', () => {
       t: 'update',
       seq: 2,
       view: makeView(null),
-      event: { type: 'redealDemanded', seat: 1 },
+      event: { type: 'redealDemanded', seat: 1, reason: 'threeSixes' },
       turn: null,
     });
     render(<Table />, { wrapper: MemoryRouter });
 
     expect(screen.getByText('New deal')).toBeTruthy();
-    expect(screen.getByText('p1 demanded a redeal')).toBeTruthy();
+    // The overlay names the exact reason carried by the event.
+    expect(
+      screen.getByText('p1 demands a redeal because they hold three or more sixes'),
+    ).toBeTruthy();
     expect(screen.getByText(/Redealing in \d+…/)).toBeTruthy();
   });
 
@@ -592,7 +595,7 @@ describe('overlays', () => {
       t: 'update',
       seq: 2,
       view: makeView(null),
-      event: { type: 'redealDemanded', seat: 1 },
+      event: { type: 'redealDemanded', seat: 1, reason: 'threeSixes' },
       turn: null,
     });
     serverApply.update({
@@ -611,7 +614,7 @@ describe('overlays', () => {
     applyWelcome(makeView(makeDeal(), { winnerSide: 0, scores: [505, 210] }), null);
     render(<Table />, { wrapper: MemoryRouter });
 
-    expect(screen.getByText('You win!')).toBeTruthy();
+    expect(screen.getByText('You won!')).toBeTruthy();
     expect(screen.getByText('Winners: p0 & p2')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Rematch' }));
     expect(sendLobby).toHaveBeenCalledWith({ type: 'rematch' });
@@ -724,5 +727,34 @@ describe('host stop game', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Leave game' }));
     expect(disconnect).toHaveBeenCalled();
     expect(sendLobby).not.toHaveBeenCalled();
+  });
+});
+
+describe('standings', () => {
+  it('shows only this device’s own score in the top bar (not every side)', () => {
+    applyWelcome(makeView(makeDeal(), { scores: [130, -70] }), null);
+    render(<Table />, { wrapper: MemoryRouter });
+
+    // Bold "<me> <my side score>", and the centred trump label still renders.
+    expect(screen.getByText('p0 130')).toBeTruthy();
+    expect(screen.getByText('No trump')).toBeTruthy();
+    // The old per-side "Us …/Them …" listing is gone from the header.
+    expect(screen.queryByText(/Us\s+130/)).toBeNull();
+  });
+
+  it('opens the full standings on demand and closes again', () => {
+    applyWelcome(makeView(makeDeal(), { scores: [130, -70] }), null);
+    render(<Table />, { wrapper: MemoryRouter });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Standings' }));
+    const dialog = screen.getByRole('dialog');
+    // Every side listed with its running total (4p → the two pairs).
+    expect(within(dialog).getByText('p0 & p2')).toBeTruthy();
+    expect(within(dialog).getByText('p1 & p3')).toBeTruthy();
+    expect(within(dialog).getByText('130')).toBeTruthy();
+    expect(within(dialog).getByText('-70')).toBeTruthy();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Close' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 });

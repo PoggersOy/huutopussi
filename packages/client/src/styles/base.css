@@ -45,6 +45,21 @@ h2 {
   font-weight: 600;
 }
 
+/* Front-page brand lockup: logo tucked in before the "Huutopussi" wordmark.
+   Height tracks the title text so it stays proportional; the artwork is a
+   transparent PNG so it reads on the dark header. */
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.brand__logo {
+  height: 1.3em;
+  width: auto;
+  flex: none;
+}
+
 /* ── Portrait-first screen grid: header / scrollable main / action bar ── */
 
 .screen {
@@ -90,7 +105,10 @@ button,
   cursor: pointer;
 }
 
-button:disabled {
+/* aria-disabled buttons stay clickable (e.g. the lobby Start button taps to
+   explain why it's blocked) but wear the same greyed, inert look. */
+button:disabled,
+button[aria-disabled="true"] {
   opacity: 0.45;
   cursor: default;
 }
@@ -465,7 +483,11 @@ input::placeholder {
 .share-url {
   -webkit-user-select: text;
   user-select: text;
-  font-size: var(--fs-sm);
+  /* Keep at ≥16px: iOS Safari auto-zooms the page when a text field with a
+     smaller font is focused, and this field auto-selects on tap — a sub-16px
+     size left the just-created room screen zoomed in with a stuck horizontal
+     scroll. 16px is the smallest that suppresses the zoom. */
+  font-size: var(--fs-md);
   color: var(--text-dim);
 }
 

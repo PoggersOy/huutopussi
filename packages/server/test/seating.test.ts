@@ -30,8 +30,9 @@ test('takeSeat / leaveSeat re-welcome the actor so their client learns its seat'
   const guest = await TestClient.connect(port);
   const gw = await guest.hello({ roomCode: code, nickname: 'guest' });
   if (gw.t !== 'welcome') throw new Error('guest hello failed');
-  expect(gw.seat).toBeNull(); // joins as a spectator
+  expect(gw.seat).toBe(1); // auto-seated at the first free seat (host holds 0)
 
+  // Re-taking the seat they already hold is an idempotent re-welcome.
   const seated = guest.next(
     (m): m is Extract<ServerMsg, { t: 'welcome' }> => m.t === 'welcome',
     5_000,

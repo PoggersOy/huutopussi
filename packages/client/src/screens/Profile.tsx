@@ -19,7 +19,7 @@ interface RatingEvent {
 }
 
 /** Games below this are provisional (mirrors the server's PROVISIONAL_GAMES). */
-const PROVISIONAL_GAMES = 30;
+const PROVISIONAL_GAMES = 10;
 
 function signed(n: number): string {
   return n > 0 ? `+${n}` : `${n}`;

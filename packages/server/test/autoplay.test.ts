@@ -186,3 +186,88 @@ test('a returning away player reclaims at once with a full fresh turn', async ()
 
   host.close();
 });
+
+test('the "I\'m back" button (reclaimSeat) reclaims a still-connected away seat', async () => {
+  // Same window as above, but the player never disconnects: they idle past the
+  // turn budget, get passed to a fill-in bot, then press "I'm back" over the
+  // LIVE socket — proving reclaim works without a reconnect (and off no action).
+  await server.close();
+  server = createServer({
+    port: 0,
+    dbPath: ':memory:',
+    heartbeatMs: null,
+    timers: {
+      turnMs: 600,
+      wholeAnswerMs: 600,
+      graceMs: 100,
+      nextDealDelayMs: 60_000,
+      redealDelayMs: 20,
+      botDelayMs: [1500, 1500],
+    },
+  });
+  port = await server.listen();
+
+  const host = await TestClient.connect(port);
+  await host.hello({ nickname: 'idler' });
+  const code = host.roomCode;
+  await fillBotsAndStart(host);
+  await waitHostTurn(host);
+
+  const room = server.rooms.get(code);
+  if (!room?.match) throw new Error('room/match missing');
+
+  // The present-but-idle host is passed to a fill-in bot after the turn budget;
+  // the bot is scheduled (1500 ms) but hasn't played yet.
+  const until = Date.now() + 5_000;
+  while (seatSession(room, 0)?.botControlled !== true && Date.now() < until) await sleep(20);
+  expect(seatSession(room, 0)?.botControlled).toBe(true);
+  expect(expectedActor(room.match)).toBe(0); // fill-in bot has not acted
+
+  // Press "I'm back" — the away flag clears and, since it is still their turn,
+  // a fresh full budget is re-armed and broadcast to the countdown.
+  const rearmed = host.next(
+    (m) => m.t === 'update' && m.turn?.seat === 0 && m.turn.deadline != null,
+    5_000,
+    'reclaim re-arm',
+  );
+  host.lobby({ type: 'reclaimSeat' });
+  await rearmed;
+
+  expect(seatSession(room, 0)?.botControlled).toBe(false);
+  expect(expectedActor(room.match)).toBe(0);
+  expect(room.turnDeadline).not.toBeNull();
+  expect(room.turnDeadline as number).toBeGreaterThan(Date.now() + 300);
+
+  host.close();
+});
+
+test('reclaimSeat is a harmless no-op when the seat is not bot-filled', async () => {
+  const host = await TestClient.connect(port);
+  await host.hello({ nickname: 'host' });
+  const code = host.roomCode;
+  await fillBotsAndStart(host);
+  await waitHostTurn(host);
+
+  const room = server.rooms.get(code);
+  if (!room?.match) throw new Error('room/match missing');
+  expect(seatSession(room, 0)?.botControlled).toBe(false);
+
+  // Pressing "I'm back" while already in control is a silent success: no error,
+  // no state change. A no-op sends nothing back, so a follow-up broadcasting
+  // command (processed in order after it) is the deterministic sync point.
+  host.lobby({ type: 'reclaimSeat' });
+  const synced = host.next(
+    (m) => m.t === 'room' && m.room.seats[0]?.nickname === 'renamed',
+    5_000,
+    'sync point',
+  );
+  host.lobby({ type: 'setNickname', nickname: 'renamed' });
+  await synced;
+
+  expect(seatSession(room, 0)?.botControlled).toBe(false);
+  expect(expectedActor(room.match)).toBe(0);
+  // No error frame arrived from the reclaim (or anything before it).
+  expect(host.messages.some((m) => m.t === 'error')).toBe(false);
+
+  host.close();
+});

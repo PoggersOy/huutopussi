@@ -16,6 +16,7 @@ import type {
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
+import { useBotName } from '../botNames';
 import { ConnectionPill } from '../components/ConnectionPill';
 import { MatchList } from '../components/MatchList';
 import { RatingBadge } from '../components/RatingBadge';
@@ -28,6 +29,7 @@ export function Lobby() {
   const navigate = useNavigate();
   const room = useStore((s) => s.server.room);
   const mySeat = useStore((s) => s.server.seat);
+  const pushToast = useStore((s) => s.pushToast);
   if (room === null) return null;
 
   const isHost = mySeat !== null && room.hostSeat === mySeat;
@@ -62,22 +64,23 @@ export function Lobby() {
       </main>
       <footer className="screen__bottom stack" style={{ gap: 'var(--space-2)' }}>
         {isHost ? (
-          <>
-            <button
-              type="button"
-              className="btn--primary"
-              style={{ width: '100%' }}
-              disabled={!allSeated}
-              onClick={() => sendLobby({ type: 'startMatch' })}
-            >
-              {t('lobby.start')}
-            </button>
-            {!allSeated && (
-              <p className="dim" style={{ textAlign: 'center' }}>
-                {t('lobby.needAllSeats')}
-              </p>
-            )}
-          </>
+          // The Start button stays pressable while seats are empty so a tap can
+          // explain WHY it's blocked — a truly `disabled` button swallows the
+          // click and the guidance with it. aria-disabled carries the greyed
+          // look (see base.css) + the a11y state without eating the press.
+          <button
+            type="button"
+            className="btn--primary"
+            style={{ width: '100%' }}
+            aria-disabled={!allSeated}
+            onClick={() =>
+              allSeated
+                ? sendLobby({ type: 'startMatch' })
+                : pushToast({ kind: 'info', code: 'lobby.needAllSeats' })
+            }
+          >
+            {t('lobby.start')}
+          </button>
         ) : (
           <p className="dim" style={{ textAlign: 'center' }}>
             {t('lobby.waitingForHost')}
@@ -106,6 +109,7 @@ export function Lobby() {
 
 function MatchmakingWaiting({ room, isHost }: { room: RoomStatePublic; isHost: boolean }) {
   const { t } = useTranslation();
+  const botName = useBotName();
   const navigate = useNavigate();
   const players = room.config.players;
   const seats = room.seats.slice(0, players);
@@ -140,7 +144,7 @@ function MatchmakingWaiting({ room, isHost }: { room: RoomStatePublic; isHost: b
                   <span className="dim">{t('matchmaking.waiting')}</span>
                 ) : (
                   <span>
-                    {s.nickname ?? '—'}
+                    {s.kind === 'bot' ? (botName(s.seat) ?? t('lobby.bot')) : (s.nickname ?? '—')}
                     {s.kind === 'human' && (
                       <RatingBadge rating={s.rating} provisional={s.provisional} />
                     )}
@@ -231,8 +235,10 @@ function SeatCard({
   viewerIsHost: boolean;
 }) {
   const { t } = useTranslation();
+  const botName = useBotName();
   const isMe = info.seat === mySeat;
-  const name = info.kind === 'bot' ? (info.nickname ?? t('lobby.bot')) : (info.nickname ?? '—');
+  const name =
+    info.kind === 'bot' ? (botName(info.seat) ?? t('lobby.bot')) : (info.nickname ?? '—');
 
   const badges: string[] = [];
   if (info.seat === hostSeat) badges.push(t('lobby.host'));
@@ -262,12 +268,10 @@ function SeatCard({
         </strong>
       )}
       {badges.length > 0 && <span className="dim seat-card__badges">{badges.join(' · ')}</span>}
+      {/* Seats are server-assigned (the host is always at the bottom, guests are
+          auto-seated on join) — there's no seat picker. The host still fills or
+          frees the remaining seats with bots. */}
       <div className="seat-card__actions">
-        {info.kind === 'empty' && (
-          <button type="button" onClick={() => sendLobby({ type: 'takeSeat', seat: info.seat })}>
-            {t('lobby.takeSeat')}
-          </button>
-        )}
         {info.kind === 'empty' && viewerIsHost && (
           <button
             type="button"
@@ -284,15 +288,6 @@ function SeatCard({
             onClick={() => sendLobby({ type: 'removeBot', seat: info.seat })}
           >
             {t('lobby.removeBot')}
-          </button>
-        )}
-        {isMe && (
-          <button
-            type="button"
-            className="btn--ghost"
-            onClick={() => sendLobby({ type: 'leaveSeat' })}
-          >
-            {t('lobby.leaveSeat')}
           </button>
         )}
       </div>

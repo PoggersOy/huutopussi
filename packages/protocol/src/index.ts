@@ -204,6 +204,11 @@ export const lobbyCmdSchema = z.discriminatedUnion('type', [
   // the pace with this ("Jatka"); multi-human games auto-advance on a timer and
   // never need it. No-op unless the deal is scored / a redeal is pending.
   z.object({ type: z.literal('nextDeal') }),
+  // A present human whose seat was handed to a fill-in bot (autoplay timeout)
+  // takes control back on demand — the table's "I'm back" button. Unlike acting,
+  // this works OFF-turn too: it just clears the away flag so the bot won't play
+  // the seat's next turn either. No-op success when the seat isn't bot-filled.
+  z.object({ type: z.literal('reclaimSeat') }),
 ]);
 
 // ── Client → server: envelope ────────────────────────────────────────────────

@@ -140,7 +140,17 @@ export function Home() {
     <div className="screen">
       <header className="screen__top">
         <div className="row" style={{ justifyContent: 'space-between' }}>
-          <h1>{t('app.title')}</h1>
+          <h1 className="brand">
+            <img
+              className="brand__logo"
+              src="/logo.png"
+              alt=""
+              aria-hidden="true"
+              width={68}
+              height={44}
+            />
+            {t('app.title')}
+          </h1>
           <div className="row auth-header">
             <ConnectionPill />
             <AuthPanel />

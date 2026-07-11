@@ -1,8 +1,8 @@
 /**
  * DealHistoryBrowser: pages through a finished match's deals and shows each
  * deal's breakdown. The running-total row must accumulate per-side scoreDelta
- * across deals, and prev/next/dots must move between deals. Uses the real i18n
- * catalog (en) so labels/aria-names are exercised too.
+ * across deals, and the prev/next arrows must move between deals. Uses the real
+ * i18n catalog (en) so labels/aria-names are exercised too.
  */
 import type { DealResult } from '@hp/engine';
 import type { MatchSummary } from '@hp/protocol';
@@ -50,7 +50,7 @@ const cellsOf = (container: HTMLElement, rowClass: string): string[] =>
   );
 
 describe('DealHistoryBrowser', () => {
-  it('shows the first deal with cumulative totals and one dot per deal', () => {
+  it('shows the first deal with cumulative totals', () => {
     const { container } = render(
       <DealHistoryBrowser match={match} roomCode="ABCDE" onClose={() => {}} />,
     );
@@ -59,7 +59,6 @@ describe('DealHistoryBrowser', () => {
     expect(cellsOf(container, '.score__matchtotal')).toEqual(['60', '25', '35']);
     // Contract made → the "made" subtitle, naming the declarer.
     expect(container.querySelector('.overlay__made')?.textContent).toContain('60');
-    expect(container.querySelectorAll('.deal-dot')).toHaveLength(2);
   });
 
   it('advances to the next deal and accumulates running totals', () => {
@@ -74,13 +73,14 @@ describe('DealHistoryBrowser', () => {
     expect(container.querySelector('.overlay__failed')).not.toBeNull();
   });
 
-  it('jumps to a deal via its dot', () => {
-    const { container } = render(
+  it('steps back to the previous deal via the prev arrow', () => {
+    const { container, getByRole } = render(
       <DealHistoryBrowser match={match} roomCode="ABCDE" onClose={() => {}} />,
     );
-    const dots = container.querySelectorAll('.deal-dot');
-    fireEvent.click(dots[1] as Element);
+    fireEvent.click(getByRole('button', { name: i18n.t('history.nextDeal') }));
     expect(cellsOf(container, '.score__matchtotal')).toEqual(['70', '-45', '55']);
+    fireEvent.click(getByRole('button', { name: i18n.t('history.prevDeal') }));
+    expect(cellsOf(container, '.score__matchtotal')).toEqual(['60', '25', '35']);
   });
 
   it('closes via the close button', () => {

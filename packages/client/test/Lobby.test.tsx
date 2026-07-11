@@ -6,7 +6,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import i18n from '../src/i18n';
 import { Lobby } from '../src/screens/Lobby';
-import { serverApply } from '../src/store';
+import { serverApply, useStore } from '../src/store';
 
 vi.mock('../src/socket', () => ({
   sendLobby: vi.fn(() => 'action-id'),
@@ -71,14 +71,29 @@ describe('Lobby as host', () => {
     renderLobby();
 
     expect(screen.getByText('Anna')).toBeTruthy();
-    expect(screen.getAllByRole('button', { name: 'Sit here' })).toHaveLength(2);
+    // Seats are server-assigned now — there is no "Sit here" picker.
+    expect(screen.queryByRole('button', { name: 'Sit here' })).toBeNull();
     expect(screen.getAllByRole('button', { name: 'Add a bot' })).toHaveLength(2);
     expect(screen.getByRole('button', { name: 'Remove bot' })).toBeTruthy();
 
-    const start = screen.getByRole('button', { name: 'Start the game' }) as HTMLButtonElement;
-    expect(start.disabled).toBe(true); // two seats still empty
+    // Two seats empty: the Start button is greyed (aria-disabled) but stays
+    // pressable so a tap explains the block via a toast — it must NOT start.
+    const start = screen.getByRole('button', { name: 'Start the game' });
+    expect(start.getAttribute('aria-disabled')).toBe('true');
+    fireEvent.click(start);
+    expect(sendLobby).not.toHaveBeenCalledWith({ type: 'startMatch' });
+    expect(useStore.getState().ui.toasts.some((x) => x.code === 'lobby.needAllSeats')).toBe(true);
+
     fireEvent.click(screen.getAllByRole('button', { name: 'Add a bot' })[0] as HTMLElement);
     expect(sendLobby).toHaveBeenCalledWith({ type: 'addBot', seat: expect.any(Number) });
+  });
+
+  it('names bots in seat order (Matt, Mary, Carl)', () => {
+    welcome([seat(0, 'human', 'Anna'), seat(1, 'bot'), seat(2, 'bot'), seat(3, 'bot')], 0);
+    renderLobby();
+    expect(screen.getByText('Matt')).toBeTruthy();
+    expect(screen.getByText('Mary')).toBeTruthy();
+    expect(screen.getByText('Carl')).toBeTruthy();
   });
 
   it('enables start with four filled seats and submits startMatch', () => {
@@ -178,7 +193,7 @@ describe('View all rules overlay', () => {
 });
 
 describe('Lobby as guest', () => {
-  it('shows the config read-only and no host controls', () => {
+  it('shows the config read-only and no host or seat controls', () => {
     welcome(partialSeats, null);
     renderLobby();
 
@@ -186,22 +201,12 @@ describe('Lobby as guest', () => {
     expect(screen.getByText('Waiting for the host to start…')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Add a bot' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Remove bot' })).toBeNull();
+    // Seats are server-assigned: no "Sit here" / "Stand up" controls for anyone.
+    expect(screen.queryByRole('button', { name: 'Sit here' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Stand up' })).toBeNull();
     expect(screen.getByText('Only the host can change the rules')).toBeTruthy();
     const pointSystem = screen.getByRole('combobox', { name: 'Point system' });
     expect((pointSystem as HTMLSelectElement).disabled).toBe(true);
-    // Unseated guests can still take an empty seat.
-    fireEvent.click(screen.getAllByRole('button', { name: 'Sit here' })[0] as HTMLElement);
-    expect(sendLobby).toHaveBeenCalledWith({ type: 'takeSeat', seat: expect.any(Number) });
-  });
-
-  it('lets a seated non-host stand up', () => {
-    welcome(
-      [seat(0, 'human', 'Anna'), seat(1, 'human', 'Ben'), seat(2, 'bot'), seat(3, 'empty')],
-      1,
-    );
-    renderLobby();
-    fireEvent.click(screen.getByRole('button', { name: 'Stand up' }));
-    expect(sendLobby).toHaveBeenCalledWith({ type: 'leaveSeat' });
   });
 
   it('offers a Back-to-menu escape so a guest is never trapped waiting on the host', () => {

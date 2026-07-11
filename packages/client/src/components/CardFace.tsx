@@ -26,6 +26,74 @@ export function suitColor(suit: Suit): SuitColor {
   return SUIT_COLOR[suit];
 }
 
+/** Jewel/pearl accent (matches the card back's gold) and the cream face cut-out. */
+const GOLD = 'var(--gold, #d4af37)';
+const CREAM = 'var(--card-face, #fdfbf4)';
+
+/**
+ * Central court emblem, drawn in the suit colour with gold jewels — a regal
+ * crown for the King, a softer pearled coronet for the Queen, a plumed
+ * soldier's helmet for the Jack. Centered at x=50 in the 100×140 viewBox so it
+ * clears the corner indices; the caller adds the suit glyph beneath it.
+ */
+function CourtEmblem({ rank, fill }: { rank: 'K' | 'Q' | 'J'; fill: string }) {
+  if (rank === 'K') {
+    return (
+      <>
+        {/* imperial cross above the centre peak */}
+        <rect x="48.7" y="30" width="2.6" height="12" rx="1" fill={fill} />
+        <rect x="45" y="33.2" width="10" height="2.6" rx="1" fill={fill} />
+        {/* crown + band */}
+        <path d="M26 82 L30 54 L40 70 L50 44 L60 70 L70 54 L74 82 Z" fill={fill} />
+        <rect x="25" y="80" width="50" height="13" rx="3.5" fill={fill} />
+        {/* jewels on the peaks and a diamond on the band */}
+        <circle cx="30" cy="53" r="3.4" fill={GOLD} />
+        <circle cx="50" cy="43" r="3.8" fill={GOLD} />
+        <circle cx="70" cy="53" r="3.4" fill={GOLD} />
+        <rect
+          x="46.5"
+          y="82.5"
+          width="7"
+          height="7"
+          rx="1.5"
+          transform="rotate(45 50 86)"
+          fill={GOLD}
+        />
+      </>
+    );
+  }
+  if (rank === 'Q') {
+    return (
+      <>
+        {/* three rounded arches over a band */}
+        <rect x="28" y="80" width="44" height="12" rx="4" fill={fill} />
+        <path d="M30 82 Q30 66 38 66 Q46 66 46 82 Z" fill={fill} />
+        <path d="M42 82 Q42 60 50 60 Q58 60 58 82 Z" fill={fill} />
+        <path d="M54 82 Q54 66 62 66 Q70 66 70 82 Z" fill={fill} />
+        {/* pearls on the arch tips and a jewel on the band */}
+        <circle cx="38" cy="64" r="3.2" fill={GOLD} />
+        <circle cx="50" cy="57" r="3.6" fill={GOLD} />
+        <circle cx="62" cy="64" r="3.2" fill={GOLD} />
+        <circle cx="50" cy="86" r="3.4" fill={GOLD} />
+      </>
+    );
+  }
+  // Jack — soldier's helmet with a swept-back horsehair crest
+  return (
+    <>
+      <path d="M40 56 Q42 40 52 40 Q60 40 59 50 Q58 58 50 58 Q44 58 40 56 Z" fill={fill} />
+      <path d="M36 84 Q36 58 50 58 Q64 58 64 84 Z" fill={fill} />
+      <rect x="35" y="82" width="30" height="9" rx="3" fill={fill} />
+      <circle cx="52" cy="58" r="3" fill={GOLD} />
+      {/* visor slit + breathing holes cut from the cream face */}
+      <rect x="40" y="70" width="20" height="4" rx="2" fill={CREAM} />
+      <circle cx="44" cy="79" r="1.3" fill={CREAM} />
+      <circle cx="50" cy="79" r="1.3" fill={CREAM} />
+      <circle cx="56" cy="79" r="1.3" fill={CREAM} />
+    </>
+  );
+}
+
 /** Center pip coordinates (viewBox 100×140) for the numeric ranks. */
 const PIP_LAYOUT: Partial<Record<Rank, ReadonlyArray<readonly [number, number]>>> = {
   '6': [
@@ -133,7 +201,7 @@ export function CardFace({ card, width }: CardFaceProps) {
           </text>
         </g>
       ))}
-      {/* Center: ace pip / court letter / numeric pip grid */}
+      {/* Center: ace pip / court emblem + glyph / numeric pip grid */}
       {rank === 'A' && (
         <text x="50" y="86" textAnchor="middle" fontSize="48" fill={fill}>
           {glyph}
@@ -141,18 +209,8 @@ export function CardFace({ card, width }: CardFaceProps) {
       )}
       {isCourt && (
         <>
-          <text
-            x="50"
-            y="78"
-            textAnchor="middle"
-            fontSize="42"
-            fontWeight="700"
-            fontFamily="Georgia, serif"
-            fill={fill}
-          >
-            {rank}
-          </text>
-          <text x="50" y="106" textAnchor="middle" fontSize="20" fill={fill}>
+          <CourtEmblem rank={rank as 'K' | 'Q' | 'J'} fill={fill} />
+          <text x="50" y="112" textAnchor="middle" fontSize="18" fill={fill}>
             {glyph}
           </text>
         </>
@@ -215,5 +273,57 @@ export function CardBack({ width }: CardBackProps) {
         strokeWidth="1.5"
       />
     </svg>
+  );
+}
+
+export interface CardStackProps {
+  /** How many cards the pile holds — shown as stacked, peeking card edges. */
+  count: number;
+  /** CSS width of a single card; defaults to the --card-w token. */
+  width?: number | string;
+  /**
+   * Cap on how many card backs are actually drawn. A tall pile (e.g. a dead
+   * hand of 11) reads as "many cards" from a handful of stacked edges without
+   * literally rendering every card. Small piles (≤ cap) render exactly.
+   */
+  maxLayers?: number;
+}
+
+/**
+ * A facedown pile drawn as a heap of offset {@link CardBack}s so its depth is
+ * visible at a glance. Cards run along a short down-and-right diagonal; the
+ * fully-visible top card sits in the MIDDLE of that spread, so buried edges peek
+ * out on both sides of it and it reads as one pile rather than a lone card with
+ * a stack beside it. The count itself is shown by the caller's label.
+ */
+const STACK_STEP = 2; // px each card is offset from its neighbour along the pile
+
+export function CardStack({ count, width, maxLayers = 6 }: CardStackProps) {
+  const layers = Math.max(1, Math.min(Math.floor(count), maxLayers));
+  const spread = (layers - 1) * STACK_STEP;
+  // The crisp, on-top card is the middle one so the pile is balanced.
+  const topIndex = Math.round((layers - 1) / 2);
+  const backProps = width !== undefined ? { width } : {};
+  const pos = (k: number) => `translate(${k * STACK_STEP}px, ${k * STACK_STEP}px)`;
+  return (
+    // Reserve room for the peeking edges so the pile stays a self-contained box
+    // — the caller's count label sits clear to its right.
+    <span className="card-stack" style={{ paddingRight: spread, paddingBottom: spread }}>
+      {Array.from({ length: layers }, (_, k) => k)
+        .filter((k) => k !== topIndex)
+        .map((k) => (
+          <span
+            key={k}
+            className="card-stack__layer"
+            aria-hidden="true"
+            style={{ transform: pos(k) }}
+          >
+            <CardBack {...backProps} />
+          </span>
+        ))}
+      <span className="card-stack__top" style={{ transform: pos(topIndex) }}>
+        <CardBack {...backProps} />
+      </span>
+    </span>
   );
 }

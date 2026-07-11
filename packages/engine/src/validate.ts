@@ -23,6 +23,7 @@ import type {
   GameEvent,
   MatchState,
   PlayerAction,
+  RedealReason,
   RuleError,
   Seat,
   Side,
@@ -44,20 +45,29 @@ function isExchangePhase(name: DealPhase['name']): boolean {
   );
 }
 
-/** Whether `seat`'s cards currently satisfy config.redealCondition. */
-function redealHandEligible(state: MatchState, deal: DealState, seat: Seat): boolean {
+/**
+ * The specific condition `seat`'s cards satisfy under config.redealCondition,
+ * or null if the hand doesn't qualify. When both päämuoto branches hold, the
+ * sixes take precedence (the more concrete reason to report).
+ */
+function redealReasonOf(state: MatchState, deal: DealState, seat: Seat): RedealReason | null {
   const cfg = state.config;
-  if (cfg.redealCondition === null) return false;
+  if (cfg.redealCondition === null) return null;
   if (cfg.redealCondition === 'fourSixes') {
     // 4p: the PAIR's combined hands count (illisoft spec §3).
     const cards =
       cfg.players === 4 ? [...deal.hands[seat], ...deal.hands[partnerOf(seat)]] : deal.hands[seat];
-    return cards.filter((c) => rankOf(c) === '6').length === 4;
+    return cards.filter((c) => rankOf(c) === '6').length === 4 ? 'fourSixes' : null;
   }
   const hand = deal.hands[seat];
-  const sixes = hand.filter((c) => rankOf(c) === '6').length;
-  const nothingAboveJack = hand.every((c) => rankIndex(rankOf(c)) >= rankIndex('J'));
-  return sixes >= 3 || nothingAboveJack;
+  if (hand.filter((c) => rankOf(c) === '6').length >= 3) return 'threeSixes';
+  if (hand.every((c) => rankIndex(rankOf(c)) >= rankIndex('J'))) return 'noneAboveJack';
+  return null;
+}
+
+/** Whether `seat`'s cards currently satisfy config.redealCondition. */
+function redealHandEligible(state: MatchState, deal: DealState, seat: Seat): boolean {
+  return redealReasonOf(state, deal, seat) !== null;
 }
 
 /** Highest legal bid amount (config.maxBid or the theoretical deal maximum). */
@@ -164,14 +174,11 @@ function validateBidTurn(
   const cfg = state.config;
 
   if (action.type === 'demandRedeal') {
-    if (
-      cfg.redealCondition === null ||
-      ph.firstTurnTaken.includes(seat) ||
-      !redealHandEligible(state, deal, seat)
-    ) {
+    const reason = redealReasonOf(state, deal, seat);
+    if (reason === null || ph.firstTurnTaken.includes(seat)) {
       return err('error.redealNotEligible');
     }
-    return [{ type: 'redealDemanded', seat }];
+    return [{ type: 'redealDemanded', seat, reason }];
   }
 
   const eligible = eligibleBidders(cfg, ph);
@@ -439,10 +446,9 @@ export function validateAction(
       }
       if (isExchangePhase(ph.name) && cfg.redealWindow === 'bidAndExchange') {
         if (expectedActor(state) !== seat) return err('error.notYourTurn');
-        if (cfg.redealCondition === null || !redealHandEligible(state, deal, seat)) {
-          return err('error.redealNotEligible');
-        }
-        return [{ type: 'redealDemanded', seat }];
+        const reason = redealReasonOf(state, deal, seat);
+        if (reason === null) return err('error.redealNotEligible');
+        return [{ type: 'redealDemanded', seat, reason }];
       }
       return err('error.notInPhase');
     }

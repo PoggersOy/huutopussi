@@ -552,7 +552,9 @@ describe('redeal demand', () => {
         forced: true,
       },
     ]);
-    expect(act(ctx, 1, { type: 'demandRedeal' })).toEqual([{ type: 'redealDemanded', seat: 1 }]);
+    expect(act(ctx, 1, { type: 'demandRedeal' })).toEqual([
+      { type: 'redealDemanded', seat: 1, reason: 'threeSixes' },
+    ]);
     expect(ctx.state.deal).toBeNull();
     expect(ctx.state.dealer).toBe(0);
     expect(ctx.state.dealIndex).toBe(0);
@@ -579,7 +581,9 @@ describe('redeal demand', () => {
 
     // the first-turn window is fresh again: the same seat may demand again
     expect(allowedActions(ctx.state, 1)[0]).toMatchObject({ canDemandRedeal: true });
-    expect(act(ctx, 1, { type: 'demandRedeal' })).toEqual([{ type: 'redealDemanded', seat: 1 }]);
+    expect(act(ctx, 1, { type: 'demandRedeal' })).toEqual([
+      { type: 'redealDemanded', seat: 1, reason: 'threeSixes' },
+    ]);
     expect(ctx.state.deal).toBeNull();
     expect(ctx.state.dealIndex).toBe(0);
   });
@@ -589,7 +593,9 @@ describe('redeal demand', () => {
     act(ctx, 1, { type: 'bid', amount: 50 });
     act(ctx, 2, { type: 'pass' });
     expect(allowedActions(ctx.state, 3)[0]).toMatchObject({ canDemandRedeal: true });
-    expect(act(ctx, 3, { type: 'demandRedeal' })).toEqual([{ type: 'redealDemanded', seat: 3 }]);
+    expect(act(ctx, 3, { type: 'demandRedeal' })).toEqual([
+      { type: 'redealDemanded', seat: 3, reason: 'noneAboveJack' },
+    ]);
     expect(ctx.state.deal).toBeNull();
     expect(ctx.state.dealer).toBe(0);
     expect(ctx.state.dealIndex).toBe(0);
@@ -647,7 +653,9 @@ describe('redeal demand', () => {
         forced: true,
       },
     ]);
-    expect(act(ctx, 1, { type: 'demandRedeal' })).toEqual([{ type: 'redealDemanded', seat: 1 }]);
+    expect(act(ctx, 1, { type: 'demandRedeal' })).toEqual([
+      { type: 'redealDemanded', seat: 1, reason: 'threeSixes' },
+    ]);
   });
 
   it('is disabled entirely by config.redealCondition=null', () => {

@@ -500,7 +500,9 @@ describe('redeal fourSixes', () => {
   it('4p: the pair holding all four sixes split 2+2 makes both partners eligible', () => {
     const ctx = freshBidding({ deck: FOUR_SIXES_SPLIT_DECK });
     expect(allowedActions(ctx.state, 1)).toEqual([openBidHint({ canDemandRedeal: true })]);
-    expect(act(ctx, 1, { type: 'demandRedeal' })).toEqual([{ type: 'redealDemanded', seat: 1 }]);
+    expect(act(ctx, 1, { type: 'demandRedeal' })).toEqual([
+      { type: 'redealDemanded', seat: 1, reason: 'fourSixes' },
+    ]);
     expect(ctx.state.deal).toBeNull();
     expect(ctx.state.dealer).toBe(0);
     expect(ctx.state.dealIndex).toBe(0);
@@ -519,7 +521,9 @@ describe('redeal fourSixes', () => {
     act(ctx, 2, { type: 'pass' });
     // seat 3 holds zero sixes but its partner (seat 1) holds all four
     expect(allowedActions(ctx.state, 3)).toEqual([openBidHint({ min: 65, canDemandRedeal: true })]);
-    expect(act(ctx, 3, { type: 'demandRedeal' })).toEqual([{ type: 'redealDemanded', seat: 3 }]);
+    expect(act(ctx, 3, { type: 'demandRedeal' })).toEqual([
+      { type: 'redealDemanded', seat: 3, reason: 'fourSixes' },
+    ]);
     expect(ctx.state.deal).toBeNull();
   });
 
@@ -580,7 +584,9 @@ describe('redeal fourSixes', () => {
       { type: 'setContract', min: 60, max: 420, step: 5 },
       { type: 'demandRedeal' },
     ]);
-    expect(act(ctx, 1, { type: 'demandRedeal' })).toEqual([{ type: 'redealDemanded', seat: 1 }]);
+    expect(act(ctx, 1, { type: 'demandRedeal' })).toEqual([
+      { type: 'redealDemanded', seat: 1, reason: 'fourSixes' },
+    ]);
     expect(ctx.state.deal).toBeNull();
     expect(ctx.state.dealer).toBe(0);
     expect(ctx.state.dealIndex).toBe(0);
@@ -623,7 +629,9 @@ describe('redeal fourSixes', () => {
     );
     // non-declarers may not demand during the exchange
     expectError(ctx, 2, { type: 'demandRedeal' }, 'error.notYourTurn');
-    expect(act(ctx, 1, { type: 'demandRedeal' })).toEqual([{ type: 'redealDemanded', seat: 1 }]);
+    expect(act(ctx, 1, { type: 'demandRedeal' })).toEqual([
+      { type: 'redealDemanded', seat: 1, reason: 'fourSixes' },
+    ]);
     expect(ctx.state.deal).toBeNull();
     expect(ctx.state.dealer).toBe(0);
     expect(ctx.state.dealIndex).toBe(0);
@@ -640,7 +648,9 @@ describe('redeal fourSixes', () => {
       { type: 'setContract', min: 60, max: 420, step: 5 },
       { type: 'demandRedeal' },
     ]);
-    expect(act(ctx, 1, { type: 'demandRedeal' })).toEqual([{ type: 'redealDemanded', seat: 1 }]);
+    expect(act(ctx, 1, { type: 'demandRedeal' })).toEqual([
+      { type: 'redealDemanded', seat: 1, reason: 'fourSixes' },
+    ]);
   });
 
   it('3p: discarding a six back into the koinipakka forfeits the redeal', () => {

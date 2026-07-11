@@ -867,7 +867,10 @@ export function createServer(opts: ServerOpts = {}): HpServer {
       case 'takeSeat': {
         if (seatsLocked) return fail('error.matchInProgress');
         if (cmd.seat >= room.config.players) return fail('error.badSeat');
-        if (sessionAtSeat(room, cmd.seat)) return fail('error.seatTaken');
+        const occupant = sessionAtSeat(room, cmd.seat);
+        // Re-taking the seat you already hold is a no-op re-welcome, not a
+        // conflict — auto-seating on join means a client may already sit here.
+        if (occupant && occupant.token !== session.token) return fail('error.seatTaken');
         seatSession(room, session, cmd.seat, { token: session.token, actionId });
         return true;
       }
@@ -1002,6 +1005,29 @@ export function createServer(opts: ServerOpts = {}): HpServer {
         } catch (err) {
           console.error(`[server] failed to advance deal in room ${room.code}`, err);
           return fail('error.internal');
+        }
+        return true;
+      }
+      case 'reclaimSeat': {
+        // The "I'm back" button: a present human takes their seat back from the
+        // fill-in bot on demand. Works off-turn (unlike reclaimSeatOnAction),
+        // clearing the away flag so the bot won't play the seat's NEXT turn.
+        if (session.seat === null) return fail('error.notSeated');
+        // Not actually away (already in control, or a genuine bot seat): a
+        // harmless success so a double-tap / stale button never errors.
+        if (session.kind !== 'human' || !session.botControlled) return true;
+        const rearmed = reclaimSeat(room, session);
+        if (rearmed) {
+          // It's our turn again: push the cleared away-flag AND the fresh
+          // deadline so every client's badge + countdown re-syncs (mirrors the
+          // reconnect reclaim path).
+          room.seq += 1;
+          broadcastUpdate(room, null, {
+            includeRoom: true,
+            origin: { token: session.token, actionId },
+          });
+        } else {
+          broadcastRoom(room, { token: session.token, actionId });
         }
         return true;
       }
@@ -1278,7 +1304,10 @@ export function createServer(opts: ServerOpts = {}): HpServer {
     }
 
     if (msg.roomCode !== undefined) {
-      // Join an existing room as a guest (seat null until takeSeat).
+      // Join an existing room. Seats are server-assigned (the client has no seat
+      // picker): a joiner is auto-seated at the first free seat while the room is
+      // in the lobby; a full or already-playing room takes them as a spectator
+      // (seat null).
       const room = rooms.get(msg.roomCode);
       if (!room || room.closed) {
         sendJson(sock, { t: 'error', code: 'error.roomNotFound' });
@@ -1300,10 +1329,16 @@ export function createServer(opts: ServerOpts = {}): HpServer {
       applyAuthToSession(session, authUser, msg.nickname);
       room.sessions.set(session.token, session);
       sessionsByToken.set(session.token, session);
-      db.saveSession(sessionRow(session));
       bindSocket(session, sock, room);
       setBound(session);
-      sendWelcome(session, room);
+      const seat = room.status === 'lobby' ? firstFreeSeat(room) : null;
+      if (seat !== null) {
+        // seatSession persists + broadcasts the new occupant + welcomes the joiner.
+        seatSession(room, session, seat);
+      } else {
+        db.saveSession(sessionRow(session));
+        sendWelcome(session, room);
+      }
       return;
     }
 
@@ -1468,11 +1503,24 @@ export function createServer(opts: ServerOpts = {}): HpServer {
         ctx.session = null;
         prev.socket = null;
         const prevRoom = roomsById.get(prev.roomId);
-        // An unseated guest left behind by the re-hello is garbage — drop it so
-        // repeated re-hellos can't accumulate dead sessions in the room.
-        discardDetachedSession(prev);
-        if (prevRoom && !prevRoom.closed && prev.seat !== null) broadcastRoom(prevRoom);
-        if (prevRoom) armIdleTimerIfEmpty(prevRoom);
+        if (prevRoom && !prevRoom.closed && prevRoom.status === 'lobby' && prev.seat !== null) {
+          // Auto-seating means a same-socket re-hello usually abandons a SEATED
+          // session. In the lobby that session won't be reconnected (the socket
+          // is re-identifying here and now), so drop it fully and free its seat —
+          // otherwise repeated re-hellos pile up sessions and exhaust seats.
+          prevRoom.sessions.delete(prev.token);
+          sessionsByToken.delete(prev.token);
+          db.deleteSession(prev.token);
+          broadcastRoom(prevRoom);
+          armIdleTimerIfEmpty(prevRoom);
+        } else {
+          // Unseated guest, or a seated player in a live match: an unseated guest
+          // left behind by the re-hello is garbage (drop it); a seated player in a
+          // running match is kept for reconnect grace.
+          discardDetachedSession(prev);
+          if (prevRoom && !prevRoom.closed && prev.seat !== null) broadcastRoom(prevRoom);
+          if (prevRoom) armIdleTimerIfEmpty(prevRoom);
+        }
       }
       handleHello(sock, msg, (s) => {
         ctx.session = s;

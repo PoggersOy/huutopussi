@@ -47,7 +47,7 @@ One algorithm for all three modes via `sideCount` (2p→2, 4p→2 team sides, 3p
 - **4p**: both team members get the full side delta (keeps one rating scale; still
   zero-sum).
 - **Win-streak bonus**: gains-only, winner-only, `min(streak, 5)·2` (≤ +10).
-- Constants: start 1000, provisional < 30 games (K=40), else K=20 (K=10 ≥ 2100),
+- Constants: start 1000, provisional < 10 games (K=40), else K=20 (K=10 ≥ 2100),
   rating floor 100.
 
 **Rated eligibility** (evaluated at match end, `planMatchRating` in `server.ts`):

@@ -11,8 +11,8 @@ import {
   driveUntil,
   newDriver,
   ownHand,
+  ownScore,
   startMatch,
-  topScores,
 } from './helpers';
 
 test.setTimeout(420_000);
@@ -44,7 +44,7 @@ test('reload mid-deal reclaims the seat; visibility wake stays consistent', asyn
   );
 
   const handBefore = await ownHand(page);
-  const scoresBefore = await topScores(page);
+  const scoreBefore = await ownScore(page);
   const tokenBefore = await page.evaluate((c) => sessionStorage.getItem(`hp:session:${c}`), code);
   expect(tokenBefore).not.toBeNull();
 
@@ -54,7 +54,7 @@ test('reload mid-deal reclaims the seat; visibility wake stays consistent', asyn
   await expect(page.locator('footer.thand--turn')).toBeVisible({ timeout: 20_000 });
 
   expect(await ownHand(page)).toEqual(handBefore);
-  expect(await topScores(page)).toEqual(scoresBefore);
+  expect(await ownScore(page)).toEqual(scoreBefore);
   expect(await page.evaluate((c) => sessionStorage.getItem(`hp:session:${c}`), code)).toBe(
     tokenBefore,
   );

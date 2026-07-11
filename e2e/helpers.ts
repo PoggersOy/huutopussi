@@ -161,15 +161,19 @@ export async function ownHand(page: Page): Promise<string[]> {
     .evaluateAll((els) => els.map((el) => el.getAttribute('data-card') ?? ''));
 }
 
-/** Top-bar running match totals as seen by this viewer. */
-export async function topScores(page: Page): Promise<{ us: number; them: number }> {
-  const text = await page.locator('.ttop__row').first().innerText();
-  const us = /Us\s+(-?\d+)/.exec(text);
-  const them = /Them\s+(-?\d+)/.exec(text);
-  if (us?.[1] === undefined || them?.[1] === undefined) {
-    throw new Error(`could not parse scores from top bar: ${JSON.stringify(text)}`);
+/**
+ * This viewer's own running match total, read from the bold "<name> <score>" in
+ * the top bar (the header now shows only this device's own score — the full
+ * standings are behind the "Standings" button). Partners share a side, so two
+ * partners' own scores match; a player's own score survives a reconnect.
+ */
+export async function ownScore(page: Page): Promise<number> {
+  const text = (await page.locator('.ttop__me-score').first().innerText()).trim();
+  const m = /(-?\d+)\s*$/.exec(text);
+  if (m?.[1] === undefined) {
+    throw new Error(`could not parse own score from top bar: ${JSON.stringify(text)}`);
   }
-  return { us: Number.parseInt(us[1], 10), them: Number.parseInt(them[1], 10) };
+  return Number.parseInt(m[1], 10);
 }
 
 // ── The driver ───────────────────────────────────────────────────────────────
