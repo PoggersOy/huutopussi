@@ -583,48 +583,56 @@ input::placeholder {
   vertical-align: middle;
 }
 
-.auth-panel {
-  align-items: center;
+/* Header account control (top-right): a GIS icon button or an avatar+rating
+   chip. Kept compact so it sits beside the title + connection pill. */
+.auth-header {
+  gap: var(--space-2);
+  flex: none;
 }
 
-.auth-panel__btn {
+.auth-header__btn {
+  display: flex;
+  align-items: center;
+  min-width: 40px;
   min-height: 40px;
-  display: flex;
-  justify-content: center;
 }
 
-.auth-chip {
+.auth-header__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 3px var(--space-1) 3px 3px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.auth-header__avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  flex: none;
+  object-fit: cover;
+}
+
+.auth-header__avatar--fallback {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  flex-wrap: wrap;
+  justify-content: center;
+  background: var(--felt-600);
+  color: var(--cream);
+  font-weight: 700;
+  font-size: var(--fs-sm);
 }
 
+/* Large profile-screen avatar. */
 .auth-chip__avatar {
   width: 40px;
   height: 40px;
   border-radius: 50%;
   border: 1px solid var(--line);
-  flex: none;
-}
-
-.auth-chip__id {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.auth-chip__id strong {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.auth-chip__actions {
-  display: flex;
-  gap: var(--space-1);
   flex: none;
 }
 

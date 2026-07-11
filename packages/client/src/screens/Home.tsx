@@ -73,12 +73,14 @@ export function Home() {
       <header className="screen__top">
         <div className="row" style={{ justifyContent: 'space-between' }}>
           <h1>{t('app.title')}</h1>
-          <ConnectionPill />
+          <div className="row auth-header">
+            <ConnectionPill />
+            <AuthPanel />
+          </div>
         </div>
         <p className="dim">{t('home.tagline')}</p>
       </header>
       <main className="screen__main">
-        <AuthPanel />
         <div className="panel stack">
           <label className="stack">
             <span className="dim">{t('home.nickname')}</span>

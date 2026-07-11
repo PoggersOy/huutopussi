@@ -5,7 +5,7 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { getAuthToken } from '../auth';
+import { getAuthToken, signOut } from '../auth';
 import { type AuthUser, useStore } from '../store';
 
 interface RatingEvent {
@@ -77,9 +77,23 @@ export function Profile() {
       <header className="screen__top">
         <div className="row" style={{ justifyContent: 'space-between' }}>
           <h1>{t('profile.title')}</h1>
-          <button type="button" className="btn--ghost" onClick={() => navigate('/')}>
-            {t('profile.back')}
-          </button>
+          <div className="row">
+            {user !== null && (
+              <button
+                type="button"
+                className="btn--ghost"
+                onClick={() => {
+                  signOut();
+                  navigate('/');
+                }}
+              >
+                {t('auth.signOut')}
+              </button>
+            )}
+            <button type="button" className="btn--ghost" onClick={() => navigate('/')}>
+              {t('profile.back')}
+            </button>
+          </div>
         </div>
       </header>
       <main className="screen__main">

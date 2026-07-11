@@ -1,13 +1,13 @@
 /**
- * The Home-screen account block: the Google Sign-In button when signed out
- * (and login is enabled), or a chip with the account name + rating + links to
- * the profile and sign-out when signed in. Renders nothing when login is
+ * Compact header account control (top-right). Signed out (and login enabled):
+ * the Google Sign-In icon button. Signed in: a small avatar + rating chip that
+ * links to the profile (where Sign out lives). Renders nothing when login is
  * disabled (no client id) — the app stays fully playable as a guest.
  */
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { renderGoogleButton, signOut } from '../auth';
+import { renderGoogleButton } from '../auth';
 import { useStore } from '../store';
 import { RatingBadge } from './RatingBadge';
 
@@ -29,42 +29,33 @@ export function AuthPanel() {
 
   if (user) {
     return (
-      <div className="panel auth-chip">
+      <button
+        type="button"
+        className="auth-header__chip"
+        onClick={() => navigate('/profile')}
+        aria-label={user.name ?? t('auth.signedIn')}
+        title={t('auth.profile')}
+      >
         {user.picture ? (
           <img
             src={user.picture}
             alt=""
-            className="auth-chip__avatar"
+            className="auth-header__avatar"
             referrerPolicy="no-referrer"
           />
         ) : (
-          <span className="avatar" aria-hidden="true">
+          <span className="auth-header__avatar auth-header__avatar--fallback" aria-hidden="true">
             {(user.name ?? '?').charAt(0).toUpperCase()}
           </span>
         )}
-        <div className="auth-chip__id">
-          <strong>{user.name ?? t('auth.signedIn')}</strong>
-          <RatingBadge rating={user.rating} provisional={user.provisional} />
-        </div>
-        <div className="auth-chip__actions">
-          <button type="button" className="btn--ghost" onClick={() => navigate('/profile')}>
-            {t('auth.profile')}
-          </button>
-          <button type="button" className="btn--ghost" onClick={signOut}>
-            {t('auth.signOut')}
-          </button>
-        </div>
-      </div>
+        <RatingBadge rating={user.rating} provisional={user.provisional} />
+      </button>
     );
   }
 
   if (googleClientId) {
-    return (
-      <div className="panel stack auth-panel">
-        <span className="dim">{t('auth.signInPrompt')}</span>
-        <div ref={btnRef} className="auth-panel__btn" />
-      </div>
-    );
+    // GIS renders its own (icon) button into this slot; the title labels it.
+    return <div ref={btnRef} className="auth-header__btn" title={t('auth.signInPrompt')} />;
   }
 
   return null; // login disabled → guest-only

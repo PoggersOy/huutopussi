@@ -165,18 +165,18 @@ async function refreshMe(token: string): Promise<void> {
 }
 
 /**
- * Render the Google Sign-In button into `parent`. No-op when login is disabled
- * or GIS hasn't loaded yet (the caller re-invokes on state changes).
+ * Render the Google Sign-In button into `parent`. A compact circular ICON
+ * button that fits the header top-right. No-op when login is disabled or GIS
+ * hasn't loaded yet (the caller re-invokes on state changes).
  */
 export function renderGoogleButton(parent: HTMLElement): void {
   if (!clientId || !gisReady || !window.google) return;
   parent.replaceChildren();
   window.google.accounts.id.renderButton(parent, {
+    type: 'icon',
+    shape: 'circle',
     theme: 'outline',
     size: 'large',
-    type: 'standard',
-    text: 'signin_with',
-    shape: 'pill',
   });
 }
 
