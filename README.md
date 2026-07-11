@@ -1,10 +1,12 @@
 # Huutopussi Online
 
-Online multiplayer version of the Finnish card game **Huutopussi** (4-player
-partnership form, 2v2), built for mobile browsers — no app install, just a
-room link. TypeScript monorepo: a pure event-sourced game engine, an
-authoritative WebSocket server, and a mobile-first React PWA client, with AI
-bots, fi/en i18n, reconnection handling, and persistent score history.
+Online multiplayer version of the Finnish card game **Huutopussi**, built for
+mobile browsers — no app install, just a room link. Play **2, 3, or 4 players**
+(the 4-player game is the 2v2 partnership form) with selectable rulesets
+(illisoft 2002 and the *päämuoto* main variant). TypeScript monorepo: a pure
+event-sourced game engine, an authoritative WebSocket server, and a mobile-first
+React PWA client, with AI bots, optional **Google sign-in with Elo ratings and
+matchmaking**, fi/en i18n, reconnection handling, and persistent score history.
 
 Rules source of truth: [`docs/huutopussin-saannot.md`](docs/huutopussin-saannot.md).
 Architecture and plan: [`docs/plan.md`](docs/plan.md).
@@ -58,14 +60,23 @@ pnpm build:server                 # esbuild bundle -> packages/server/dist/serve
 CI (`.github/workflows/ci.yml`) runs typecheck + lint + test + a 500-game
 seeded simulation on every push and PR.
 
-## Playing: the room-link flow
+## Playing
 
-1. Open the deployed site and enter a nickname (no account needed — a session
-   token in localStorage identifies you).
+**Quick match (matchmaking).** On the home screen tap **Find a match** and pick
+a size (2/3/4 players): the server drops you into an open game for that bucket
+(or opens one) and auto-starts it the moment it fills — no codes to share.
+Signed-in players can choose **ranked** (Elo counts); guests play unranked.
+
+**Private room (the room-link flow).**
+
+1. Enter a nickname — no account needed. A per-tab session token (in
+   `sessionStorage`) identifies you, so a reload or phone-wake reclaims your
+   seat. Optionally **sign in with Google** to earn an Elo rating.
 2. Create a room; you get a 5-character code and a shareable link
-   (`https://huutopussi.online/r/CODE`).
-3. Send the link to friends; anyone opening it joins the room lobby. Fill
-   empty seats with bots if you are fewer than four.
+   (`https://huutopussi.online/r/CODE`). In the lobby the host picks the ruleset,
+   player count, and other options.
+3. Send the link to friends; anyone opening it joins the room lobby. Fill empty
+   seats with bots if you are fewer than the table size.
 4. The host starts the match. If someone drops (phone locked, tunnel, …) the
    game never stalls: after a grace period a bot plays their seat until they
    reopen the link and reclaim it.
@@ -89,8 +100,10 @@ fly apps create huutopussi
 # 3. Create the volume for SQLite in the primary region (Stockholm)
 fly volumes create hp_data --region arn --size 1
 
-# 4. Set any runtime secrets (none required for MVP; example)
-# fly secrets set SOME_KEY=value
+# 4. (Optional) Enable Google Sign-In + Elo. The OAuth 2.0 Web client ID is
+#    PUBLIC, so it lives in fly.toml [env] as GOOGLE_CLIENT_ID (not a secret) —
+#    it is already set for huutopussi.online; leave it unset to run guest-only.
+#    The authorized JavaScript origin in Google Cloud must be your HTTPS site URL.
 
 # 5. First deploy
 fly deploy --remote-only
@@ -150,4 +163,7 @@ switch SSL/TLS mode to **Full (strict)** — the server sets `force_https`, so
 - Database: `DB_PATH=/data/hp.db` on the `hp_data` volume. In-flight matches
   survive deploys/crashes: events are persisted per action and replayed on
   boot, and clients resync on reconnect.
+- Google Sign-In: `GOOGLE_CLIENT_ID` (a public OAuth Web client ID) in
+  `fly.toml [env]` enables login + Elo ratings; unset ⇒ guest-only. The client
+  reads it at runtime from `GET /api/auth-config`.
 - Logs / console: `fly logs`, `fly ssh console --app huutopussi`.
