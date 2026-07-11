@@ -42,7 +42,10 @@ jobs:
 
   e2e:
     name: e2e (Playwright / chromium)
-    runs-on: [self-hosted, prod-docker-01]
+    # Kept on GitHub-hosted: the real-time gameplay suite is timing-sensitive and
+    # times out under the load of the shared self-hosted box (ci + deploy run
+    # self-hosted; e2e stays here where it's fast and reliable).
+    runs-on: ubuntu-latest
     timeout-minutes: 40
     needs: ci
     steps:
