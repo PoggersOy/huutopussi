@@ -144,17 +144,20 @@ export function Home() {
 
         <div className="panel stack">
           <span className="dim">{t('matchmaking.title')}</span>
-          <div className="segmented">
+          <div className={`toggle${effectiveRanked ? ' toggle--on' : ''}`}>
+            <span className="toggle__thumb" aria-hidden="true" />
             <button
               type="button"
-              className={effectiveRanked ? 'btn--ghost' : 'btn--primary'}
+              className="toggle__opt"
+              aria-pressed={!effectiveRanked}
               onClick={() => setRanked(false)}
             >
               {t('matchmaking.unranked')}
             </button>
             <button
               type="button"
-              className={effectiveRanked ? 'btn--primary' : 'btn--ghost'}
+              className="toggle__opt"
+              aria-pressed={effectiveRanked}
               onClick={() => setRanked(true)}
               disabled={!signedIn}
             >

@@ -682,13 +682,60 @@ input::placeholder {
 
 /* ── Matchmaking ── */
 
-.segmented {
-  display: flex;
-  gap: var(--space-2);
+.toggle {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 4px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  isolation: isolate;
 }
 
-.segmented button {
-  flex: 1 1 0;
+/* The sliding pill that highlights the active segment. */
+.toggle__thumb {
+  position: absolute;
+  z-index: 0;
+  top: 4px;
+  bottom: 4px;
+  left: 4px;
+  width: calc(50% - 4px);
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--gold) 0%, var(--gold-soft) 100%);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  transition: transform 220ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.toggle--on .toggle__thumb {
+  transform: translateX(100%);
+}
+
+.toggle__opt {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-dim);
+  transition: color 180ms ease;
+}
+
+.toggle__opt[aria-pressed="true"] {
+  color: var(--felt-950);
+  font-weight: 700;
+}
+
+.toggle__opt:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toggle__thumb {
+    transition: none;
+  }
 }
 
 .mm-count {
