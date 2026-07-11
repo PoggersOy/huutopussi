@@ -73,6 +73,17 @@
     "declareRightAnyWonTrick": "Any won trick",
     "showLastTrick": "Show the last trick"
   },
+  "tableSettings": {
+    "title": "Turn timer",
+    "hostOnly": "Only the host can change the timer",
+    "autoplay": "Autoplay",
+    "autoplayOn": "On — a bot plays after the time limit",
+    "autoplayOff": "Off — unlimited time",
+    "turnTimeout": "Turn time limit",
+    "seconds": "{{n}} s",
+    "hintOn": "If you don't act within {{n}} s, a bot plays your turn. When you come back you get a full turn again.",
+    "hintOff": "Players have unlimited time. A disconnected player is filled in by a bot after a short wait so the game never freezes."
+  },
   "history": {
     "title": "Match history",
     "empty": "No matches played yet.",
@@ -135,7 +146,12 @@
     "lastTrickBtn": "Last trick",
     "trickWonBy": "{{name}} took the trick",
     "leadsNow": "{{name}} leads",
-    "youLead": "You lead"
+    "youLead": "You lead",
+    "secondsShort": "s",
+    "timeLeft": "{{n}} seconds left to act",
+    "stop": "Stop game",
+    "stopTitle": "Stop the game?",
+    "stopConfirm": "This ends the game for everyone and closes the room."
   },
   "bubble": {
     "bid": "{{amount}}!",
@@ -146,7 +162,7 @@
     "noMarriage": "Nothing",
     "askHalf": "Got {{card}}?",
     "answerNo": "No",
-    "trump": "Trump {{suit}} +{{points}}"
+    "trump": "Trump <suit>{{suit}}</suit> +{{points}}"
   },
   "sheet": {
     "highBid": "High bid {{amount}} — {{name}}",
@@ -183,6 +199,10 @@
     "contractFailed": "Contract {{contract}} failed — {{name}}",
     "standing": "Standing: {{us}} — {{them}}",
     "nextDeal": "Next deal starts in a moment…",
+    "redealTitle": "New deal",
+    "redealBy": "{{name}} demanded a redeal",
+    "redealIn": "Redealing in {{n}}…",
+    "redealingNow": "Redealing…",
     "victory": "You win!",
     "defeat": "The opponents win",
     "winners": "Winners: {{names}}",

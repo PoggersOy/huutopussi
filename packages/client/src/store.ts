@@ -92,6 +92,12 @@ export interface UiSlice {
   bubbles: SpeechBubble[];
   /** Winner flash / trick linger state (see CompletedTrick). */
   completedTrick: CompletedTrick | null;
+  /**
+   * A redeal was demanded: who demanded it and the epoch-ms the fresh deal is
+   * expected. Drives the table's countdown overlay; cleared when `dealStarted`
+   * arrives. Set for ALL clients (the `redealDemanded` event is broadcast).
+   */
+  redeal: { seat: Seat; until: number } | null;
   /** Latest match summaries for the current room ('history' messages). */
   history: MatchSummary[] | null;
 }
@@ -133,8 +139,16 @@ const initialUi: UiSlice = {
   toasts: [],
   bubbles: [],
   completedTrick: null,
+  redeal: null,
   history: null,
 };
+
+/**
+ * Redeal countdown length shown after a redeal demand — mirror of the server's
+ * `redealDelayMs` (packages/server/src/timers.ts). The overlay is dismissed for
+ * real when the fresh `dealStarted` arrives, so any small drift is cosmetic.
+ */
+const REDEAL_COUNTDOWN_MS = 5_000;
 
 let toastSeq = 0;
 let bubbleSeq = 0;
@@ -263,7 +277,8 @@ function deriveBubbles(
       out.push({
         seat: at,
         code: 'bubble.trump',
-        params: { suit: BUBBLE_GLYPH[d.suit], points: d.points },
+        // `suitCode` (raw suit) lets the bubble tint the glyph by colour.
+        params: { suit: BUBBLE_GLYPH[d.suit], suitCode: d.suit, points: d.points },
       });
     }
   }
@@ -318,6 +333,7 @@ export const serverApply = {
         pendingActionId: null,
         bubbles: [],
         completedTrick: null,
+        redeal: null,
       },
     }));
   },
@@ -353,6 +369,13 @@ export const serverApply = {
           : dealBoundary || msg.event?.type === 'cardPlayed'
             ? null
             : s.ui.completedTrick;
+      // Redeal countdown: arm on the demand, clear when the fresh deal starts.
+      const redeal =
+        msg.event?.type === 'redealDemanded'
+          ? { seat: msg.event.seat, until: Date.now() + REDEAL_COUNTDOWN_MS }
+          : msg.event?.type === 'dealStarted'
+            ? null
+            : s.ui.redeal;
       return {
         server: {
           ...s.server,
@@ -371,6 +394,7 @@ export const serverApply = {
           selectedCards: [],
           bubbles: [...kept, ...incoming],
           completedTrick,
+          redeal,
           toasts: toast
             ? [...s.ui.toasts, { ...toast, id: ++toastSeq }].slice(-TOAST_LIMIT)
             : s.ui.toasts,

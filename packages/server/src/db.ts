@@ -16,6 +16,7 @@ import { dirname } from 'node:path';
 import type { DealResult, GameEvent, RuleConfig, Seat, Side } from '@hp/engine';
 import type { MatchSummary } from '@hp/protocol';
 import Database from 'better-sqlite3';
+import type { RoomTableSettings } from './rooms.js';
 import type { SessionKind } from './sessions.js';
 
 export const EVENT_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
@@ -88,6 +89,8 @@ export interface RecoveredMatch {
   code: string;
   hostToken: string | null;
   roomConfig: RuleConfig;
+  /** null for rooms created before the table-settings column existed. */
+  tableSettings: RoomTableSettings | null;
   matchConfig: RuleConfig;
   firstDealer: Seat;
   startedAt: number;
@@ -122,6 +125,9 @@ export class Db {
     try {
       this.raw.transaction(() => {
         this.addColumnIfMissing('matches', 'final_scores', 'TEXT');
+        // Turn pacing (autoplay + timeout); nullable so pre-feature rooms
+        // recover with the server default (see activeMatches / server.ts).
+        this.addColumnIfMissing('rooms', 'table_settings', 'TEXT');
         this.rebuildDealsIfDrifted();
       })();
     } catch (err) {
@@ -211,14 +217,23 @@ export class Db {
     code: string;
     hostToken: string | null;
     config: RuleConfig;
+    tableSettings: RoomTableSettings;
   }): void {
     const now = Date.now();
     this.raw
       .prepare(
-        `INSERT INTO rooms (id, code, host_token, config, status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, 'lobby', ?, ?)`,
+        `INSERT INTO rooms (id, code, host_token, config, table_settings, status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, 'lobby', ?, ?)`,
       )
-      .run(row.id, row.code, row.hostToken, JSON.stringify(row.config), now, now);
+      .run(
+        row.id,
+        row.code,
+        row.hostToken,
+        JSON.stringify(row.config),
+        JSON.stringify(row.tableSettings),
+        now,
+        now,
+      );
   }
 
   setRoomStatus(id: string, status: string): void {
@@ -231,6 +246,12 @@ export class Db {
     this.raw
       .prepare('UPDATE rooms SET config = ?, updated_at = ? WHERE id = ?')
       .run(JSON.stringify(config), Date.now(), id);
+  }
+
+  setRoomTableSettings(id: string, tableSettings: RoomTableSettings): void {
+    this.raw
+      .prepare('UPDATE rooms SET table_settings = ?, updated_at = ? WHERE id = ?')
+      .run(JSON.stringify(tableSettings), Date.now(), id);
   }
 
   setRoomHost(id: string, hostToken: string | null): void {
@@ -344,7 +365,7 @@ export class Db {
       .prepare(
         `SELECT m.id AS match_id, m.room_id, m.config AS match_config,
                 m.first_dealer, m.started_at,
-                r.code, r.host_token, r.config AS room_config
+                r.code, r.host_token, r.config AS room_config, r.table_settings
          FROM matches m JOIN rooms r ON r.id = m.room_id
          WHERE m.status = 'active' ORDER BY m.started_at DESC`,
       )
@@ -357,6 +378,7 @@ export class Db {
       code: string;
       host_token: string | null;
       room_config: string;
+      table_settings: string | null;
     }>;
     const eventStmt = this.raw.prepare(
       'SELECT seq, event FROM deal_events WHERE match_id = ? ORDER BY seq ASC',
@@ -380,6 +402,8 @@ export class Db {
         code: r.code,
         hostToken: r.host_token,
         roomConfig: JSON.parse(r.room_config) as RuleConfig,
+        tableSettings:
+          r.table_settings === null ? null : (JSON.parse(r.table_settings) as RoomTableSettings),
         matchConfig: JSON.parse(r.match_config) as RuleConfig,
         firstDealer: r.first_dealer as Seat,
         startedAt: r.started_at,

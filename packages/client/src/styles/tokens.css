@@ -43,13 +43,19 @@
   --suit-red: #ff7080;
   --suit-black: var(--cream);
 
-  /* ── Card sizing (portrait-first; 9-card fan must fit ~390 px width) ── */
+  /* ── Card sizing ──
+   * Sized in vmin (the smaller viewport axis), so on a portrait phone this is
+   * identical to the old vw sizing, but on a larger/landscape desktop window
+   * the cards grow with the available space instead of staying phone-tiny.
+   * The min clamp preserves the phone floor; the max clamp caps desktop growth. */
   --card-ratio: 1.4;
-  --card-w: clamp(52px, 17vw, 76px);
+  --card-w: clamp(52px, 17vmin, 100px);
   --card-h: calc(var(--card-w) * var(--card-ratio));
-  --card-w-md: clamp(44px, 14vw, 62px);
-  --card-w-sm: clamp(36px, 11vw, 52px);
+  --card-w-md: clamp(44px, 14vmin, 80px);
+  --card-w-sm: clamp(36px, 11vmin, 60px);
   --card-h-sm: calc(var(--card-w-sm) * var(--card-ratio));
+  /* Opponent fan card backs (was a hardcoded 14px in Table.tsx). */
+  --card-w-opp: clamp(14px, 3.6vmin, 26px);
   --card-radius: calc(var(--card-w) * 0.09);
 
   /* ── Touch & spacing ── */

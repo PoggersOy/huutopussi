@@ -138,6 +138,33 @@ export const configPatchSchema = z
   })
   .partial();
 
+/**
+ * Per-room TABLE settings — turn pacing, NOT game rules. Kept deliberately
+ * separate from RuleConfig (the engine's frozen, deterministic, timer-free
+ * contract): autoplay and the turn timeout are a room/server concern the engine
+ * knows nothing about. The host edits them from the lobby (and may change them
+ * mid-match) via `setTableSettings`; the resolved values ride on RoomStatePublic.
+ */
+export interface TableSettings {
+  /**
+   * When true, a PRESENT player who doesn't act within `turnTimeoutSec` is
+   * marked away and a bot plays their turn. When false, present players get
+   * unlimited time — but a DISCONNECTED player is still auto-played after a
+   * short grace, so one dropped player can't freeze the table.
+   */
+  autoplay: boolean;
+  /** Per-turn think budget in whole seconds, applied while autoplay is on. */
+  turnTimeoutSec: number;
+}
+
+/** Host-editable table-settings patch (host-only; allowed mid-match). */
+export const tableSettingsPatchSchema = z
+  .object({
+    autoplay: z.boolean(),
+    turnTimeoutSec: z.number().int().min(15).max(600),
+  })
+  .partial();
+
 export const lobbyCmdSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('takeSeat'), seat: seatSchema }),
   z.object({ type: z.literal('leaveSeat') }),
@@ -145,8 +172,12 @@ export const lobbyCmdSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('addBot'), seat: seatSchema }),
   z.object({ type: z.literal('removeBot'), seat: seatSchema }),
   z.object({ type: z.literal('setConfig'), patch: configPatchSchema }),
+  // Host-only: change turn pacing (autoplay + timeout); allowed mid-match.
+  z.object({ type: z.literal('setTableSettings'), patch: tableSettingsPatchSchema }),
   z.object({ type: z.literal('startMatch') }),
   z.object({ type: z.literal('rematch') }),
+  // Host-only: abort an ongoing match and close the room (all clients dropped).
+  z.object({ type: z.literal('stopMatch') }),
 ]);
 
 // ── Client → server: envelope ────────────────────────────────────────────────
@@ -184,6 +215,19 @@ export const clientMsgSchema = z.discriminatedUnion('t', [
 export type ClientMsg = z.infer<typeof clientMsgSchema>;
 export type LobbyCmd = z.infer<typeof lobbyCmdSchema>;
 export type ConfigPatch = z.infer<typeof configPatchSchema>;
+export type TableSettingsPatch = z.infer<typeof tableSettingsPatchSchema>;
+
+/**
+ * Compile-time guard: every tableSettingsPatch field must exist on
+ * TableSettings with an assignable type (mirrors the ConfigPatch guard above).
+ */
+type _TableSettingsPatchSubset = {
+  [K in keyof TableSettingsPatch]-?: Exclude<TableSettingsPatch[K], undefined>;
+} extends Pick<TableSettings, keyof TableSettingsPatch>
+  ? true
+  : never;
+const _tableSettingsPatchSubset: _TableSettingsPatchSubset = true;
+void _tableSettingsPatchSubset;
 
 /**
  * Compile-time drift guard: every configPatchSchema field except `preset`
@@ -219,13 +263,19 @@ export interface RoomStatePublic {
   /** Seat that created the room / holds lobby powers; null if host absent. */
   hostSeat: Seat | null;
   config: RuleConfig;
+  /** Turn pacing (autoplay + timeout); host-editable, independent of RuleConfig. */
+  tableSettings: TableSettings;
   status: 'lobby' | 'playing' | 'finished';
 }
 
 export interface TurnInfo {
   seat: Seat;
-  /** Epoch ms when the turn timer expires and bot autoplay may kick in. */
-  deadline: number;
+  /**
+   * Epoch ms when the turn timer expires and bot autoplay kicks in, or null for
+   * NO time limit — the room's host has turned autoplay off, so the present
+   * actor has unlimited time. Clients show the countdown only when non-null.
+   */
+  deadline: number | null;
   /** Legal moves — ONLY ever non-null in messages to the acting seat. */
   hints: ActionHint[] | null;
 }

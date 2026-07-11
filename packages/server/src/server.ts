@@ -25,6 +25,7 @@ import {
   ILLISOFT_RULES,
   initialMatchState,
   isRuleError,
+  type MatchState,
   makeDeck,
   nextDealEvent,
   type PlayerAction,
@@ -53,6 +54,7 @@ import {
   generateRoomCode,
   hostSessionOf,
   type Room,
+  type RoomTableSettings,
   roomPublic,
   sessionAtSeat,
 } from './rooms.js';
@@ -73,7 +75,6 @@ import {
   scheduleTurnExpiry,
   startIdleTimer,
   type TimerConfig,
-  turnLimitMs,
 } from './timers.js';
 
 export interface ServerOpts {
@@ -218,9 +219,11 @@ export function createServer(opts: ServerOpts = {}): HpServer {
 
   function buildTurnInfo(room: Room, forSeat: Seat | null): TurnInfo | null {
     const state = room.match;
-    if (!state || room.status !== 'playing' || room.turnDeadline === null) return null;
+    if (!state || room.status !== 'playing') return null;
     const actor = expectedActor(state);
     if (actor === null) return null;
+    // deadline may be null (autoplay off → no limit); turn/hints ride on the
+    // actor, NOT on the deadline, so a present player always gets their hints.
     return {
       seat: actor,
       deadline: room.turnDeadline,
@@ -256,8 +259,10 @@ export function createServer(opts: ServerOpts = {}): HpServer {
       const connected = isConnected(s);
       if (!connected && !isOrigin) continue;
       const viewer = s.seat ?? ('spectator' as const);
+      // turn/hints ride on the actor, not the deadline (which is null when the
+      // room has autoplay off — a present player still needs their hints).
       const turn: TurnInfo | null =
-        actor === null || room.turnDeadline === null
+        actor === null
           ? null
           : {
               seat: actor,
@@ -299,6 +304,28 @@ export function createServer(opts: ServerOpts = {}): HpServer {
     return changed;
   }
 
+  /**
+   * The present-human turn budget in ms, or null when the room has autoplay off
+   * (a present player then has unlimited time). The awaitWholeAnswer binary
+   * choice keeps its short cap, but never longer than the configured budget.
+   */
+  function humanTurnBudgetMs(room: Room, state: MatchState): number | null {
+    const ts = room.tableSettings;
+    if (!ts.autoplay) return null;
+    return state.deal?.phase.name === 'awaitWholeAnswer'
+      ? Math.min(ts.turnTimeoutMs, cfg.wholeAnswerMs)
+      : ts.turnTimeoutMs;
+  }
+
+  /**
+   * Reconnect grace for a DISCONNECTED actor: at least one full turn budget
+   * (host-editable) so a dropped player always has a turn's worth of time to
+   * come back, never below the configured floor. See timers.ts.
+   */
+  function reconnectGraceMs(room: Room): number {
+    return Math.max(cfg.graceMs, room.tableSettings.turnTimeoutMs);
+  }
+
   function updateTurn(room: Room): void {
     clearTurnTimers(room);
     room.turnDeadline = null;
@@ -306,18 +333,25 @@ export function createServer(opts: ServerOpts = {}): HpServer {
     if (room.closed || !state || room.status !== 'playing' || state.winnerSide !== null) return;
     const actor = expectedActor(state);
     if (actor === null) return;
-    const phaseMs = turnLimitMs(cfg, state);
-    room.turnDeadline = Date.now() + phaseMs;
     const s = sessionAtSeat(room, actor);
     if (!s || s.kind === 'bot' || s.botControlled) {
+      // Bot seats and away seats always play (autoplay governs PRESENT humans).
       scheduleBotAct(room, actor);
       return;
     }
+    const budget = humanTurnBudgetMs(room, state);
     if (!isConnected(s)) {
-      // Already-disconnected actor: at least the full grace before autoplay.
-      room.turnDeadline = Date.now() + Math.max(phaseMs, cfg.graceMs);
+      // Disconnected human: give them at least a full turn to reconnect before
+      // autoplay, even when autoplay is off, so one dropped player can't freeze
+      // the table.
+      const ms = reconnectGraceMs(room);
+      room.turnDeadline = Date.now() + ms;
+      scheduleTurnExpiry(room, ms, () => onTurnExpired(room, actor));
+      return;
     }
-    scheduleTurnExpiry(room, room.turnDeadline - Date.now(), () => onTurnExpired(room, actor));
+    if (budget === null) return; // autoplay off: a present player has unlimited time.
+    room.turnDeadline = Date.now() + budget;
+    scheduleTurnExpiry(room, budget, () => onTurnExpired(room, actor));
   }
 
   function onTurnExpired(room: Room, seat: Seat): void {
@@ -514,6 +548,30 @@ export function createServer(opts: ServerOpts = {}): HpServer {
   }
 
   /**
+   * A human takes their seat back from the fill-in bot (by acting, or on
+   * reconnect). Clears the away flag and, if it is still their turn, cancels the
+   * scheduled bot move and re-arms a FULL fresh turn budget — a returning player
+   * always gets their whole think time, never the tail of the bot's clock (an
+   * in-flight bot move aborts on the cleared flag; see runBotTurn). Returns true
+   * if a turn was re-armed; broadcasting is left to the caller.
+   */
+  function reclaimSeat(room: Room, session: Session): boolean {
+    if (session.kind !== 'human' || !session.botControlled) return false;
+    session.botControlled = false;
+    session.reclaimPending = false;
+    if (
+      room.status === 'playing' &&
+      room.match !== null &&
+      room.match.winnerSide === null &&
+      expectedActor(room.match) === session.seat
+    ) {
+      updateTurn(room);
+      return true;
+    }
+    return false;
+  }
+
+  /**
    * In-band seat reclaim (docs/plan.md §Reconnection — "instant reclaim"): a
    * connected human acting on their own seat takes it back from the fill-in
    * bot immediately. Without this a present-but-idle human who was passed to a
@@ -524,18 +582,7 @@ export function createServer(opts: ServerOpts = {}): HpServer {
    */
   function reclaimSeatOnAction(room: Room, session: Session): void {
     if (session.kind !== 'human' || !session.botControlled) return;
-    session.botControlled = false;
-    session.reclaimPending = false;
-    // If it is still this seat's turn, cancel the scheduled bot action and
-    // re-arm a normal human turn timer; otherwise just re-advertise the seat.
-    if (
-      room.status === 'playing' &&
-      room.match !== null &&
-      room.match.winnerSide === null &&
-      expectedActor(room.match) === session.seat
-    ) {
-      updateTurn(room);
-    }
+    reclaimSeat(room, session);
     broadcastRoom(room);
   }
 
@@ -649,6 +696,34 @@ export function createServer(opts: ServerOpts = {}): HpServer {
         broadcastRoom(room, { token: session.token, actionId });
         return true;
       }
+      case 'setTableSettings': {
+        // Turn pacing is not a game rule, so (unlike setConfig) it may change
+        // mid-match. The wire patch is in seconds; the room stores ms.
+        if (!isHost) return fail('error.notHost');
+        const cur = room.tableSettings;
+        const next: RoomTableSettings = {
+          autoplay: cmd.patch.autoplay ?? cur.autoplay,
+          turnTimeoutMs:
+            cmd.patch.turnTimeoutSec !== undefined
+              ? cmd.patch.turnTimeoutSec * 1000
+              : cur.turnTimeoutMs,
+        };
+        room.tableSettings = next;
+        db.setRoomTableSettings(room.id, next);
+        if (room.status === 'playing') {
+          // Re-arm the live turn so the new timeout / autoplay toggle takes
+          // effect at once, and push the fresh deadline to every countdown.
+          updateTurn(room);
+          room.seq += 1;
+          broadcastUpdate(room, null, {
+            includeRoom: true,
+            origin: { token: session.token, actionId },
+          });
+        } else {
+          broadcastRoom(room, { token: session.token, actionId });
+        }
+        return true;
+      }
       case 'startMatch': {
         if (!isHost) return fail('error.notHost');
         if (room.status !== 'lobby') return fail('error.matchInProgress');
@@ -660,6 +735,15 @@ export function createServer(opts: ServerOpts = {}): HpServer {
         if (!isHost) return fail('error.notHost');
         if (room.status !== 'finished') return fail('error.matchNotFinished');
         startNewMatch(room, { token: session.token, actionId });
+        return true;
+      }
+      case 'stopMatch': {
+        // Host aborts an ongoing match: abandon it and close the room, which
+        // drops every client (WS close 4000 → each lands on the "room closed"
+        // dead-end and can go Home). closeRoom persists the match as abandoned.
+        if (!isHost) return fail('error.notHost');
+        if (room.status !== 'playing') return fail('error.noMatch');
+        closeRoom(room);
         return true;
       }
     }
@@ -747,21 +831,20 @@ export function createServer(opts: ServerOpts = {}): HpServer {
           }
           bindSocket(existing, sock, room);
           setBound(existing);
-          // Reclaim at the next turn boundary; immediately when off-turn.
-          if (existing.botControlled) {
-            const actingNow =
-              room.match !== null &&
-              room.status === 'playing' &&
-              expectedActor(room.match) === existing.seat;
-            if (actingNow) {
-              existing.reclaimPending = true;
-            } else {
-              existing.botControlled = false;
-              existing.reclaimPending = false;
-            }
-          }
+          // A returning player takes their seat back from the fill-in bot at
+          // once — even mid-turn — and, if it's their turn, gets a full fresh
+          // turn budget to think (never the tail of the bot's clock).
+          const rearmed = existing.botControlled ? reclaimSeat(room, existing) : false;
           sendWelcome(existing, room);
-          if (existing.seat !== null) broadcastRoom(room); // connected flag changed
+          if (rearmed) {
+            // Push the cleared away-flag AND the fresh deadline to everyone so
+            // their badges + countdowns stay in sync (welcome already told the
+            // returner).
+            room.seq += 1;
+            broadcastUpdate(room, null, { includeRoom: true });
+          } else if (existing.seat !== null) {
+            broadcastRoom(room); // connected flag changed
+          }
           return;
         }
       }
@@ -830,13 +913,20 @@ export function createServer(opts: ServerOpts = {}): HpServer {
       code,
       hostToken: session.token,
       config,
+      tableSettings: defaultTableSettings(),
     });
     room.sessions.set(session.token, session);
     sessionsByToken.set(session.token, session);
     rooms.set(code, room);
     roomsById.set(roomId, room);
     db.transaction(() => {
-      db.createRoom({ id: roomId, code, hostToken: session.token, config: room.config });
+      db.createRoom({
+        id: roomId,
+        code,
+        hostToken: session.token,
+        config: room.config,
+        tableSettings: room.tableSettings,
+      });
       db.saveSession(sessionRow(session));
     });
     bindSocket(session, sock, room);
@@ -849,6 +939,15 @@ export function createServer(opts: ServerOpts = {}): HpServer {
     // selectable via the lobby preset. Fresh object so per-room patches never
     // share state.
     return { ...ILLISOFT_RULES };
+  }
+
+  /**
+   * A fresh room's turn pacing: autoplay on, budget = the server default turnMs
+   * (90 s in prod; tests inject sub-second turnMs here). Host-editable from the
+   * lobby; the wire form exposes whole seconds.
+   */
+  function defaultTableSettings(): RoomTableSettings {
+    return { autoplay: true, turnTimeoutMs: cfg.turnMs };
   }
 
   function handleResync(session: Session): void {
@@ -884,7 +983,11 @@ export function createServer(opts: ServerOpts = {}): HpServer {
       return;
     }
     broadcastRoom(room); // connected flag changed
-    // Mid-turn disconnect: guarantee at least graceMs before autoplay.
+    // Mid-turn disconnect: guarantee at least a full turn to reconnect before
+    // autoplay (reconnectGraceMs). When the room has autoplay off the present
+    // actor had no deadline (unlimited time); arm grace anyway so one dropped
+    // player can't freeze the table. A finite deadline further out than grace
+    // is kept (don't shorten a live turn).
     if (
       room.status === 'playing' &&
       room.match &&
@@ -892,11 +995,12 @@ export function createServer(opts: ServerOpts = {}): HpServer {
       !session.botControlled &&
       expectedActor(room.match) === session.seat
     ) {
-      const minDeadline = Date.now() + cfg.graceMs;
-      if (room.turnDeadline !== null && room.turnDeadline < minDeadline) {
+      const grace = reconnectGraceMs(room);
+      const minDeadline = Date.now() + grace;
+      if (room.turnDeadline === null || room.turnDeadline < minDeadline) {
         room.turnDeadline = minDeadline;
         const seat = session.seat;
-        scheduleTurnExpiry(room, cfg.graceMs, () => onTurnExpired(room, seat));
+        scheduleTurnExpiry(room, grace, () => onTurnExpired(room, seat));
       }
     }
     armIdleTimerIfEmpty(room);
@@ -1125,6 +1229,9 @@ export function createServer(opts: ServerOpts = {}): HpServer {
         code: rec.code,
         hostToken: rec.hostToken,
         config: rec.roomConfig,
+        // Rooms persisted before the table-settings column recover with the
+        // current server default (autoplay on, default budget).
+        tableSettings: rec.tableSettings ?? defaultTableSettings(),
       });
       room.status = 'playing';
       room.match = state;

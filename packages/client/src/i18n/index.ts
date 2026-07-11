@@ -1,8 +1,8 @@
 /**
- * i18next setup: fi + en bundled resources, English fallback, language
- * detected from a persisted toggle (localStorage) falling back to the
- * browser's language list. All server/engine codes (error.*, event.*) are
- * i18n keys per CLAUDE.md conventions.
+ * i18next setup: fi + en bundled resources, Finnish fallback, language
+ * detected from a persisted toggle (localStorage) and otherwise defaulting
+ * to Finnish. All server/engine codes (error.*, event.*) are i18n keys per
+ * CLAUDE.md conventions.
  */
 import i18next from 'i18next';
 import { initReactI18next } from 'react-i18next';
@@ -19,13 +19,9 @@ export function detectLanguage(): Language {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored === 'fi' || stored === 'en') return stored;
   } catch {
-    // localStorage unavailable — fall through to navigator detection.
+    // localStorage unavailable — fall through to the default.
   }
-  const candidates = typeof navigator !== 'undefined' ? (navigator.languages ?? []) : [];
-  for (const lang of candidates) {
-    if (lang.toLowerCase().startsWith('fi')) return 'fi';
-    if (lang.toLowerCase().startsWith('en')) return 'en';
-  }
+  // Finnish is the default; users can switch to English via the toggle (persisted).
   return 'fi';
 }
 
@@ -45,7 +41,7 @@ i18next.use(initReactI18next).init({
     en: { translation: en },
   },
   lng: detectLanguage(),
-  fallbackLng: 'en',
+  fallbackLng: 'fi',
   interpolation: { escapeValue: false }, // React already escapes
   returnEmptyString: false,
 });

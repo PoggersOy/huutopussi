@@ -5,7 +5,7 @@
  */
 import { type Card, DEFAULT_RULES, type DealView, type PlayerView, type Seat } from '@hp/engine';
 import type { RoomStatePublic, SeatInfo, ServerMsg, TurnInfo } from '@hp/protocol';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import i18n from '../src/i18n';
 import { Table } from '../src/screens/Table';
@@ -27,6 +27,7 @@ const room: RoomStatePublic = {
   seats: [seatInfo(0), seatInfo(1), seatInfo(2), seatInfo(3)],
   hostSeat: 0,
   config: DEFAULT_RULES,
+  tableSettings: { autoplay: true, turnTimeoutSec: 90 },
   status: 'playing',
 };
 
@@ -316,6 +317,31 @@ describe('speech bubbles', () => {
 
     expect(screen.getByText('60!')).toBeTruthy();
   });
+
+  it('shows a coloured trump bubble with a suit-tinted glyph when a marriage is made', () => {
+    applyWelcome(makeView(makeDeal()), null);
+    serverApply.update({
+      t: 'update',
+      seq: 2,
+      view: makeView(
+        makeDeal({
+          trump: 'H',
+          declarations: [{ suit: 'H', seat: 0, side: 0, how: 'own', trickIndex: 0, points: 40 }],
+        }),
+      ),
+      event: { type: 'trumpSet', suit: 'H', seat: 0, side: 0, how: 'own', points: 40 },
+      turn: null,
+    });
+    render(<Table />);
+
+    // The whole announcement renders, carrying the special trump styling.
+    const bubble = screen.getByText(/\+40/).closest('.bubble') as HTMLElement;
+    expect(bubble).toBeTruthy();
+    expect(bubble.classList.contains('bubble--trump')).toBe(true);
+    // The suit glyph is wrapped so it can be tinted by colour.
+    const glyph = within(bubble).getByText('♥');
+    expect(glyph.classList.contains('suit--H')).toBe(true);
+  });
 });
 
 describe('overlays', () => {
@@ -375,6 +401,44 @@ describe('overlays', () => {
     expect(screen.getByText('Standing: 120 — -60')).toBeTruthy();
   });
 
+  it('shows the redeal countdown overlay when a redeal is demanded', () => {
+    applyWelcome(makeView(makeDeal()), null);
+    // The redeal demand clears the deal; every client gets the broadcast event.
+    serverApply.update({
+      t: 'update',
+      seq: 2,
+      view: makeView(null),
+      event: { type: 'redealDemanded', seat: 1 },
+      turn: null,
+    });
+    render(<Table />);
+
+    expect(screen.getByText('New deal')).toBeTruthy();
+    expect(screen.getByText('p1 demanded a redeal')).toBeTruthy();
+    expect(screen.getByText(/Redealing in \d+…/)).toBeTruthy();
+  });
+
+  it('clears the redeal overlay once the fresh deal starts', () => {
+    applyWelcome(makeView(makeDeal()), null);
+    serverApply.update({
+      t: 'update',
+      seq: 2,
+      view: makeView(null),
+      event: { type: 'redealDemanded', seat: 1 },
+      turn: null,
+    });
+    serverApply.update({
+      t: 'update',
+      seq: 3,
+      view: makeView(makeDeal()),
+      event: { type: 'dealStarted', dealIndex: 0, dealer: 3, deck: [] },
+      turn: null,
+    });
+    render(<Table />);
+
+    expect(screen.queryByText('New deal')).toBeNull();
+  });
+
   it('shows the match-ended overlay with the rematch button for the host', () => {
     applyWelcome(makeView(makeDeal(), { winnerSide: 0, scores: [505, 210] }), null);
     render(<Table />);
@@ -383,5 +447,49 @@ describe('overlays', () => {
     expect(screen.getByText('Winners: p0 & p2')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Rematch' }));
     expect(sendLobby).toHaveBeenCalledWith({ type: 'rematch' });
+  });
+});
+
+describe('host stop game', () => {
+  it('the host stops the game only after confirming; cancel aborts', () => {
+    applyWelcome(makeView(makeDeal()), null); // viewer is seat 0 = host, match ongoing
+    render(<Table />);
+
+    // Opening the confirm does NOT stop the game on its own.
+    fireEvent.click(screen.getByRole('button', { name: 'Stop game' }));
+    expect(screen.getByText('Stop the game?')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByText('Stop the game?')).toBeNull();
+    expect(sendLobby).not.toHaveBeenCalled();
+
+    // Confirming sends the stopMatch lobby command.
+    fireEvent.click(screen.getByRole('button', { name: 'Stop game' }));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Stop game' }));
+    expect(sendLobby).toHaveBeenCalledWith({ type: 'stopMatch' });
+    expect(screen.queryByText('Stop the game?')).toBeNull();
+  });
+
+  it('hides the Stop button once the match is over', () => {
+    applyWelcome(makeView(makeDeal(), { winnerSide: 0, scores: [505, 210] }), null);
+    render(<Table />);
+    expect(screen.queryByRole('button', { name: 'Stop game' })).toBeNull();
+  });
+
+  it('does not show the Stop button to a non-host', () => {
+    const guestRoom = { ...room, hostSeat: 1 as Seat };
+    const msg: Extract<ServerMsg, { t: 'welcome' }> = {
+      t: 'welcome',
+      v: 1,
+      sessionToken: '123e4567-e89b-42d3-a456-426614174000',
+      room: guestRoom,
+      seat: 0,
+      seq: 1,
+      view: makeView(makeDeal()),
+      turn: null,
+    };
+    serverApply.welcome(msg);
+    render(<Table />);
+    expect(screen.queryByRole('button', { name: 'Stop game' })).toBeNull();
   });
 });

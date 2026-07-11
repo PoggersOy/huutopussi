@@ -73,6 +73,17 @@
     "declareRightAnyWonTrick": "Mikä tahansa voitettu kääntö",
     "showLastTrick": "Näytä viimeisin kääntö"
   },
+  "tableSettings": {
+    "title": "Vuoron ajastin",
+    "hostOnly": "Vain isäntä voi muuttaa ajastinta",
+    "autoplay": "Automaattipeluu",
+    "autoplayOn": "Päällä — botti pelaa aikarajan jälkeen",
+    "autoplayOff": "Pois — rajaton aika",
+    "turnTimeout": "Vuoron aikaraja",
+    "seconds": "{{n}} s",
+    "hintOn": "Jos et toimi {{n}} sekunnissa, botti pelaa vuorosi. Kun palaat, saat taas täyden vuoron.",
+    "hintOff": "Pelaajilla on rajaton aika. Yhteytensä menettänyt pelaaja korvataan botilla lyhyen odotuksen jälkeen, jotta peli ei jää jumiin."
+  },
   "history": {
     "title": "Pelihistoria",
     "empty": "Ei vielä pelattuja pelejä.",
@@ -135,7 +146,12 @@
     "lastTrickBtn": "Viime kääntö",
     "trickWonBy": "{{name}} vei käännön",
     "leadsNow": "{{name}} ajaa",
-    "youLead": "Sinä ajat"
+    "youLead": "Sinä ajat",
+    "secondsShort": "s",
+    "timeLeft": "{{n}} sekuntia aikaa toimia",
+    "stop": "Lopeta peli",
+    "stopTitle": "Lopetetaanko peli?",
+    "stopConfirm": "Tämä päättää pelin kaikilta ja sulkee huoneen."
   },
   "bubble": {
     "bid": "{{amount}}!",
@@ -146,7 +162,7 @@
     "noMarriage": "Ei ole",
     "askHalf": "Onko {{card}}?",
     "answerNo": "Ei ole",
-    "trump": "Valtti {{suit}} +{{points}}"
+    "trump": "Valtti <suit>{{suit}}</suit> +{{points}}"
   },
   "sheet": {
     "highBid": "Korkein huuto {{amount}} — {{name}}",
@@ -183,6 +199,10 @@
     "contractFailed": "Sopimus {{contract}} kaatui — {{name}}",
     "standing": "Tilanne: {{us}} — {{them}}",
     "nextDeal": "Seuraava jako alkaa hetken kuluttua…",
+    "redealTitle": "Uusi jako",
+    "redealBy": "{{name}} vaati uutta jakoa",
+    "redealIn": "Jaetaan uudelleen {{n}}…",
+    "redealingNow": "Jaetaan uudelleen…",
     "victory": "Te voititte!",
     "defeat": "Vastustajat voittivat",
     "winners": "Voittajat: {{names}}",

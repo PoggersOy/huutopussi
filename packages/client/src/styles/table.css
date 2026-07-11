@@ -6,7 +6,13 @@
 /* ── Screen grid: top bar / felt / (sheet) / hand ── */
 
 .screen--table {
-  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  /* Flex column instead of a fixed grid: the felt (flex: 1 below) fills all
+   * remaining height whether or not the optional host bar and bidding sheet are
+   * present. A fixed grid-template-rows breaks when those optional children
+   * change the row count — e.g. the host "stop game" bar would otherwise steal
+   * the flexible row and collapse the felt to its 150px minimum. */
+  display: flex;
+  flex-direction: column;
 }
 
 /* ── Top bar ── */
@@ -37,6 +43,40 @@
 
 .ttop__trump {
   font-weight: 700;
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-1);
+  background: rgba(212, 175, 55, 0.16);
+  border: 1px solid var(--gold-soft);
+  /* soft resting glow; the flash burst below plays on mount / trump change */
+  box-shadow: 0 0 6px rgba(212, 175, 55, 0.35);
+  animation: trump-flash 760ms ease-out 3;
+}
+
+/* Attention burst: blink the gold highlight a few times, then settle into the
+   resting chip above (0%/100% match the static state). */
+@keyframes trump-flash {
+  0%,
+  100% {
+    background: rgba(212, 175, 55, 0.16);
+    box-shadow: 0 0 6px rgba(212, 175, 55, 0.35);
+  }
+  45% {
+    background: rgba(212, 175, 55, 0.62);
+    box-shadow: 0 0 15px 2px rgba(212, 175, 55, 0.85);
+  }
+}
+
+/* Host-only control strip under the top bar (currently the "Stop game" button). */
+.thostbar {
+  display: flex;
+  justify-content: flex-end;
+  padding: var(--space-1) var(--space-3) 0;
+}
+
+.thostbar__stop {
+  font-size: var(--fs-sm);
+  padding: 2px var(--space-3);
+  opacity: 0.8;
 }
 
 .ttop__me {
@@ -71,6 +111,9 @@
   position: relative;
   overflow: hidden;
   min-height: 150px;
+  /* Grow to fill the flex column (see .screen--table); the header, optional
+   * host bar, sheet and hand keep their natural height around it. */
+  flex: 1 1 0;
 }
 
 .felt__idle {
@@ -218,6 +261,32 @@
   height: 10px;
   background: inherit;
   transform: rotate(45deg);
+}
+
+/* A trump was made: a gold, glowing bubble to tie in with the trump chip up top. */
+.bubble--trump {
+  background: linear-gradient(180deg, #f4d879, var(--gold));
+  color: var(--felt-950);
+  font-weight: 700;
+  box-shadow:
+    0 0 12px rgba(212, 175, 55, 0.8),
+    0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+.bubble--trump::after {
+  background: var(--gold);
+}
+
+/* Tint the suit glyph for the gold (light) bubble — the felt suit colours are
+   tuned for the dark table, so use the strong on-light card red / dark ink. */
+.bubble--trump .suit--H,
+.bubble--trump .suit--D {
+  color: var(--card-red);
+}
+
+.bubble--trump .suit--C,
+.bubble--trump .suit--S {
+  color: var(--felt-950);
 }
 
 .opp .bubble {
@@ -670,6 +739,15 @@
   font-family: var(--font-display);
 }
 
+/* Redeal countdown number ("Redealing in 3…"): big, gold, centred. */
+.redeal__count {
+  text-align: center;
+  font-size: var(--fs-xl);
+  font-family: var(--font-display);
+  font-weight: 700;
+  color: var(--gold);
+}
+
 .score {
   width: 100%;
   border-collapse: collapse;
@@ -711,4 +789,130 @@
 
 .delta--neg {
   color: var(--danger);
+}
+
+/* ── Larger viewports (tablet / desktop) ──
+ * The base layout targets a ~390px portrait phone; on a wide window it would
+ * otherwise stretch full-bleed with the seats pinned to the far corners and a
+ * sea of empty felt in the middle. Here we cap the board to a centred column
+ * so the seats gather around a roomy trick area and enlarge the opponent
+ * panels (their card backs + type scale up via the vmin tokens). The seats
+ * keep their base upper-felt position; the open felt below is the play area.
+ * Card sizes themselves grow through the vmin card tokens in tokens.css. */
+@media (min-width: 768px) {
+  .screen--table {
+    width: 100%;
+    max-width: 960px;
+    margin-inline: auto;
+  }
+
+  /* Bigger, easier-to-read opponent panels. */
+  .opp {
+    gap: var(--space-1);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-3);
+    max-width: 34%;
+  }
+
+  /* Seats stay in the upper felt (base top: 21%, clear of the top-left pile
+   * counter); the centred board pulls them inward and the open felt below is
+   * the play area where the trick lands. */
+  .opp--left {
+    left: var(--space-4);
+  }
+
+  .opp--right {
+    right: var(--space-4);
+  }
+
+  .opp__nick {
+    font-size: var(--fs-md);
+  }
+
+  .opp__fan > * + * {
+    margin-left: -14px;
+  }
+
+  .opp__count {
+    font-size: var(--fs-xs);
+  }
+
+  /* Spread the played cards across the wider board. */
+  .trick {
+    width: min(64vw, 460px);
+    height: min(48vh, 340px);
+  }
+}
+
+/* ── Turn countdown ──
+ * Your-turn-only timer pill at the bottom-centre of the felt (autoplay on). It
+ * shows the seconds left before a bot takes over, and grows + turns red under
+ * URGENT_SECONDS so the pressure to act is felt. Taps pass through to the felt. */
+.turn-timer {
+  position: absolute;
+  bottom: var(--space-2);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 7;
+  pointer-events: none;
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  padding: 3px var(--space-3);
+  border-radius: 999px;
+  background: rgba(4, 26, 18, 0.82);
+  border: 1px solid var(--line);
+  color: var(--cream);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  transition: color 0.2s ease;
+}
+
+.turn-timer__num {
+  font-size: var(--fs-lg);
+  font-weight: 700;
+}
+
+.turn-timer__unit {
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+}
+
+.turn-timer--urgent {
+  background: rgba(229, 72, 77, 0.16);
+  border-color: var(--danger);
+  color: var(--danger);
+  animation: turn-timer-pulse 1s ease-in-out infinite;
+}
+
+.turn-timer--urgent .turn-timer__num {
+  font-size: var(--fs-xl);
+}
+
+.turn-timer--urgent .turn-timer__unit {
+  color: var(--danger);
+  opacity: 0.8;
+}
+
+@keyframes turn-timer-pulse {
+  0%,
+  100% {
+    transform: translateX(-50%) scale(1);
+  }
+  50% {
+    transform: translateX(-50%) scale(1.1);
+  }
+}
+
+/* Reduced-motion: keep the colour/size cue, drop the pulse. */
+@media (prefers-reduced-motion: reduce) {
+  .turn-timer--urgent {
+    animation: none;
+  }
+}
+
+/* Turn-timer lobby panel hint. */
+.tsettings__hint {
+  margin-top: var(--space-1);
+  font-size: var(--fs-sm);
 }

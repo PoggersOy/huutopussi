@@ -7,8 +7,19 @@
 import { randomBytes } from 'node:crypto';
 import type { MatchState, RuleConfig, Seat } from '@hp/engine';
 import { activeSeats } from '@hp/engine';
-import type { RoomStatePublic, SeatInfo } from '@hp/protocol';
+import type { RoomStatePublic, SeatInfo, TableSettings } from '@hp/protocol';
 import { isConnected, type Session } from './sessions.js';
+
+/**
+ * Internal (ms-precision) form of the wire `TableSettings`. Kept in ms so the
+ * server default can inherit the exact `TimerConfig.turnMs` (tests inject
+ * sub-second budgets there) while the host-facing wire form stays whole
+ * seconds. `roomPublic` converts ms → seconds on the way out.
+ */
+export interface RoomTableSettings {
+  autoplay: boolean;
+  turnTimeoutMs: number;
+}
 
 /** Exactly the roomCodeSchema alphabet /^[A-HJ-NP-Z2-9]{5}$/ (32 chars). */
 export const ROOM_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -38,6 +49,8 @@ export interface Room {
   /** Session token of the seat holding lobby powers (usually the creator). */
   hostToken: string | null;
   config: RuleConfig;
+  /** Turn pacing (autoplay + timeout); host-editable, independent of config. */
+  tableSettings: RoomTableSettings;
   status: RoomStatus;
   /** Per-room monotonic message sequence (bumped on every broadcast). */
   seq: number;
@@ -61,12 +74,14 @@ export function createRoom(init: {
   code: string;
   hostToken: string | null;
   config: RuleConfig;
+  tableSettings: RoomTableSettings;
 }): Room {
   return {
     id: init.id,
     code: init.code,
     hostToken: init.hostToken,
     config: init.config,
+    tableSettings: init.tableSettings,
     status: 'lobby',
     seq: 0,
     match: null,
@@ -121,8 +136,14 @@ export function roomPublic(room: Room): RoomStatePublic {
     seats,
     hostSeat: host ? host.seat : null,
     config: room.config,
+    tableSettings: toWireTableSettings(room.tableSettings),
     status: room.status,
   };
+}
+
+/** Internal ms budget → host-facing whole-second wire form. */
+export function toWireTableSettings(ts: RoomTableSettings): TableSettings {
+  return { autoplay: ts.autoplay, turnTimeoutSec: Math.round(ts.turnTimeoutMs / 1000) };
 }
 
 export function anyHumanConnected(room: Room): boolean {

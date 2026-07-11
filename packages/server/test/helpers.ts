@@ -38,8 +38,10 @@ export class TestClient {
   seq = 0;
   lastView: PlayerView | null = null;
   lastTurn: TurnInfo | null = null;
+  closeCode: number | null = null;
   private readonly ws: WebSocket;
   private waiters: Waiter[] = [];
+  private closeWaiters: Array<(code: number) => void> = [];
   private readonly listeners: Array<(msg: ServerMsg) => void> = [];
 
   private constructor(ws: WebSocket) {
@@ -47,8 +49,25 @@ export class TestClient {
     ws.on('message', (data) => {
       this.onMessage(JSON.parse(String(data)) as ServerMsg);
     });
+    ws.on('close', (code: number) => {
+      this.closeCode = code;
+      for (const resolve of this.closeWaiters) resolve(code);
+      this.closeWaiters = [];
+    });
     ws.on('error', () => {
       // terminated sockets etc. — tests handle outcomes via messages
+    });
+  }
+
+  /** Resolves with the WS close code (e.g. 4000 for a closed room). */
+  waitClose(timeoutMs = 10_000, what = 'socket close'): Promise<number> {
+    if (this.closeCode !== null) return Promise.resolve(this.closeCode);
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`timeout waiting for ${what}`)), timeoutMs);
+      this.closeWaiters.push((code) => {
+        clearTimeout(timer);
+        resolve(code);
+      });
     });
   }
 

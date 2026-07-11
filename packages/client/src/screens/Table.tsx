@@ -23,11 +23,11 @@ import {
 } from '@hp/engine';
 import type { SeatInfo } from '@hp/protocol';
 import { type ReactElement, useEffect, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import { Trans, useTranslation } from 'react-i18next';
 import { CardBack, CardFace } from '../components/CardFace';
-import { sendAction } from '../socket';
+import { sendAction, sendLobby } from '../socket';
 import { type CompletedTrick, type SpeechBubble, useStore } from '../store';
-import { DealScoredOverlay, MatchEndedOverlay } from './table/TableOverlays';
+import { DealScoredOverlay, MatchEndedOverlay, RedealOverlay } from './table/TableOverlays';
 import {
   AnswerWholeSheet,
   BiddingSheet,
@@ -42,6 +42,64 @@ import { actorOf, feltSlot, SUIT_GLYPH, useNameOf } from './table/tableUtils';
 const BUBBLE_MS = 4_000;
 const TRICK_LINGER_MS = 1_300;
 
+/**
+ * Renders a speech bubble's text. The trump announcement gets special treatment:
+ * its suit glyph is wrapped in a `suit--*` span so the bubble can tint it red/
+ * black (see `.bubble--trump` in table.css); everything else is a plain string.
+ */
+function BubbleText({ bubble }: { bubble: SpeechBubble }): ReactElement {
+  const { t } = useTranslation();
+  if (bubble.code === 'bubble.trump' && bubble.params) {
+    return (
+      <Trans
+        i18nKey={bubble.code}
+        values={bubble.params}
+        components={{ suit: <span className={`suit--${bubble.params.suitCode}`} /> }}
+      />
+    );
+  }
+  return <>{t(bubble.code, bubble.params ?? {})}</>;
+}
+
+/** Countdown appears only once this few seconds remain (a late "act soon" nudge). */
+const VISIBLE_SECONDS = 15;
+/** …and becomes urgent (big, red, pulsing) at/under this many. */
+const URGENT_SECONDS = 10;
+
+/** Whole seconds left until `deadline` (epoch ms), re-computed ~4×/second. */
+function useSecondsLeft(deadline: number): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(id);
+  }, []);
+  return Math.max(0, Math.ceil((deadline - now) / 1000));
+}
+
+/**
+ * The acting player's countdown ("…3, 2, 1"), shown only on your own turn while
+ * a deadline is live (i.e. autoplay is on) and ONLY in the final VISIBLE_SECONDS
+ * — it stays hidden until you're running low, then appears (and goes urgent
+ * under URGENT_SECONDS) so you act before a bot takes over. Rendered inside the
+ * felt (bottom centre); taps pass through to the felt (pointer-events: none).
+ */
+function TurnCountdown({ deadline }: { deadline: number }): ReactElement | null {
+  const { t } = useTranslation();
+  const secs = useSecondsLeft(deadline);
+  if (secs > VISIBLE_SECONDS) return null;
+  const urgent = secs <= URGENT_SECONDS;
+  return (
+    <div
+      className={`turn-timer${urgent ? ' turn-timer--urgent' : ''}`}
+      role="timer"
+      aria-label={t('table.timeLeft', { n: secs })}
+    >
+      <span className="turn-timer__num">{secs}</span>
+      <span className="turn-timer__unit">{t('table.secondsShort')}</span>
+    </div>
+  );
+}
+
 export function Table() {
   const { t } = useTranslation();
   const view = useStore((s) => s.server.view);
@@ -55,6 +113,7 @@ export function Table() {
   const raisedCard = useStore((s) => s.ui.raisedCard);
   const raiseCard = useStore((s) => s.raiseCard);
   const pending = useStore((s) => s.ui.pendingActionId) !== null;
+  const redeal = useStore((s) => s.ui.redeal);
   const nameOf = useNameOf();
 
   // Speech bubbles auto-dismiss.
@@ -76,6 +135,8 @@ export function Table() {
   const [declDismissedKey, setDeclDismissedKey] = useState<string | null>(null);
   /** Deal index whose scored overlay the user closed early. */
   const [scoredClosedFor, setScoredClosedFor] = useState<number | null>(null);
+  /** Host's "Stop game" confirmation dialog is open. */
+  const [confirmStop, setConfirmStop] = useState(false);
 
   if (view === null || room === null) {
     return (
@@ -114,6 +175,7 @@ export function Table() {
   const declKey = deal === null ? '' : `${view.dealIndex}:${deal.tricksPlayed}`;
   const declSheetOpen = declHint !== null && declDismissedKey !== declKey;
 
+  const isHost = seat !== null && room.hostSeat === seat;
   const scoredResult = deal !== null && deal.phase.name === 'scored' ? deal.phase.result : null;
   const showMatchOverlay = view.winnerSide !== null;
   const showScoredOverlay =
@@ -185,7 +247,22 @@ export function Table() {
 
   return (
     <div className="screen screen--table">
-      <TopBar view={view} mySide={mySide} actor={actor} myTurn={myTurn} nameOf={nameOf} />
+      {/* TopBar + host strip share one grid row so the felt keeps the 1fr track
+          (the grid template has exactly four rows: header / felt / sheet / hand). */}
+      <div className="ttop-wrap">
+        <TopBar view={view} mySide={mySide} actor={actor} myTurn={myTurn} nameOf={nameOf} />
+        {isHost && view.winnerSide === null && (
+          <div className="thostbar">
+            <button
+              type="button"
+              className="btn--ghost thostbar__stop"
+              onClick={() => setConfirmStop(true)}
+            >
+              {t('table.stop')}
+            </button>
+          </div>
+        )}
+      </div>
 
       {/* biome-ignore lint/a11y/useKeyWithClickEvents: tap-anywhere-to-lower is a touch affordance; keyboard users act via the card buttons */}
       <main className="felt" onClick={onFeltTap}>
@@ -223,8 +300,15 @@ export function Table() {
               nameOf={nameOf}
             />
             <LastTrickPeek deal={deal} hidden={completedTrick !== null} nameOf={nameOf} />
+            {myTurn && turn?.deadline != null && view.winnerSide === null && (
+              <TurnCountdown deadline={turn.deadline} />
+            )}
             {myBubble !== null && (
-              <div className="bubble bubble--me">{t(myBubble.code, myBubble.params ?? {})}</div>
+              <div
+                className={`bubble bubble--me${myBubble.code === 'bubble.trump' ? ' bubble--trump' : ''}`}
+              >
+                <BubbleText bubble={myBubble} />
+              </div>
             )}
             {declHint !== null && !declSheetOpen && (
               <button type="button" className="decl-chip" onClick={() => setDeclDismissedKey(null)}>
@@ -249,6 +333,9 @@ export function Table() {
         />
       </footer>
 
+      {redeal !== null && !showMatchOverlay && (
+        <RedealOverlay seat={redeal.seat} until={redeal.until} nameOf={nameOf} />
+      )}
       {showScoredOverlay && scoredResult !== null && (
         <DealScoredOverlay
           result={scoredResult}
@@ -269,6 +356,27 @@ export function Table() {
           players={players}
           nameOf={nameOf}
         />
+      )}
+      {confirmStop && (
+        <div className="overlay" role="dialog" aria-modal="true">
+          <div className="overlay__panel stack">
+            <h2>{t('table.stopTitle')}</h2>
+            <p className="tsheet__center">{t('table.stopConfirm')}</p>
+            <button
+              type="button"
+              className="btn--danger"
+              onClick={() => {
+                sendLobby({ type: 'stopMatch' });
+                setConfirmStop(false);
+              }}
+            >
+              {t('table.stop')}
+            </button>
+            <button type="button" className="btn--ghost" onClick={() => setConfirmStop(false)}>
+              {t('common.cancel')}
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -342,7 +450,12 @@ function TopBar({
             ))
           )}
         </span>
-        <span className={trump !== null ? `ttop__trump suit--${trump}` : 'dim'}>
+        {/* key on `trump` remounts the chip when trump changes, restarting the
+            attention flash (see `.ttop__trump` in table.css). */}
+        <span
+          key={trump ?? 'none'}
+          className={trump !== null ? `ttop__trump suit--${trump}` : 'dim'}
+        >
           {trump !== null ? `${SUIT_GLYPH[trump]} ${t(`suit.${trump}`)}` : t('table.noTrump')}
         </span>
         <span className="dim">{t('table.deal', { n: view.dealIndex + 1 })}</span>
@@ -397,7 +510,7 @@ function OpponentPanel({
       </div>
       <div className="opp__fan">
         {backs.map((id) => (
-          <CardBack key={id} width="14px" />
+          <CardBack key={id} width="var(--card-w-opp)" />
         ))}
         <span className="opp__count dim">{count}</span>
       </div>
@@ -407,7 +520,11 @@ function OpponentPanel({
         {offline && <span className="chip chip--off">{t('lobby.disconnected')}</span>}
         {isDeclarer && <span className="chip chip--gold">{t('table.declarer')}</span>}
       </div>
-      {bubble !== null && <div className="bubble">{t(bubble.code, bubble.params ?? {})}</div>}
+      {bubble !== null && (
+        <div className={`bubble${bubble.code === 'bubble.trump' ? ' bubble--trump' : ''}`}>
+          <BubbleText bubble={bubble} />
+        </div>
+      )}
     </div>
   );
 }
@@ -470,7 +587,7 @@ function FeltPiles({ deal }: { deal: DealView }) {
     <div className="felt-piles">
       {showTalon && (
         <div className="felt-pile">
-          <CardBack width="18px" />
+          <CardBack width="var(--card-w-opp)" />
           <span className="dim">
             {t('table.talon')} {deal.talonCount}
           </span>
@@ -478,7 +595,7 @@ function FeltPiles({ deal }: { deal: DealView }) {
       )}
       {showDummy && (
         <div className="felt-pile">
-          <CardBack width="18px" />
+          <CardBack width="var(--card-w-opp)" />
           <span className="dim">
             {t('table.dummy')} {deal.dummyHandCount}
           </span>

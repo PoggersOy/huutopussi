@@ -6,7 +6,13 @@
  * authority stays server-side — every control just submits a lobby command.
  */
 import { DEFAULT_RULES, ILLISOFT_RULES, type RuleConfig, type Seat } from '@hp/engine';
-import type { ConfigPatch, RoomStatePublic, SeatInfo } from '@hp/protocol';
+import type {
+  ConfigPatch,
+  RoomStatePublic,
+  SeatInfo,
+  TableSettings,
+  TableSettingsPatch,
+} from '@hp/protocol';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ConnectionPill } from '../components/ConnectionPill';
@@ -42,6 +48,7 @@ export function Lobby() {
         <MiniTable room={room} mySeat={mySeat} isHost={isHost} />
         <ShareBlock code={room.code} />
         <ConfigPanel config={room.config} isHost={isHost} />
+        <TableSettingsPanel settings={room.tableSettings} isHost={isHost} />
         <PastMatches roomCode={room.code} />
       </main>
       <footer className="screen__bottom stack" style={{ gap: 'var(--space-2)' }}>
@@ -410,6 +417,62 @@ function ConfigPanel({ config, isHost }: { config: RuleConfig; isHost: boolean }
           onChange={(e) => patch({ showLastTrick: e.target.checked })}
         />
       </label>
+    </section>
+  );
+}
+
+// ── Turn timer panel (tableSettingsPatchSchema; host-editable) ───────────────
+
+const TIMEOUT_OPTIONS = [30, 45, 60, 90, 120, 180];
+
+/**
+ * Autoplay + per-turn time limit. These are turn PACING, not game rules (the
+ * engine is timer-free), so they live on RoomStatePublic.tableSettings — a
+ * channel separate from configPatchSchema — and may be changed mid-match.
+ */
+function TableSettingsPanel({ settings, isHost }: { settings: TableSettings; isHost: boolean }) {
+  const { t } = useTranslation();
+  const patch = (p: TableSettingsPatch): void => {
+    sendLobby({ type: 'setTableSettings', patch: p });
+  };
+
+  return (
+    <section className="panel stack">
+      <h2 style={{ fontSize: 'var(--fs-md)' }}>{t('tableSettings.title')}</h2>
+      {!isHost && <p className="dim">{t('tableSettings.hostOnly')}</p>}
+
+      <label className="config-row">
+        <span>{t('tableSettings.autoplay')}</span>
+        <select
+          value={settings.autoplay ? 'on' : 'off'}
+          disabled={!isHost}
+          onChange={(e) => patch({ autoplay: e.target.value === 'on' })}
+        >
+          <option value="on">{t('tableSettings.autoplayOn')}</option>
+          <option value="off">{t('tableSettings.autoplayOff')}</option>
+        </select>
+      </label>
+
+      <label className="config-row">
+        <span>{t('tableSettings.turnTimeout')}</span>
+        <select
+          value={settings.turnTimeoutSec}
+          disabled={!isHost || !settings.autoplay}
+          onChange={(e) => patch({ turnTimeoutSec: Number(e.target.value) })}
+        >
+          {numberOptions(TIMEOUT_OPTIONS, settings.turnTimeoutSec).map((n) => (
+            <option key={n} value={n}>
+              {t('tableSettings.seconds', { n })}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <p className="dim tsettings__hint">
+        {settings.autoplay
+          ? t('tableSettings.hintOn', { n: settings.turnTimeoutSec })
+          : t('tableSettings.hintOff')}
+      </p>
     </section>
   );
 }

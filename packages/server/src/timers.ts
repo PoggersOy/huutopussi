@@ -1,12 +1,17 @@
 /**
  * timers.ts — timing policy + timer slot bookkeeping (plan §Reconnection).
  *
- *  - Per-turn deadline: 45 s default, 10 s for awaitWholeAnswer. On expiry the
- *    seat is marked botControlled ("away") and the bot runner acts, in EVERY
- *    phase (bidding/exchange/declarations/play alike).
- *  - Disconnect mid-turn: the deadline is extended to at least now+graceMs
- *    (30 s) before autoplay kicks in; a disconnect off-turn pauses nothing.
- *  - Reconnect reclaims the seat at the next turn boundary.
+ *  - Per-turn deadline: seeds each new room's host-editable turn timeout (90 s
+ *    default), capped at wholeAnswerMs (10 s) for the awaitWholeAnswer choice.
+ *    On expiry the away seat is marked botControlled and the bot runner acts,
+ *    in EVERY phase (bidding/exchange/declarations/play alike) — UNLESS the
+ *    room's host has turned autoplay off, in which case a present player has
+ *    unlimited time (see server.ts updateTurn / tableSettings).
+ *  - Disconnect mid-turn: the deadline is extended so a dropped player has at
+ *    least a full turn — max(graceMs, the room's host-editable turn budget) —
+ *    to reconnect before autoplay kicks in, even with autoplay off, so one
+ *    dropped player can't freeze the table; a disconnect off-turn pauses nothing.
+ *  - Reconnect reclaims the seat immediately, re-arming a full fresh turn.
  *  - A room with zero connected humans for idleCloseMs (15 min) is persisted
  *    as abandoned and closed.
  *
@@ -14,15 +19,18 @@
  * numbers and the Room timer slots so they are impossible to leak.
  */
 import { randomInt } from 'node:crypto';
-import type { MatchState } from '@hp/engine';
 import type { Room } from './rooms.js';
 
 export interface TimerConfig {
-  /** Default per-turn deadline. */
+  /** Default per-turn budget; seeds a new room's (host-editable) turn timeout. */
   turnMs: number;
-  /** Deadline for the awaitWholeAnswer choice. */
+  /** Hard cap for the awaitWholeAnswer choice (never longer than the budget). */
   wholeAnswerMs: number;
-  /** Minimum time a disconnected player's turn waits before autoplay. */
+  /**
+   * Floor for a disconnected player's reconnect window before autoplay. The
+   * effective grace is `max(graceMs, room turn budget)`, so a dropped player
+   * always gets at least a full (host-editable) turn to come back.
+   */
   graceMs: number;
   /** Pause between dealScored and the server-authored next dealStarted. */
   nextDealDelayMs: number;
@@ -35,19 +43,16 @@ export interface TimerConfig {
 }
 
 export const DEFAULT_TIMER_CONFIG: TimerConfig = {
-  turnMs: 45_000,
+  turnMs: 90_000,
   wholeAnswerMs: 10_000,
-  graceMs: 30_000,
-  nextDealDelayMs: 6_000,
-  redealDelayMs: 1_500,
+  // Floor only; the effective reconnect grace is at least the room's turn
+  // budget (default 90 s == turnMs). See the graceMs field doc above.
+  graceMs: 90_000,
+  nextDealDelayMs: 15_000,
+  redealDelayMs: 5_000,
   idleCloseMs: 15 * 60_000,
-  botDelayMs: [500, 1500],
+  botDelayMs: [1000, 2500],
 };
-
-/** The turn budget for the current phase of `state`. */
-export function turnLimitMs(cfg: TimerConfig, state: MatchState): number {
-  return state.deal?.phase.name === 'awaitWholeAnswer' ? cfg.wholeAnswerMs : cfg.turnMs;
-}
 
 /** Crypto-random humanizing delay within the configured range. */
 export function botDelayMs(cfg: TimerConfig): number {

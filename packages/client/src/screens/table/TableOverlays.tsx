@@ -6,11 +6,49 @@
  * player (each seat is its own side).
  */
 import { type DealResult, SEATS, type Seat, type Side, sideCount, sideOf } from '@hp/engine';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { sendLobby } from '../../socket';
 
 function signed(n: number): string {
   return n > 0 ? `+${n}` : `${n}`;
+}
+
+/**
+ * Redeal countdown: a seat demanded a redeal, so every table shows who did it
+ * and ticks down to the server-authored fresh deal. Purely presentational — the
+ * store clears it (and this overlay unmounts) the instant `dealStarted` lands,
+ * so the number is a friendly estimate, not the authority on when cards return.
+ */
+export function RedealOverlay({
+  seat,
+  until,
+  nameOf,
+}: {
+  seat: Seat;
+  /** Epoch ms the fresh deal is expected (store's REDEAL_COUNTDOWN_MS ahead). */
+  until: number;
+  nameOf: (seat: Seat) => string;
+}) {
+  const { t } = useTranslation();
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(id);
+  }, []);
+  const secs = Math.max(0, Math.ceil((until - now) / 1000));
+
+  return (
+    <div className="overlay" role="dialog" aria-modal="true">
+      <div className="overlay__panel stack">
+        <h2>{t('overlay.redealTitle')}</h2>
+        <p className="tsheet__center">{t('overlay.redealBy', { name: nameOf(seat) })}</p>
+        <p className="redeal__count" aria-live="polite">
+          {secs > 0 ? t('overlay.redealIn', { n: secs }) : t('overlay.redealingNow')}
+        </p>
+      </div>
+    </div>
+  );
 }
 
 /** Column order: the viewer's side first, the rest by side index. */
