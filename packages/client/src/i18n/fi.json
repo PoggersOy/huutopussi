@@ -356,6 +356,7 @@
     "declarationLocked": "Aiempi kysely on lukinnut julistukset tässä jaossa",
     "declarationUsed": "Julistusyritys on jo käytetty tällä ajovuorolla",
     "forcedOpening": "Sinun on avattava huuto vähintään {{min}}:llä",
+    "halfAlreadyDenied": "Pari vastasi tähän puolikkaaseen jo ei",
     "mustFollowSuit": "Maapakko: ajettua maata on pelattava",
     "mustHeadTrick": "Ylimenopakko: pelikierroksen korkein kortti on ylitettävä",
     "mustLeadAce": "Ensimmäisellä pelikierroksella on ajettava ässä, jos sinulla on",

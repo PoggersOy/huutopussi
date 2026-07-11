@@ -6,6 +6,7 @@
  * validate.ts; events reaching this reducer are assumed already validated.
  */
 import type { RuleConfig } from './config.js';
+import { makeCard } from './deck.js';
 import { declarableSuits } from './legality.js';
 import type { Card, DealPhase, DealState, GameEvent, MatchState, Seat } from './types.js';
 import { activeSeats, nextSeat, partnerOf, sideCount, sideOf, tricksPerDeal } from './types.js';
@@ -129,6 +130,7 @@ export function applyEvent(state: MatchState, event: GameEvent): MatchState {
         declarations: [],
         askedWhole: bySeat(() => false),
         askedHalf: bySeat(() => false),
+        deniedHalves: [],
         bidLog: [],
         bid: null,
         declarer: null,
@@ -319,9 +321,19 @@ export function applyEvent(state: MatchState, event: GameEvent): MatchState {
       const deal = requireDeal(state);
       const ph = requirePhase(deal, 'lead');
       assert(ph.canDeclare, 'askedHalf outside a declaration window');
+      // A denial (partner lacks the complement) is permanent for the deal, so
+      // remember the (side, suit) and stop offering it to this side again.
+      const complement = event.rankHeld === 'K' ? 'Q' : 'K';
+      const denied = !deal.hands[partnerOf(event.seat)].includes(makeCard(event.suit, complement));
+      const side = sideOf(event.seat, players);
+      const alreadyKnown = deal.deniedHalves.some((d) => d.side === side && d.suit === event.suit);
       return withDeal(state, {
         ...deal,
         askedHalf: { ...deal.askedHalf, [event.seat]: true },
+        deniedHalves:
+          denied && !alreadyKnown
+            ? [...deal.deniedHalves, { side, suit: event.suit }]
+            : deal.deniedHalves,
         phase: { name: 'lead', leader: ph.leader, canDeclare: false },
       });
     }

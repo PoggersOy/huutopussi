@@ -484,6 +484,45 @@ describe('askHalf', () => {
     });
   });
 
+  it('never re-offers or accepts a half the partner already denied', () => {
+    const ctx = setupDeal(HALF_HANDS, HALF_GIVE);
+    winTrick0(ctx, ['CJ', 'C7', 'C8']);
+    // Trick 1: ask ♣ (CQ sits with an opponent → 'no'); the denial is recorded
+    // for the asking side.
+    act(ctx, 1, { type: 'askHalf', suit: 'C', rankHeld: 'K' });
+    expect(ctx.state.deal?.deniedHalves).toEqual([{ side: 1, suit: 'C' }]);
+    // Seat 1 leads C10 and wins, reopening the declaration window at trick 2.
+    playTrick(
+      ctx,
+      [
+        [1, 'C10'],
+        [2, 'CQ'],
+        [3, 'S7'],
+        [0, 'C9'],
+      ],
+      { winner: 1, trickIndex: 1, canDeclareNext: true },
+    );
+    expect(ctx.state.deal?.phase).toEqual({ name: 'lead', leader: 1, canDeclare: true });
+    // The denied ♣ half is gone from the hint; the untried ♥/♦ halves remain.
+    expect(declarationHintOf(ctx, 1)).toEqual({
+      type: 'declaration',
+      ownSuits: ['H'],
+      canAskWhole: true,
+      halfAsks: [
+        { suit: 'H', rankHeld: 'K' },
+        { suit: 'H', rankHeld: 'Q' },
+        { suit: 'D', rankHeld: 'K' },
+      ],
+    });
+    // Re-asking the denied ♣ half is rejected outright; an untried suit still works.
+    expectError(ctx, 1, { type: 'askHalf', suit: 'C', rankHeld: 'K' }, 'error.halfAlreadyDenied');
+    expect(act(ctx, 1, { type: 'askHalf', suit: 'D', rankHeld: 'K' })).toEqual([
+      { type: 'askedHalf', seat: 1, suit: 'D', rankHeld: 'K' },
+      { type: 'answeredHalf', seat: 3, yes: true },
+      { type: 'trumpSet', suit: 'D', seat: 1, side: 1, how: 'halfAsk', points: 80 },
+    ]);
+  });
+
   it('rejects asking in an already-declared suit (error.suitAlreadyDeclared)', () => {
     const ctx = setupDeal(SWITCH_HANDS, SWITCH_GIVE);
     winTrick0(ctx, ['CJ', 'C7', 'C8']);

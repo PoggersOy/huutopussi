@@ -356,6 +356,7 @@
     "declarationLocked": "An earlier ask locked declarations for this deal",
     "declarationUsed": "You already used this lead's declaration attempt",
     "forcedOpening": "You must open the bidding at {{min}} or more",
+    "halfAlreadyDenied": "Your partner already said no to this half",
     "mustFollowSuit": "You must follow the led suit",
     "mustHeadTrick": "You must beat the winning card if you can",
     "mustLeadAce": "You must lead an ace to the first trick if you hold one",

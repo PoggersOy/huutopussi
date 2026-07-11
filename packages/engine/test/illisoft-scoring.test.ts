@@ -117,6 +117,7 @@ function baseDeal(config: RuleConfig, over: Partial<DealState>): DealState {
     declarations: [],
     askedWhole: { 0: false, 1: false, 2: false, 3: false },
     askedHalf: { 0: false, 1: false, 2: false, 3: false },
+    deniedHalves: [],
     bidLog: [],
     bid: null,
     declarer: null,

@@ -149,6 +149,13 @@ export interface DealState {
   askedWhole: Record<Seat, boolean>;
   /** Seats that have used askHalf (illisoft ask lockouts). */
   askedHalf: Record<Seat, boolean>;
+  /**
+   * Half-asks a side made and had DENIED (the partner lacked the complement).
+   * The answer cannot change within a deal, so such a (side, suit) is never
+   * offered to that side again — the declaration hint drops it and re-asking
+   * it is rejected (error.halfAlreadyDenied).
+   */
+  deniedHalves: Array<{ side: Side; suit: Suit }>;
   bidLog: BidLogEntry[];
   /** Winning bid, fixed when bidding ends. null also for contract-less deals. */
   bid: BidRecord | null;

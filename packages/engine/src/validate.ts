@@ -287,6 +287,11 @@ function validateDeclaration(
   // askHalf
   if (cfg.players !== 4) return err('error.noPartner');
   if (declared.includes(action.suit)) return err('error.suitAlreadyDeclared');
+  if (
+    deal.deniedHalves.some((d) => d.side === sideOf(seat, cfg.players) && d.suit === action.suit)
+  ) {
+    return err('error.halfAlreadyDenied');
+  }
   if (cfg.askHalfMustHoldCard && !hand.includes(makeCard(action.suit, action.rankHeld))) {
     return err('error.notHoldingHalf');
   }
@@ -623,8 +628,11 @@ export function allowedActions(state: MatchState, seat: Seat): ActionHint[] {
         const canAskWhole = cfg.players === 4 && askWholeLock(deal, seat, cfg) === null;
         const halfAsks: Array<{ suit: Suit; rankHeld: 'K' | 'Q' }> = [];
         if (cfg.players === 4) {
+          const side = sideOf(seat, cfg.players);
           for (const s of SUITS) {
             if (declared.includes(s)) continue;
+            // A denied half never returns a different answer this deal.
+            if (deal.deniedHalves.some((d) => d.side === side && d.suit === s)) continue;
             for (const r of ['K', 'Q'] as const) {
               if (!cfg.askHalfMustHoldCard || hand.includes(makeCard(s, r))) {
                 halfAsks.push({ suit: s, rankHeld: r });
