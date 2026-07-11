@@ -48,6 +48,20 @@
     "unratedHint": "Elo counts only when every seat is a distinct signed-in player.",
     "yourChange": "Your rating"
   },
+  "matchmaking": {
+    "title": "Find a match",
+    "ranked": "Ranked",
+    "unranked": "Unranked",
+    "rankedSignInHint": "Sign in to play ranked",
+    "find": "Find match",
+    "waitingCount": "{{count}} waiting",
+    "searching": "Searching for players…",
+    "waiting": "Waiting for players…",
+    "progress": "{{filled}} / {{total}}",
+    "startWithBots": "Start with bots",
+    "unrankedNote": "Bots make this game unranked",
+    "leave": "Cancel"
+  },
   "room": {
     "joinTitle": "Join room {{code}}",
     "joinAction": "Join"
@@ -324,6 +338,7 @@
     "roomNotFound": "Room not found",
     "roomClosed": "This room has closed",
     "roomFull": "This room is full",
+    "rankedNeedsLogin": "Sign in with Google to play ranked",
     "serverBusy": "The server is busy — please try again shortly",
     "seatTaken": "That seat is already taken",
     "seatsNotFilled": "Not all seats are filled",

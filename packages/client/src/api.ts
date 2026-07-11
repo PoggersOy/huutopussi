@@ -13,6 +13,36 @@ export interface OpenRoom {
   seatsTotal: number;
 }
 
+export interface MatchmakingBucket {
+  players: 2 | 3 | 4;
+  ranked: boolean;
+  /** Players currently waiting in this bucket's open room. */
+  waiting: number;
+}
+
+/**
+ * How many players are waiting in each matchmaking bucket. Aggregate only (no
+ * room codes/nicknames). Returns [] on any failure.
+ */
+export async function fetchMatchmaking(): Promise<MatchmakingBucket[]> {
+  try {
+    const res = await fetch('/api/matchmaking');
+    if (!res.ok) return [];
+    const data = (await res.json()) as { buckets?: unknown };
+    if (!Array.isArray(data.buckets)) return [];
+    return data.buckets.filter(
+      (b): b is MatchmakingBucket =>
+        typeof b === 'object' &&
+        b !== null &&
+        typeof (b as MatchmakingBucket).players === 'number' &&
+        typeof (b as MatchmakingBucket).ranked === 'boolean' &&
+        typeof (b as MatchmakingBucket).waiting === 'number',
+    );
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Ask the server which of these room codes are still live. Returns only the
  * rooms that currently exist, in the same order the server saw them; unknown or

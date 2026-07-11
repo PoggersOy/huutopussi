@@ -43,6 +43,12 @@ export interface RoomTimerSlots {
 
 export type RoomStatus = 'lobby' | 'playing' | 'finished';
 
+/** Matchmaking disposition of a room; null for a private code-room. */
+export interface RoomMatchmaking {
+  /** Whether this matchmade room counts for Elo (see planMatchRating). */
+  ranked: boolean;
+}
+
 export interface Room {
   id: string;
   code: string;
@@ -52,6 +58,8 @@ export interface Room {
   /** Turn pacing (autoplay + timeout); host-editable, independent of config. */
   tableSettings: RoomTableSettings;
   status: RoomStatus;
+  /** Matchmaking marker (bucket disposition); null = private code-room. */
+  matchmaking: RoomMatchmaking | null;
   /** Per-room monotonic message sequence (bumped on every broadcast). */
   seq: number;
   /** Authoritative engine state; null while in lobby. */
@@ -75,6 +83,7 @@ export function createRoom(init: {
   hostToken: string | null;
   config: RuleConfig;
   tableSettings: RoomTableSettings;
+  matchmaking?: RoomMatchmaking | null;
 }): Room {
   return {
     id: init.id,
@@ -82,6 +91,7 @@ export function createRoom(init: {
     hostToken: init.hostToken,
     config: init.config,
     tableSettings: init.tableSettings,
+    matchmaking: init.matchmaking ?? null,
     status: 'lobby',
     seq: 0,
     match: null,
@@ -149,6 +159,7 @@ export function roomPublic(room: Room): RoomStatePublic {
     config: room.config,
     tableSettings: toWireTableSettings(room.tableSettings),
     status: room.status,
+    matchmaking: room.matchmaking,
   };
 }
 

@@ -6,11 +6,12 @@
 import { type FormEvent, useEffect, useState, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
+import { fetchMatchmaking, type MatchmakingBucket } from '../api';
 import { AuthPanel } from '../components/AuthPanel';
 import { ConnectionPill } from '../components/ConnectionPill';
 import { LANGUAGES, setLanguage } from '../i18n';
 import { installAvailable, promptInstall, subscribeInstall } from '../install';
-import { connect } from '../socket';
+import { connect, findMatch } from '../socket';
 import { useStore } from '../store';
 
 const NICKNAME_KEY = 'hp:nickname';
@@ -40,15 +41,44 @@ export function Home() {
   const [nickname, setNickname] = useState(savedNickname);
   const [code, setCode] = useState('');
   const [creating, setCreating] = useState(false);
-  /** Game mode for a new room (2/3/4 pelaajaa) — sent in the hello config. */
+  const [searching, setSearching] = useState(false);
+  /** Game mode (2/3/4 players) — shared by Find match and Create room. */
   const [players, setPlayers] = useState<2 | 3 | 4>(4);
+  const [ranked, setRanked] = useState(false);
+  const [buckets, setBuckets] = useState<MatchmakingBucket[]>([]);
   const canInstall = useSyncExternalStore(subscribeInstall, installAvailable);
   const createdCode = useStore((s) => s.server.room?.code);
+  const signedIn = useStore((s) => s.auth.user !== null);
+  const effectiveRanked = ranked && signedIn;
 
-  // Room creation: the code arrives in the welcome message; then navigate.
+  // Room creation OR matchmaking: the code arrives in the welcome; then navigate.
   useEffect(() => {
-    if (creating && createdCode !== undefined) navigate(`/r/${createdCode}`);
-  }, [creating, createdCode, navigate]);
+    if ((creating || searching) && createdCode !== undefined) navigate(`/r/${createdCode}`);
+  }, [creating, searching, createdCode, navigate]);
+
+  // Ranked needs a signed-in account; drop the toggle on sign-out.
+  useEffect(() => {
+    if (!signedIn) setRanked(false);
+  }, [signedIn]);
+
+  // Poll live waiting counts per bucket while on Home.
+  useEffect(() => {
+    let active = true;
+    const load = (): void => {
+      void fetchMatchmaking().then((b) => {
+        if (active) setBuckets(b);
+      });
+    };
+    load();
+    const id = setInterval(load, 5_000);
+    return () => {
+      active = false;
+      clearInterval(id);
+    };
+  }, []);
+
+  const waiting =
+    buckets.find((b) => b.players === players && b.ranked === effectiveRanked)?.waiting ?? 0;
 
   function persistNickname(): string | undefined {
     const nick = nickname.trim();
@@ -59,6 +89,11 @@ export function Home() {
   function onCreate(): void {
     setCreating(true);
     connect(undefined, undefined, persistNickname(), { players });
+  }
+
+  function onFindMatch(): void {
+    setSearching(true);
+    findMatch(players, effectiveRanked, persistNickname());
   }
 
   function onJoin(e: FormEvent): void {
@@ -105,10 +140,45 @@ export function Home() {
               ))}
             </select>
           </label>
-          <button type="button" className="btn--primary" onClick={onCreate} disabled={creating}>
+        </div>
+
+        <div className="panel stack">
+          <span className="dim">{t('matchmaking.title')}</span>
+          <div className="segmented">
+            <button
+              type="button"
+              className={effectiveRanked ? 'btn--ghost' : 'btn--primary'}
+              onClick={() => setRanked(false)}
+            >
+              {t('matchmaking.unranked')}
+            </button>
+            <button
+              type="button"
+              className={effectiveRanked ? 'btn--primary' : 'btn--ghost'}
+              onClick={() => setRanked(true)}
+              disabled={!signedIn}
+            >
+              {t('matchmaking.ranked')}
+            </button>
+          </div>
+          {ranked && !signedIn && <span className="dim">{t('matchmaking.rankedSignInHint')}</span>}
+          <button type="button" className="btn--primary" onClick={onFindMatch} disabled={searching}>
+            {searching ? t('matchmaking.searching') : t('matchmaking.find')}
+            {!searching && waiting > 0 && (
+              <span className="mm-count">
+                {' '}
+                · {t('matchmaking.waitingCount', { count: waiting })}
+              </span>
+            )}
+          </button>
+        </div>
+
+        <div className="panel stack">
+          <button type="button" onClick={onCreate} disabled={creating}>
             {creating ? t('connection.connecting') : t('home.create')}
           </button>
         </div>
+
         <form className="panel stack" onSubmit={onJoin}>
           <span className="dim">{t('home.orJoin')}</span>
           <input

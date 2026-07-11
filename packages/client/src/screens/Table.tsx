@@ -351,7 +351,7 @@ export function Table() {
 
       {sheet}
 
-      <footer className={`thand${myTurn ? ' thand--turn' : ''}`}>
+      <footer className={`thand${myTurn && contractHint === null ? ' thand--turn' : ''}`}>
         {raisedCard !== null && playHint !== null && !pending && (
           <p className="thand__hint dim">{t('table.tapAgain')}</p>
         )}
@@ -598,18 +598,26 @@ function TrickArea({
         : t('table.leadsNow', { name: nameOf(deal.phase.leader) });
   }
 
+  // When the trick is won, the whole card group slides toward the winner's felt
+  // slot (`trick--to-p{n}`) after the gold winner-flash — see `.trick__cards` in
+  // table.css. The `trick__cards` wrapper lets the group translate as one while
+  // each card keeps its own entrance + winner flash, and the label stays put.
+  const winSlot = winner !== null ? feltSlot(me, winner, players) : null;
+
   return (
-    <div className="trick">
-      {plays.map((play) => (
-        <div
-          key={`${play.seat}-${play.card}`}
-          className={`trick__card trick__card--p${feltSlot(me, play.seat, players)}${
-            winner === play.seat ? ' trick__card--win' : ''
-          }`}
-        >
-          <CardFace card={play.card} width="var(--card-w-md)" />
-        </div>
-      ))}
+    <div className={`trick${winSlot !== null ? ` trick--won trick--to-p${winSlot}` : ''}`}>
+      <div className="trick__cards">
+        {plays.map((play) => (
+          <div
+            key={`${play.seat}-${play.card}`}
+            className={`trick__card trick__card--p${feltSlot(me, play.seat, players)}${
+              winner === play.seat ? ' trick__card--win' : ''
+            }`}
+          >
+            <CardFace card={play.card} width="var(--card-w-md)" />
+          </div>
+        ))}
+      </div>
       {label !== null && <span className="trick__label dim">{label}</span>}
     </div>
   );

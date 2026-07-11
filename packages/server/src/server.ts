@@ -63,6 +63,7 @@ import {
   hostSessionOf,
   ROOM_CODE_ALPHABET,
   type Room,
+  type RoomMatchmaking,
   type RoomStatus,
   type RoomTableSettings,
   roomPublic,
@@ -110,6 +111,13 @@ export interface ServerOpts {
    * and the app runs guest-only — the natural mode for local dev and e2e.
    */
   googleClientId?: string | null;
+  /**
+   * Rule overrides for matchmade rooms, applied on top of the illisoft default
+   * (the per-bucket `players` count is always set separately). Lets an operator
+   * tune the matchmaking ruleset (e.g. a shorter winTarget); tests use it to end
+   * matches fast. Undefined = pure illisoft.
+   */
+  matchmakingConfig?: ConfigPatch;
 }
 
 export interface HpServer {
@@ -216,10 +224,20 @@ export function createServer(opts: ServerOpts = {}): HpServer {
   const db = new Db(opts.dbPath ?? './data/hp.db');
   const googleClientId = opts.googleClientId ?? null;
   const verifyGoogle = createGoogleVerifier(googleClientId);
+  const matchmakingConfig = opts.matchmakingConfig;
 
   const rooms = new Map<string, Room>(); // by code
   const roomsById = new Map<string, Room>();
   const sessionsByToken = new Map<string, Session>();
+  /**
+   * Matchmaking: one currently-accepting matchmade room per bucket. Keyed by
+   * `bucketKey(players, ranked)` → room code. A find reuses the mapped room if
+   * it is still open/lobby/not-full, else opens a new one; the entry is dropped
+   * when its room starts or closes.
+   */
+  const matchmakingOpen = new Map<string, string>();
+  const bucketKey = (players: 2 | 3 | 4, ranked: boolean): string =>
+    `${players}:${ranked ? 'r' : 'u'}`;
   let serverClosed = false;
 
   // ── outbound plumbing ───────────────────────────────────────────────────────
@@ -450,10 +468,18 @@ export function createServer(opts: ServerOpts = {}): HpServer {
     startIdleTimer(room, cfg.idleCloseMs, () => closeRoom(room));
   }
 
+  /** Drop a matchmade room from the bucket registry if it is the open one. */
+  function unregisterMatchmaking(room: Room): void {
+    if (room.matchmaking === null) return;
+    const key = bucketKey(room.config.players, room.matchmaking.ranked);
+    if (matchmakingOpen.get(key) === room.code) matchmakingOpen.delete(key);
+  }
+
   /** Zero connected humans for idleCloseMs: persist as abandoned, close. */
   function closeRoom(room: Room): void {
     if (room.closed) return;
     room.closed = true;
+    unregisterMatchmaking(room);
     clearAllRoomTimers(room);
     if (room.matchId && room.status === 'playing') db.abandonMatch(room.matchId);
     db.setRoomStatus(room.id, 'closed');
@@ -494,6 +520,9 @@ export function createServer(opts: ServerOpts = {}): HpServer {
   ): RatingPlan {
     const players = room.config.players;
     if (finalState.winnerSide === null) return UNRATED_PLAN;
+    // A matchmade room that opted out of ranking never counts, even if it
+    // happens to be all-signed-in. (Private code-rooms rate by composition.)
+    if (room.matchmaking !== null && !room.matchmaking.ranked) return UNRATED_PLAN;
     const seats = activeSeats(players);
 
     // Eligibility + gather each seat's account, keyed by seat.
@@ -646,13 +675,17 @@ export function createServer(opts: ServerOpts = {}): HpServer {
     }
   }
 
-  function startNewMatch(room: Room, origin: { token: string; actionId: string }): void {
+  /** Start a match. `origin` present for a host-triggered start (idempotent echo);
+   *  omitted for a server-initiated start (matchmaking auto-start / auto-fill). */
+  function startNewMatch(room: Room, origin?: { token: string; actionId: string }): void {
     const firstDealer = randomInt(room.config.players) as Seat;
     const matchId = randomUUID();
     room.match = initialMatchState(room.config, firstDealer);
     room.matchId = matchId;
     room.eventSeq = 0;
     room.status = 'playing';
+    // A started matchmade room no longer accepts finders.
+    unregisterMatchmaking(room);
     db.transaction(() => {
       db.createMatch({ id: matchId, roomId: room.id, config: room.config, firstDealer });
       db.setRoomStatus(room.id, 'playing');
@@ -661,11 +694,13 @@ export function createServer(opts: ServerOpts = {}): HpServer {
       applyAndBroadcast(room, [nextDealEvent(room.match, cryptoShuffle(ALL_CARDS))], origin, true);
     } catch (err) {
       console.error(`[server] failed to start match in room ${room.code}`, err);
-      respondError(
-        room.sessions.get(origin.token) ?? createDetachedSession(),
-        origin.actionId,
-        'error.internal',
-      );
+      if (origin) {
+        respondError(
+          room.sessions.get(origin.token) ?? createDetachedSession(),
+          origin.actionId,
+          'error.internal',
+        );
+      }
     }
   }
 
@@ -761,6 +796,38 @@ export function createServer(opts: ServerOpts = {}): HpServer {
   // ── lobby commands ──────────────────────────────────────────────────────────
 
   /** Returns false when the command was refused (an error was sent). */
+  /**
+   * Seat a session at `seat`: mutate + persist + broadcast + re-welcome. The
+   * seat-taker's own seat rides only on `welcome` (the `room` message carries no
+   * viewer identity), so the re-welcome is required or they'd stay `seat: null`
+   * client-side. Used by `takeSeat` and the matchmaker (server-driven seating).
+   */
+  function seatSession(
+    room: Room,
+    session: Session,
+    seat: Seat,
+    origin?: { token: string; actionId: string },
+  ): void {
+    session.seat = seat;
+    db.saveSession(sessionRow(session));
+    broadcastRoom(room, origin);
+    sendWelcome(session, room);
+  }
+
+  /** Create + register a bot session at `seat` (no broadcast — caller broadcasts). */
+  function addBotToSeat(room: Room, seat: Seat): void {
+    const bot = createSession({
+      token: randomUUID(),
+      roomId: room.id,
+      seat,
+      nickname: null,
+      kind: 'bot',
+    });
+    room.sessions.set(bot.token, bot);
+    sessionsByToken.set(bot.token, bot);
+    db.saveSession(sessionRow(bot));
+  }
+
   function handleLobby(session: Session, actionId: string, cmd: LobbyCmd): boolean {
     const room = roomsById.get(session.roomId);
     if (!room || room.closed) {
@@ -779,13 +846,7 @@ export function createServer(opts: ServerOpts = {}): HpServer {
         if (seatsLocked) return fail('error.matchInProgress');
         if (cmd.seat >= room.config.players) return fail('error.badSeat');
         if (sessionAtSeat(room, cmd.seat)) return fail('error.seatTaken');
-        session.seat = cmd.seat;
-        db.saveSession(sessionRow(session));
-        broadcastRoom(room, { token: session.token, actionId });
-        // The seat-taker's own seat rides only on `welcome` (the `room` message
-        // carries no viewer identity), so without this they'd stay `seat: null`
-        // client-side and never see their turn/hints. Re-welcome them.
-        sendWelcome(session, room);
+        seatSession(room, session, cmd.seat, { token: session.token, actionId });
         return true;
       }
       case 'leaveSeat': {
@@ -808,16 +869,7 @@ export function createServer(opts: ServerOpts = {}): HpServer {
         if (seatsLocked) return fail('error.matchInProgress');
         if (cmd.seat >= room.config.players) return fail('error.badSeat');
         if (sessionAtSeat(room, cmd.seat)) return fail('error.seatTaken');
-        const bot = createSession({
-          token: randomUUID(),
-          roomId: room.id,
-          seat: cmd.seat,
-          nickname: null,
-          kind: 'bot',
-        });
-        room.sessions.set(bot.token, bot);
-        sessionsByToken.set(bot.token, bot);
-        db.saveSession(sessionRow(bot));
+        addBotToSeat(room, cmd.seat);
         broadcastRoom(room, { token: session.token, actionId });
         return true;
       }
@@ -881,6 +933,18 @@ export function createServer(opts: ServerOpts = {}): HpServer {
       case 'rematch': {
         if (!isHost) return fail('error.notHost');
         if (room.status !== 'finished') return fail('error.matchNotFinished');
+        startNewMatch(room, { token: session.token, actionId });
+        return true;
+      }
+      case 'fillBotsAndStart': {
+        // Matchmaking "Start with bots": fill empty active seats with bots and
+        // start now. Atomic (no client addBot×N + startMatch race). Bots present
+        // → the match is unrated.
+        if (!isHost) return fail('error.notHost');
+        if (room.status !== 'lobby') return fail('error.matchInProgress');
+        for (const seat of activeSeats(room.config.players)) {
+          if (!sessionAtSeat(room, seat)) addBotToSeat(room, seat);
+        }
         startNewMatch(room, { token: session.token, actionId });
         return true;
       }
@@ -992,6 +1056,122 @@ export function createServer(opts: ServerOpts = {}): HpServer {
     }
   }
 
+  /** Lowest unoccupied active seat, or null if the room is full. */
+  function firstFreeSeat(room: Room): Seat | null {
+    for (const seat of activeSeats(room.config.players)) {
+      if (!sessionAtSeat(room, seat)) return seat;
+    }
+    return null;
+  }
+
+  /**
+   * Create + register an EMPTY matchmade room for a bucket (no creator seat;
+   * host resolves to the first-seated human via hostSessionOf). Returns null if
+   * the global room cap is hit.
+   */
+  function createEmptyMatchmadeRoom(config: RuleConfig, matchmaking: RoomMatchmaking): Room | null {
+    if (rooms.size >= maxRooms) return null;
+    const roomId = randomUUID();
+    const code = generateRoomCode((c) => rooms.has(c));
+    const room = createRoom({
+      id: roomId,
+      code,
+      hostToken: null,
+      config,
+      tableSettings: defaultTableSettings(),
+      matchmaking,
+    });
+    rooms.set(code, room);
+    roomsById.set(roomId, room);
+    db.createRoom({
+      id: roomId,
+      code,
+      hostToken: null,
+      config: room.config,
+      tableSettings: room.tableSettings,
+    });
+    return room;
+  }
+
+  /**
+   * Matchmaking hello: find an open matchmade room for the bucket (or open one),
+   * auto-seat this player, and auto-start when the room fills. Ranked buckets
+   * require a signed-in account.
+   */
+  function handleMatchmaking(
+    sock: WebSocket,
+    msg: Extract<ClientMsg, { t: 'hello' }>,
+    mm: { players: 2 | 3 | 4; ranked: boolean },
+    authUser: UserRow | null,
+    setBound: (s: Session) => void,
+  ): void {
+    if (mm.ranked && authUser === null) {
+      // Ranked needs a real account; the client also prevents this.
+      sendJson(sock, { t: 'error', code: 'error.rankedNeedsLogin' });
+      return;
+    }
+
+    const key = bucketKey(mm.players, mm.ranked);
+    let room: Room | null = null;
+    const openCode = matchmakingOpen.get(key);
+    if (openCode !== undefined) {
+      const candidate = rooms.get(openCode);
+      if (
+        candidate &&
+        !candidate.closed &&
+        candidate.status === 'lobby' &&
+        candidate.matchmaking !== null &&
+        candidate.sessions.size < maxSessionsPerRoom &&
+        !allSeatsFilled(candidate)
+      ) {
+        room = candidate;
+      } else {
+        matchmakingOpen.delete(key);
+      }
+    }
+
+    if (room === null) {
+      const applied = applyConfigPatch(defaultConfig(), {
+        ...matchmakingConfig,
+        players: mm.players,
+      });
+      if (!applied.ok) {
+        // Defensive; a bare `players` patch on illisoft is always valid.
+        sendJson(sock, { t: 'error', code: applied.code, params: applied.params });
+        return;
+      }
+      room = createEmptyMatchmadeRoom(applied.config, { ranked: mm.ranked });
+      if (room === null) {
+        sendJson(sock, { t: 'error', code: 'error.serverBusy' });
+        return;
+      }
+      matchmakingOpen.set(key, room.code);
+    }
+
+    const seat = firstFreeSeat(room);
+    if (seat === null) {
+      sendJson(sock, { t: 'error', code: 'error.serverBusy' });
+      return;
+    }
+
+    const session = createSession({
+      token: randomUUID(),
+      roomId: room.id,
+      seat: null,
+      nickname: msg.nickname ?? null,
+      kind: 'human',
+    });
+    applyAuthToSession(session, authUser, msg.nickname);
+    room.sessions.set(session.token, session);
+    sessionsByToken.set(session.token, session);
+    bindSocket(session, sock, room);
+    setBound(session);
+    // Seat them (persists + broadcasts to the room + re-welcomes the joiner).
+    seatSession(room, session, seat);
+    // The room is all-human (finds only add humans); a full room auto-starts.
+    if (allSeatsFilled(room)) startNewMatch(room);
+  }
+
   function handleHello(
     sock: WebSocket,
     msg: Extract<ClientMsg, { t: 'hello' }>,
@@ -1040,6 +1220,13 @@ export function createServer(opts: ServerOpts = {}): HpServer {
         }
       }
       // Unknown/stale token: fall through and treat as a fresh hello.
+    }
+
+    // Matchmaking: the server picks/opens a matchmade room for the bucket and
+    // auto-seats this player (auto-starting when the room fills).
+    if (msg.matchmaking !== undefined) {
+      handleMatchmaking(sock, msg, msg.matchmaking, authUser, setBound);
+      return;
     }
 
     if (msg.roomCode !== undefined) {
@@ -1168,6 +1355,18 @@ export function createServer(opts: ServerOpts = {}): HpServer {
     session.socket = null;
     const room = roomsById.get(session.roomId);
     if (!room || room.closed) return;
+    // Matchmaking is casual: a disconnect from a WAITING (lobby) matchmade room
+    // frees the seat immediately (no 15-min hold) and closes an emptied queue at
+    // once, so stale waiting rooms don't linger. Once playing, fall through to
+    // the normal disconnect/reconnect-grace handling below.
+    if (room.matchmaking !== null && room.status === 'lobby') {
+      room.sessions.delete(session.token);
+      sessionsByToken.delete(session.token);
+      db.deleteSession(session.token);
+      if ([...room.sessions.values()].some((s) => s.kind === 'human')) broadcastRoom(room);
+      else closeRoom(room);
+      return;
+    }
     if (session.seat === null) {
       // Unseated guest/spectator disconnect: nothing to hold, so drop the dead
       // session instead of letting it linger until idle-close.
@@ -1550,6 +1749,25 @@ export function createServer(opts: ServerOpts = {}): HpServer {
       }
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ rooms: result }));
+      return;
+    }
+    // Matchmaking waiting counts per bucket (players × ranked). Aggregate only —
+    // no codes/nicknames — so this exposes activity without leaking any room.
+    if (url.pathname === '/api/matchmaking') {
+      const buckets: Array<{ players: 2 | 3 | 4; ranked: boolean; waiting: number }> = [];
+      for (const players of [2, 3, 4] as const) {
+        for (const ranked of [false, true] as const) {
+          const code = matchmakingOpen.get(bucketKey(players, ranked));
+          const room = code !== undefined ? rooms.get(code) : undefined;
+          let waiting = 0;
+          if (room && !room.closed && room.status === 'lobby') {
+            for (const s of room.sessions.values()) if (s.kind === 'human') waiting++;
+          }
+          buckets.push({ players, ranked, waiting });
+        }
+      }
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ buckets }));
       return;
     }
     let pathname: string;

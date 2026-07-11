@@ -359,6 +359,14 @@
   height: min(42vh, 250px);
 }
 
+/* Wraps just the played cards (not the label) so the whole group can slide to
+ * the winner as one. Fills the trick box so the cards' `left/top: 50%` still
+ * centre on the felt. */
+.trick__cards {
+  position: absolute;
+  inset: 0;
+}
+
 .trick__card {
   --ox: 0px;
   --oy: 0px;
@@ -416,6 +424,39 @@
 @keyframes win-pulse {
   50% {
     transform: translate(var(--ox), var(--oy)) rotate(var(--rot)) scale(1.12);
+  }
+}
+
+/* Slide-to-winner: once the trick is won the gold flash plays first, then the
+ * whole card group glides toward the winning seat's edge (`--gx/--gy`, set per
+ * slot below) and settles as a slightly-gathered stack — as if the winner
+ * scooped up the trick. The delay clears the ~650ms win-pulse; `both` holds the
+ * cards resting during it and parked at the winner after, so the final trick of
+ * a deal stays visible by the winner until the score card covers the felt. */
+.trick--won .trick__cards {
+  animation: trick-to-winner 520ms cubic-bezier(0.36, 0, 0.3, 1) 720ms both;
+}
+
+.trick--to-p0 {
+  --gx: 0px;
+  --gy: 122px;
+}
+.trick--to-p1 {
+  --gx: -158px;
+  --gy: 0px;
+}
+.trick--to-p2 {
+  --gx: 0px;
+  --gy: -122px;
+}
+.trick--to-p3 {
+  --gx: 158px;
+  --gy: 0px;
+}
+
+@keyframes trick-to-winner {
+  to {
+    transform: translate(var(--gx), var(--gy)) scale(0.86);
   }
 }
 
@@ -537,6 +578,29 @@
   from {
     transform: translateY(35%);
     opacity: 0;
+  }
+}
+
+/* Your turn, action-in-sheet (e.g. the raise/Korotus box): the whole sheet
+   breathes on the same 1.5s gold heartbeat as the opponent panels, so it's the
+   sheet — not the hand fan — that signals the table is waiting on you. Keeps the
+   `sheet-up` entry as the first (finite) animation. */
+.tsheet--turn {
+  border-top-color: var(--gold);
+  animation:
+    sheet-up 200ms ease-out,
+    sheet-turn-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes sheet-turn-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 12px 0 rgba(212, 175, 55, 0.28);
+    background: var(--felt-800);
+  }
+  50% {
+    box-shadow: 0 0 26px 3px rgba(212, 175, 55, 0.6);
+    background: rgba(212, 175, 55, 0.1);
   }
 }
 
@@ -938,6 +1002,17 @@
   .thand--turn {
     animation: none;
     box-shadow: 0 -4px 16px -2px rgba(212, 175, 55, 0.45);
+  }
+
+  .tsheet--turn {
+    animation: sheet-up 200ms ease-out;
+    box-shadow: 0 0 18px 2px rgba(212, 175, 55, 0.5);
+  }
+
+  /* Trick-to-winner: skip the glide, just park the group at the winner's edge. */
+  .trick--won .trick__cards {
+    animation: none;
+    transform: translate(var(--gx), var(--gy)) scale(0.86);
   }
 }
 

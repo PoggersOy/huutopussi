@@ -10,6 +10,10 @@
  * and an optional `update.ratings` post-match payload (server→client). All
  * additive and optional — PROTOCOL_VERSION intentionally NOT bumped so open
  * clients degrade to guest rather than being force-closed.
+ * Extended 2026-07-11 (user-authorized) for Matchmaking: an optional
+ * `hello.matchmaking` intent + a `fillBotsAndStart` lobby command (client→
+ * server), and an optional `RoomStatePublic.matchmaking` marker (server→client).
+ * Additive/optional — PROTOCOL_VERSION still NOT bumped.
  *
  * Direction rules:
  *  - Client→server messages are UNTRUSTED: they are parsed with zod
@@ -181,6 +185,9 @@ export const lobbyCmdSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('setTableSettings'), patch: tableSettingsPatchSchema }),
   z.object({ type: z.literal('startMatch') }),
   z.object({ type: z.literal('rematch') }),
+  // Host-only: fill empty active seats with bots and start now. Used by the
+  // matchmaking waiting view's "Start with bots"; bots make the match unranked.
+  z.object({ type: z.literal('fillBotsAndStart') }),
   // Host-only: abort an ongoing match and close the room (all clients dropped).
   z.object({ type: z.literal('stopMatch') }),
 ]);
@@ -202,6 +209,18 @@ export const clientMsgSchema = z.discriminatedUnion('t', [
      * it never rejects the join. Optional, so pre-auth clients omit it.
      */
     auth: z.string().optional(),
+    /**
+     * Matchmaking intent: instead of creating/joining a specific room, ask the
+     * server to auto-join an open matchmade room for this bucket (or open one)
+     * and auto-start it when full. `ranked` requires a valid `auth` token.
+     * Mutually exclusive with roomCode; the code is learned from `welcome`.
+     */
+    matchmaking: z
+      .object({
+        players: z.union([z.literal(2), z.literal(3), z.literal(4)]),
+        ranked: z.boolean(),
+      })
+      .optional(),
     /**
      * Initial room config (preset + overrides), applied at creation exactly
      * like a lobby setConfig patch. Only meaningful when creating a room
@@ -282,6 +301,12 @@ export interface RoomStatePublic {
   /** Turn pacing (autoplay + timeout); host-editable, independent of RuleConfig. */
   tableSettings: TableSettings;
   status: 'lobby' | 'playing' | 'finished';
+  /**
+   * Set for matchmade rooms (null for private code-rooms). The client renders a
+   * "searching / waiting" lobby instead of the normal share/config lobby, and
+   * `ranked` drives whether the match counts for Elo (see planMatchRating).
+   */
+  matchmaking?: { ranked: boolean } | null;
 }
 
 export interface TurnInfo {

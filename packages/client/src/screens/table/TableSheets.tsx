@@ -32,9 +32,20 @@ function usePending(): boolean {
   return useStore((s) => s.ui.pendingActionId) !== null;
 }
 
-function SheetShell({ title, children }: { title: string; children: ReactNode }) {
+/** `pulse` gives the sheet the gold "waiting on you" heartbeat — used when the
+ *  action lives in the sheet (buttons), so the sheet breathes instead of the
+ *  hand fan. */
+function SheetShell({
+  title,
+  children,
+  pulse = false,
+}: {
+  title: string;
+  children: ReactNode;
+  pulse?: boolean;
+}) {
   return (
-    <section className="tsheet">
+    <section className={`tsheet${pulse ? ' tsheet--turn' : ''}`}>
       <div className="tsheet__handle" aria-hidden="true" />
       <h2 className="tsheet__title">{title}</h2>
       {children}
@@ -323,7 +334,7 @@ export function ContractSheet({
   useEffect(() => setAmount(min), [min]);
 
   return (
-    <SheetShell title={t('sheet.contractTitle')}>
+    <SheetShell title={t('sheet.contractTitle')} pulse={hint !== null}>
       {hint !== null ? (
         <>
           <p className="dim tsheet__center">{t('sheet.contractMin', { min: hint.min })}</p>

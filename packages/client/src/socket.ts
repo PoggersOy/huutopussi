@@ -96,6 +96,11 @@ interface Desired {
   nickname: string | undefined;
   /** Initial room config for creation; ignored by the server on join/rejoin. */
   config: ConfigPatch | undefined;
+  /**
+   * Matchmaking intent for the INITIAL find (no roomCode yet). Cleared once the
+   * server's welcome tells us the room code, so reconnects rejoin by code.
+   */
+  matchmaking: { players: 2 | 3 | 4; ranked: boolean } | undefined;
 }
 
 let desired: Desired | null = null;
@@ -149,8 +154,13 @@ function openSocket(): void {
     // read fresh so a sign-in/out between connects is always reflected.
     const authToken = getAuthToken();
     if (authToken !== null) hello.auth = authToken;
-    // Only meaningful when creating a room (no roomCode yet).
-    if (desired.roomCode === undefined && desired.config !== undefined) {
+    // Matchmaking (initial find): the server picks/opens the room. Only when we
+    // don't yet have a room code (a reconnect after welcome uses the code).
+    if (desired.roomCode === undefined && desired.matchmaking !== undefined) {
+      hello.matchmaking = desired.matchmaking;
+    }
+    // Only meaningful when creating a room (no roomCode / no matchmaking yet).
+    else if (desired.roomCode === undefined && desired.config !== undefined) {
       hello.config = desired.config;
     }
     socket.send(JSON.stringify(hello));
@@ -218,10 +228,12 @@ function handleMessage(msg: ServerMsg): void {
     case 'welcome':
       attempts = 0;
       if (desired !== null) {
-        // Room creation: we learn the code from the welcome. Persist it so
-        // reconnects rejoin (and Home can navigate to /r/CODE).
+        // Room creation / matchmaking: we learn the code from the welcome.
+        // Persist it so reconnects rejoin by code (and Home can navigate to
+        // /r/CODE); drop the matchmaking intent so a reconnect doesn't re-queue.
         desired.roomCode = msg.room.code;
         desired.sessionToken = msg.sessionToken;
+        desired.matchmaking = undefined;
       }
       storeSessionToken(msg.room.code, msg.sessionToken);
       serverApply.welcome(msg);
@@ -299,6 +311,31 @@ export function connect(
       sessionToken ?? (code !== undefined ? (loadSessionToken(code) ?? undefined) : undefined),
     nickname,
     config,
+    matchmaking: undefined,
+  };
+  attempts = 0;
+  intentionalClose = false;
+  openSocket();
+}
+
+/**
+ * Enter matchmaking: the server finds/opens a matchmade room for the bucket,
+ * auto-seats us, and auto-starts when it fills. The room code arrives in the
+ * welcome (like room creation) — Home navigates to /r/CODE off `server.room`.
+ */
+export function findMatch(players: 2 | 3 | 4, ranked: boolean, nickname?: string): void {
+  installWakeHandlers();
+  intentionalClose = true; // silence the auto-reconnect of any old socket
+  ws?.close();
+  clearTimers();
+  serverApply.reset();
+  serverApply.setFatal(null);
+  desired = {
+    roomCode: undefined,
+    sessionToken: undefined,
+    nickname,
+    config: undefined,
+    matchmaking: { players, ranked },
   };
   attempts = 0;
   intentionalClose = false;

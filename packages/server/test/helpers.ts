@@ -126,6 +126,8 @@ export class TestClient {
       config?: ConfigPatch;
       /** Opaque app auth token binding the connection to a signed-in account. */
       auth?: string;
+      /** Matchmaking intent: server picks/opens a matchmade room for the bucket. */
+      matchmaking?: { players: 2 | 3 | 4; ranked: boolean };
     } = {},
   ): Promise<ServerMsg> {
     const reply = this.next((m) => m.t === 'welcome' || m.t === 'error', 10_000, 'welcome');
@@ -137,6 +139,7 @@ export class TestClient {
       ...(opts.nickname !== undefined ? { nickname: opts.nickname } : {}),
       ...(opts.config !== undefined ? { config: opts.config } : {}),
       ...(opts.auth !== undefined ? { auth: opts.auth } : {}),
+      ...(opts.matchmaking !== undefined ? { matchmaking: opts.matchmaking } : {}),
     });
     return reply;
   }

@@ -215,6 +215,30 @@ Plan: `docs/plan.md`. Rules: `docs/huutopussin-saannot.md`.
   `pnpm typecheck`/`lint`/`test` green, 500-game sim clean, client+server build +
   deployment smoke test pass. Design: [`docs/AUTH-ELO.md`](AUTH-ELO.md).
 
+- 2026-07-11: **Matchmaking mode (auto-join open matches; ranked / unranked).**
+  A "Find a match" flow: pick a size (2/3/4), tap once, and the server auto-joins
+  you into an open matchmade room for that bucket (or opens one) and **auto-starts
+  it when full** — no codes, no seat-picking. Signed-in players choose **ranked**
+  (Elo counts) or **unranked**; guests get unranked only; Home shows a live
+  per-bucket "N waiting" count (polled `GET /api/matchmaking`, aggregate-only so no
+  private room leaks). The waiting view shows progress + the players, a host
+  **"Start with bots"** (`fillBotsAndStart` — fills empty seats + starts, makes it
+  unranked), and Cancel. Server-driven over the existing room machinery: a
+  `matchmakingOpen` bucket registry (`${players}:${r|u}` → code), an empty-room
+  helper (creation was welded to "creator at seat 0"), `seatSession`/`addBotToSeat`
+  factored out, `startNewMatch(origin?)` made origin-optional for server-initiated
+  auto-start, and a quick reaper that closes an emptied waiting room at once
+  (no 15-min hold). **Critical rating fix:** Elo was *inferred* from seat
+  composition, so an all-signed-in **unranked** game would have wrongly counted —
+  `planMatchRating` now force-unrates a room with `matchmaking.ranked === false`
+  (private code-rooms unchanged). Contract: additive/optional `hello.matchmaking`,
+  `lobbyCmd.fillBotsAndStart`, `RoomStatePublic.matchmaking`; no `PROTOCOL_VERSION`
+  bump. New `ServerOpts.matchmakingConfig` tunes the matchmade ruleset (tests use a
+  low `winTarget`). Tests: `matchmaking.test.ts` (find-or-create, auto-start,
+  ranked→rated, all-signed-in-unranked→unrated, fillBotsAndStart, ranked-needs-
+  login, waiting counts, reaper); `pnpm typecheck`/`lint`/`test` green (484 unit),
+  500-game sim clean, client+server build; auto-start verified in two live browsers.
+
 ## Backlog (post-MVP)
 
 - **illisoft ruleset preset**: the user's old Huutopussi.exe (2002) help file

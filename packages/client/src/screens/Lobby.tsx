@@ -15,11 +15,12 @@ import type {
 } from '@hp/protocol';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { ConnectionPill } from '../components/ConnectionPill';
 import { MatchList } from '../components/MatchList';
 import { RatingBadge } from '../components/RatingBadge';
 import { loadRoomHistory } from '../history';
-import { sendLobby } from '../socket';
+import { disconnect, sendLobby } from '../socket';
 import { useStore } from '../store';
 
 export function Lobby() {
@@ -29,6 +30,12 @@ export function Lobby() {
   if (room === null) return null;
 
   const isHost = mySeat !== null && room.hostSeat === mySeat;
+  // Matchmade rooms show a simplified "searching / waiting" view (no share/
+  // config/seat-picking) — the server auto-seats and auto-starts. (Truthy check:
+  // private rooms send null, and older snapshots may omit the field entirely.)
+  if (room.matchmaking) {
+    return <MatchmakingWaiting room={room} isHost={isHost} />;
+  }
   // Defensive slice: only config.players seats are active (protocol sends that
   // many, but a stale 4-entry snapshot must not block a 2-3p start).
   const activeSeatInfos = room.seats.slice(0, room.config.players);
@@ -75,6 +82,87 @@ export function Lobby() {
             {t('lobby.waitingForHost')}
           </p>
         )}
+      </footer>
+    </div>
+  );
+}
+
+// ── Matchmaking: searching / waiting view ────────────────────────────────────
+
+function MatchmakingWaiting({ room, isHost }: { room: RoomStatePublic; isHost: boolean }) {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const players = room.config.players;
+  const seats = room.seats.slice(0, players);
+  const filled = seats.filter((s) => s.kind !== 'empty').length;
+  const ranked = room.matchmaking?.ranked === true;
+  const modeLabel = `${ranked ? t('matchmaking.ranked') : t('matchmaking.unranked')} · ${t(
+    'config.playersOpt',
+    { n: players },
+  )}`;
+
+  return (
+    <div className="screen">
+      <header className="screen__top">
+        <div className="row" style={{ justifyContent: 'space-between' }}>
+          <h1>{t('matchmaking.title')}</h1>
+          <ConnectionPill />
+        </div>
+        <p className="dim">{modeLabel}</p>
+      </header>
+      <main className="screen__main">
+        <div className="panel stack mm-wait">
+          <p className="mm-wait__status" aria-live="polite">
+            {t('matchmaking.searching')}
+          </p>
+          <p className="mm-wait__progress">
+            {t('matchmaking.progress', { filled, total: players })}
+          </p>
+          <ul className="mm-wait__players">
+            {seats.map((s) => (
+              <li key={s.seat} className="mm-wait__player">
+                {s.kind === 'empty' ? (
+                  <span className="dim">{t('matchmaking.waiting')}</span>
+                ) : (
+                  <span>
+                    {s.nickname ?? '—'}
+                    {s.kind === 'human' && (
+                      <RatingBadge rating={s.rating} provisional={s.provisional} />
+                    )}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </main>
+      <footer className="screen__bottom stack" style={{ gap: 'var(--space-2)' }}>
+        {isHost && (
+          <>
+            <button
+              type="button"
+              className="btn--ghost"
+              style={{ width: '100%' }}
+              onClick={() => sendLobby({ type: 'fillBotsAndStart' })}
+            >
+              {t('matchmaking.startWithBots')}
+            </button>
+            <p className="dim" style={{ textAlign: 'center' }}>
+              {t('matchmaking.unrankedNote')}
+            </p>
+          </>
+        )}
+        <button
+          type="button"
+          className="btn--danger"
+          style={{ width: '100%' }}
+          onClick={() => {
+            disconnect();
+            navigate('/');
+          }}
+        >
+          {t('matchmaking.leave')}
+        </button>
       </footer>
     </div>
   );

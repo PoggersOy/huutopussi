@@ -48,6 +48,20 @@
     "unratedHint": "Elo lasketaan vain kun jokainen paikka on eri kirjautunut pelaaja.",
     "yourChange": "Ratingisi"
   },
+  "matchmaking": {
+    "title": "Etsi peli",
+    "ranked": "Rankattu",
+    "unranked": "Ei-rankattu",
+    "rankedSignInHint": "Kirjaudu pelataksesi rankattua",
+    "find": "Etsi peli",
+    "waitingCount": "{{count}} jonossa",
+    "searching": "Etsitään pelaajia…",
+    "waiting": "Odotetaan pelaajia…",
+    "progress": "{{filled}} / {{total}}",
+    "startWithBots": "Aloita boteilla",
+    "unrankedNote": "Botit tekevät pelistä ei-rankatun",
+    "leave": "Peruuta"
+  },
   "room": {
     "joinTitle": "Liity huoneeseen {{code}}",
     "joinAction": "Liity"
@@ -324,6 +338,7 @@
     "roomNotFound": "Huonetta ei löytynyt",
     "roomClosed": "Tämä huone on suljettu",
     "roomFull": "Tämä huone on täynnä",
+    "rankedNeedsLogin": "Kirjaudu Googlella pelataksesi rankattua",
     "serverBusy": "Palvelin on ruuhkautunut — yritä hetken kuluttua uudelleen",
     "seatTaken": "Paikka on jo varattu",
     "seatsNotFilled": "Kaikki paikat eivät ole täynnä",
