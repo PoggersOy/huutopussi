@@ -1,19 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<urlset
-  xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
-  xmlns:xhtml="http://www.w3.org/1999/xhtml"
->
+<!--
+  Sitemap for https://huutopussi.online
+  Submit its URL in Google Search Console:
+    Indexing → Sitemaps → enter "sitemap.xml" (full: https://huutopussi.online/sitemap.xml)
+  Only the public landing page is listed: /r/CODE room links are private,
+  ephemeral and robots-disallowed, and /history is a device-local view with no
+  crawlable content. Bump <lastmod> when the landing page's content changes.
+-->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://huutopussi.online/</loc>
-    <xhtml:link rel="alternate" hreflang="fi" href="https://huutopussi.online/" />
-    <xhtml:link rel="alternate" hreflang="en" href="https://huutopussi.online/" />
-    <xhtml:link rel="alternate" hreflang="x-default" href="https://huutopussi.online/" />
+    <lastmod>2026-07-11</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
-  </url>
-  <url>
-    <loc>https://huutopussi.online/history</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.4</priority>
   </url>
 </urlset>

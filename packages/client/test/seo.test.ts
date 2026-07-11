@@ -9,7 +9,8 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 // Vitest runs with the package root as cwd; index.html lives there.
-const html = readFileSync(join(process.cwd(), 'index.html'), 'utf8');
+const readPkg = (rel: string) => readFileSync(join(process.cwd(), rel), 'utf8');
+const html = readPkg('index.html');
 const doc = new DOMParser().parseFromString(html, 'text/html');
 
 const meta = (sel: string) => doc.querySelector(sel)?.getAttribute('content') ?? '';
@@ -67,5 +68,25 @@ describe('index.html SEO head', () => {
     const app = graph.find((n) => JSON.stringify(n['@type']).includes('Application'));
     expect(app?.applicationCategory).toBe('GameApplication');
     expect(app?.isAccessibleForFree).toBe(true);
+  });
+});
+
+describe('crawler files (robots + sitemap)', () => {
+  it('sitemap.xml is well-formed XML listing the canonical home URL', () => {
+    const xml = readPkg('public/sitemap.xml');
+    const sm = new DOMParser().parseFromString(xml, 'application/xml');
+    expect(sm.querySelector('parsererror')).toBeNull(); // parse errors surface here
+    const locs = [...sm.getElementsByTagName('loc')].map((l) => l.textContent);
+    expect(locs).toContain('https://huutopussi.online/');
+    // Every <loc> must be an absolute https URL on the production origin, or
+    // Search Console rejects the entry.
+    for (const loc of locs) expect(loc).toMatch(/^https:\/\/huutopussi\.online\//);
+  });
+
+  it('robots.txt allows crawling and points Search Console at the sitemap', () => {
+    const txt = readPkg('public/robots.txt');
+    expect(txt).toMatch(/Sitemap:\s*https:\/\/huutopussi\.online\/sitemap\.xml/);
+    expect(txt).toMatch(/Disallow:\s*\/r\//); // private room links stay out of the index
+    expect(txt).not.toMatch(/Disallow:\s*\/\s*$/m); // never a blanket site-wide block
   });
 });
