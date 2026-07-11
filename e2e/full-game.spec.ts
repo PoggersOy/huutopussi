@@ -29,17 +29,18 @@ test('Anna vs three bots: a full deal reaches a consistent score overlay', async
   await startMatch(page);
 
   const driver = newDriver(page);
-  const scoredHeading = page.locator('.overlay h2', { hasText: 'Deal scored' });
+  const resultsHeading = page.locator('.overlay h2', { hasText: 'Deal results' });
 
   await driveUntil(
     [driver],
-    async () => await scoredHeading.isVisible().catch(() => false),
+    async () => await resultsHeading.isVisible().catch(() => false),
     360_000,
-    'deal-scored overlay',
+    'deal-results overlay',
   );
 
-  // The overlay is replaced ~6 s later by the next deal: read every row in
-  // one atomic evaluate, then assert offline.
+  // Solo-vs-bots is player-paced: the overlay waits for a "Continue" tap and the
+  // driver never presses it, so it lingers. Still read every row in one atomic
+  // evaluate, then assert offline — cheap insurance against any future timer.
   const rows: OverlayRow[] = await page.locator('.overlay tbody tr').evaluateAll((trs) =>
     trs.map((tr) => ({
       label: tr.querySelector('th')?.textContent?.trim() ?? '',
