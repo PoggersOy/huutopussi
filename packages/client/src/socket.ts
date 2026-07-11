@@ -3,8 +3,11 @@
  *
  *  - Single connection singleton; `connect()` is idempotent per room.
  *  - Auto-reconnect with exponential backoff (250 ms → 5 s cap).
- *  - Session tokens persisted in localStorage per room code, so a reload or
- *    a new tab rejoins the same seat.
+ *  - Session tokens persisted in sessionStorage per room code, i.e. PER TAB: a
+ *    reload or wake reconnects to the same seat, while a second tab of the same
+ *    room in the same browser gets its OWN session — so two seats can be played
+ *    side by side (e.g. host + a local second player). Trade-off vs localStorage:
+ *    fully closing a tab drops its reconnect token (reopening rejoins fresh).
  *  - iOS suspend rule (docs/plan.md §3): on visibilitychange→visible and on
  *    pageshow we UNCONDITIONALLY refresh — resync over the live socket plus a
  *    watchdog that force-reconnects if the socket is a zombie (iOS kills
@@ -52,14 +55,16 @@ export const TERMINAL_CLOSE: Readonly<Record<number, string>> = {
   4006: 'error.roomFull', // room at its session cap
 };
 
-/** localStorage key holding the session token for a room. */
+/** sessionStorage key holding this tab's session token for a room. */
 export function sessionKey(roomCode: string): string {
   return `hp:session:${roomCode.toUpperCase()}`;
 }
 
 export function loadSessionToken(roomCode: string): string | null {
   try {
-    return localStorage.getItem(sessionKey(roomCode));
+    // sessionStorage (not localStorage): the token is per-tab, so two tabs of
+    // the same room hold two independent seats instead of colliding on one.
+    return sessionStorage.getItem(sessionKey(roomCode));
   } catch {
     return null;
   }
@@ -67,7 +72,7 @@ export function loadSessionToken(roomCode: string): string | null {
 
 function storeSessionToken(roomCode: string, token: string): void {
   try {
-    localStorage.setItem(sessionKey(roomCode), token);
+    sessionStorage.setItem(sessionKey(roomCode), token);
   } catch {
     // Private mode etc. — session survives only as long as the socket.
   }

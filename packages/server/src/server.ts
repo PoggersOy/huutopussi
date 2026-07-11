@@ -640,6 +640,10 @@ export function createServer(opts: ServerOpts = {}): HpServer {
         session.seat = cmd.seat;
         db.saveSession(sessionRow(session));
         broadcastRoom(room, { token: session.token, actionId });
+        // The seat-taker's own seat rides only on `welcome` (the `room` message
+        // carries no viewer identity), so without this they'd stay `seat: null`
+        // client-side and never see their turn/hints. Re-welcome them.
+        sendWelcome(session, room);
         return true;
       }
       case 'leaveSeat': {
@@ -648,6 +652,7 @@ export function createServer(opts: ServerOpts = {}): HpServer {
         session.seat = null;
         db.saveSession(sessionRow(session));
         broadcastRoom(room, { token: session.token, actionId });
+        sendWelcome(session, room); // sync the now-null seat to their client
         return true;
       }
       case 'setNickname': {

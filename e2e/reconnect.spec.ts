@@ -45,7 +45,7 @@ test('reload mid-deal reclaims the seat; visibility wake stays consistent', asyn
 
   const handBefore = await ownHand(page);
   const scoresBefore = await topScores(page);
-  const tokenBefore = await page.evaluate((c) => localStorage.getItem(`hp:session:${c}`), code);
+  const tokenBefore = await page.evaluate((c) => sessionStorage.getItem(`hp:session:${c}`), code);
   expect(tokenBefore).not.toBeNull();
 
   // ── Reload: the seat is reclaimed via the persisted session token ─────────
@@ -55,7 +55,7 @@ test('reload mid-deal reclaims the seat; visibility wake stays consistent', asyn
 
   expect(await ownHand(page)).toEqual(handBefore);
   expect(await topScores(page)).toEqual(scoresBefore);
-  expect(await page.evaluate((c) => localStorage.getItem(`hp:session:${c}`), code)).toBe(
+  expect(await page.evaluate((c) => sessionStorage.getItem(`hp:session:${c}`), code)).toBe(
     tokenBefore,
   );
   await expect(page.locator('.banner')).toHaveCount(0); // no reconnect banner

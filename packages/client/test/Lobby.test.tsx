@@ -1,7 +1,7 @@
 /** Lobby: seats around the mini table, host vs guest powers, config panel. */
 import { DEFAULT_RULES } from '@hp/engine';
 import type { RoomStatePublic, SeatInfo, SeatKind, ServerMsg } from '@hp/protocol';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import i18n from '../src/i18n';
@@ -106,6 +106,43 @@ describe('Lobby as host', () => {
 
     fireEvent.click(screen.getByLabelText('Show the last trick'));
     expect(sendLobby).toHaveBeenCalledWith({ type: 'setConfig', patch: { showLastTrick: false } });
+  });
+});
+
+describe('View all rules overlay', () => {
+  it('opens from the config panel and surfaces rules the editable panel hides', () => {
+    welcome(partialSeats, 0);
+    renderLobby();
+
+    // Hidden rules (e.g. the bid increment) are not on screen until opened.
+    expect(screen.queryByText('Bid increment')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'View all rules in play' }));
+    const dialog = within(screen.getByRole('dialog'));
+
+    expect(dialog.getByText('Rules in play')).toBeTruthy();
+    // DEFAULT_RULES is the päämuoto preset — shown as the subtitle.
+    expect(dialog.getByText('Main variant (päämuoto)')).toBeTruthy();
+    // Fields the editable panel never exposes:
+    expect(dialog.getByText('Bid increment')).toBeTruthy();
+    expect(dialog.getByText('Maximum bid')).toBeTruthy();
+    expect(dialog.getByText('First-trick constraints')).toBeTruthy();
+    // Values are derived from the live config:
+    expect(dialog.getByText('440')).toBeTruthy(); // DEFAULT_RULES.maxBid
+    expect(dialog.getByText('No constraints')).toBeTruthy(); // firstTrickRules 'free'
+    // 4p omits the 2-3p talon rows and shows the exchange instead.
+    expect(dialog.queryByText('Talon size')).toBeNull();
+    expect(dialog.getByText('Cards exchanged')).toBeTruthy();
+
+    fireEvent.click(dialog.getByRole('button', { name: 'Close' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('is available to non-host guests too', () => {
+    welcome(partialSeats, null);
+    renderLobby();
+    fireEvent.click(screen.getByRole('button', { name: 'View all rules in play' }));
+    expect(within(screen.getByRole('dialog')).getByText('Rules in play')).toBeTruthy();
   });
 });
 

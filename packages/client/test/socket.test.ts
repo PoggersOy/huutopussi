@@ -18,18 +18,21 @@ describe('backoffDelay', () => {
   });
 });
 
-describe('session token persistence', () => {
-  beforeEach(() => localStorage.clear());
+describe('session token persistence (per-tab: sessionStorage)', () => {
+  beforeEach(() => sessionStorage.clear());
 
   it('keys are per room code, case-normalized', () => {
     expect(sessionKey('abcde')).toBe('hp:session:ABCDE');
     expect(sessionKey('ABCDE')).toBe(sessionKey('abcde'));
   });
 
-  it('loads what was stored for the room', () => {
-    localStorage.setItem(sessionKey('QWXYZ'), 'token-1');
+  it('loads what was stored (in sessionStorage) for the room', () => {
+    sessionStorage.setItem(sessionKey('QWXYZ'), 'token-1');
     expect(loadSessionToken('qwxyz')).toBe('token-1');
     expect(loadSessionToken('OTHER')).toBeNull();
+    // Per-tab: a localStorage entry must NOT be picked up.
+    localStorage.setItem(sessionKey('LSKEY'), 'ls-token');
+    expect(loadSessionToken('LSKEY')).toBeNull();
   });
 });
 

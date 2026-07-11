@@ -22,6 +22,17 @@ export function savedNickname(): string {
   }
 }
 
+/** Persist a nickname (trimmed) for reuse across sessions; no-op if blank. */
+export function storeNickname(nick: string): void {
+  const trimmed = nick.trim();
+  if (trimmed === '') return;
+  try {
+    localStorage.setItem(NICKNAME_KEY, trimmed);
+  } catch {
+    // Not persisted (private mode); still used for this connection.
+  }
+}
+
 export function Home() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
@@ -41,11 +52,7 @@ export function Home() {
 
   function persistNickname(): string | undefined {
     const nick = nickname.trim();
-    try {
-      if (nick !== '') localStorage.setItem(NICKNAME_KEY, nick);
-    } catch {
-      // Not persisted; still used for this connection.
-    }
+    storeNickname(nick);
     return nick === '' ? undefined : nick;
   }
 

@@ -13,7 +13,7 @@ import type {
   TableSettings,
   TableSettingsPatch,
 } from '@hp/protocol';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ConnectionPill } from '../components/ConnectionPill';
 import { MatchList } from '../components/MatchList';
@@ -264,6 +264,7 @@ function presetOf(config: RuleConfig): 'illisoft' | 'paamuoto' | 'custom' {
 
 function ConfigPanel({ config, isHost }: { config: RuleConfig; isHost: boolean }) {
   const { t } = useTranslation();
+  const [showAllRules, setShowAllRules] = useState(false);
   const patch = (p: ConfigPatch): void => {
     sendLobby({ type: 'setConfig', patch: p });
   };
@@ -293,6 +294,13 @@ function ConfigPanel({ config, isHost }: { config: RuleConfig; isHost: boolean }
           )}
         </select>
       </label>
+
+      {/* The editable fields below are a subset; the ruleset choice also sets many
+          rules that aren't shown here (bidding order, Porvoo, redeals…). This
+          link opens the full, always-accurate picture derived from room.config. */}
+      <button type="button" className="rules-link" onClick={() => setShowAllRules(true)}>
+        {t('config.viewAll')}
+      </button>
 
       <label className="config-row">
         <span>{t('config.players')}</span>
@@ -417,7 +425,221 @@ function ConfigPanel({ config, isHost }: { config: RuleConfig; isHost: boolean }
           onChange={(e) => patch({ showLastTrick: e.target.checked })}
         />
       </label>
+
+      {showAllRules && <AllRulesOverlay config={config} onClose={() => setShowAllRules(false)} />}
     </section>
+  );
+}
+
+// ── "View all rules" overlay: the full ruleset, read-only ────────────────────
+
+/**
+ * Every RuleConfig field rendered human-readably, grouped into sections and
+ * derived from the LIVE config — so it stays accurate for presets and for any
+ * custom edits alike. The lobby panel only exposes a handful of fields; this is
+ * the full, honest picture of what will actually be played.
+ */
+function AllRulesOverlay({ config, onClose }: { config: RuleConfig; onClose: () => void }) {
+  const { t } = useTranslation();
+  const yn = (b: boolean): string => t(b ? 'rules.yes' : 'rules.no');
+  const is4p = config.players === 4;
+
+  const deal: Array<[string, string]> = [
+    [t('config.players'), t('config.playersOpt', { n: config.players })],
+  ];
+  if (!is4p) {
+    deal.push([t('config.talonSize'), t('config.cardsOpt', { n: config.talonSize })]);
+    deal.push([
+      t('config.openTalon'),
+      t(config.openTalon ? 'config.openTalonOpen' : 'config.openTalonSecret'),
+    ]);
+  } else {
+    deal.push([t('rules.exchangeCount'), t('config.cardsOpt', { n: config.exchangeCount })]);
+  }
+  deal.push([
+    t('rules.redealCondition'),
+    t(
+      config.redealCondition === 'fourSixes'
+        ? 'rules.redealConditionFourSixes'
+        : config.redealCondition === 'threeSixesOrNoneAboveJack'
+          ? 'rules.redealConditionThreeSixes'
+          : 'rules.redealConditionOff',
+    ),
+  ]);
+  if (config.redealCondition !== null) {
+    deal.push([
+      t('rules.redealWindow'),
+      t(
+        config.redealWindow === 'bidAndExchange'
+          ? 'rules.redealWindowBidAndExchange'
+          : 'rules.redealWindowFirstBidTurn',
+      ),
+    ]);
+  }
+
+  const cards: Array<[string, string]> = [
+    [
+      t('config.cardPoints'),
+      t(config.cardPoints === 'A' ? 'config.cardPointsA' : 'config.cardPointsB'),
+    ],
+    [t('rules.lastTrickBonus'), t('rules.points', { n: config.lastTrickBonus })],
+    [
+      t('config.trumpValues'),
+      t(
+        config.trumpValues === 'heartsHigh'
+          ? 'config.trumpValuesHeartsHigh'
+          : 'config.trumpValuesBridge',
+      ),
+    ],
+  ];
+
+  const bidding: Array<[string, string]> = [
+    [t('config.minBid'), String(config.minBid)],
+    [t('rules.bidStep'), String(config.bidStep)],
+    [t('rules.maxBid'), config.maxBid === null ? t('rules.unbounded') : String(config.maxBid)],
+    [
+      t('rules.firstBidder'),
+      t(
+        config.firstBidder === 'dealer'
+          ? 'rules.firstBidderDealer'
+          : 'rules.firstBidderLeftOfDealer',
+      ),
+    ],
+    [t('rules.forcedOpening'), yn(config.forcedOpening)],
+    [
+      t('rules.allPassOutcome'),
+      t(
+        config.allPassOutcome === 'contractlessDeal'
+          ? 'rules.allPassOutcomeContractlessDeal'
+          : 'rules.allPassOutcomeForceLastSeat',
+      ),
+    ],
+    [
+      t('rules.bidBanThreshold'),
+      config.bidBanThreshold === null ? t('rules.off') : String(config.bidBanThreshold),
+    ],
+  ];
+  if (config.bidBanThreshold !== null) {
+    bidding.push([t('rules.bidBanReopen'), yn(config.bidBanReopen)]);
+  }
+  if (is4p) {
+    bidding.push([
+      t('rules.contractTiming'),
+      t(
+        config.contractTiming === 'afterExchange'
+          ? 'rules.contractTimingAfterExchange'
+          : 'rules.contractTimingBeforeReturn',
+      ),
+    ]);
+  }
+
+  const play: Array<[string, string]> = [
+    [
+      t('rules.firstTrickRules'),
+      t(
+        config.firstTrickRules === 'aceShow'
+          ? 'rules.firstTrickRulesAceShow'
+          : 'rules.firstTrickRulesFree',
+      ),
+    ],
+    [
+      t('config.declareRight'),
+      t(
+        config.declareRight === 'anyWonTrick'
+          ? 'config.declareRightAnyWonTrick'
+          : 'config.declareRightOwnLedWonTrick',
+      ),
+    ],
+    [
+      t('rules.askLockouts'),
+      t(config.askLockouts === 'illisoft' ? 'rules.askLockoutsIllisoft' : 'rules.askLockoutsBasic'),
+    ],
+    [t('rules.askHalfMustHoldCard'), yn(config.askHalfMustHoldCard)],
+  ];
+
+  const scoring: Array<[string, string]> = [
+    [
+      t('rules.opponentRounding'),
+      t(
+        config.opponentRounding === 'nearest5'
+          ? 'rules.opponentRoundingNearest'
+          : 'rules.opponentRoundingNone',
+      ),
+    ],
+    [
+      t('rules.declarerPorvooBasis'),
+      t(
+        config.declarerPorvooBasis === 'contract'
+          ? 'rules.declarerPorvooBasisContract'
+          : 'rules.declarerPorvooBasisBid',
+      ),
+    ],
+    [
+      t('rules.declarerPorvooScope'),
+      t(
+        config.declarerPorvooScope === 'side'
+          ? 'rules.declarerPorvooScopeSide'
+          : 'rules.declarerPorvooScopeSeat',
+      ),
+    ],
+  ];
+
+  const winning: Array<[string, string]> = [
+    [t('config.winTarget'), String(config.winTarget)],
+    [
+      t('rules.winCondition'),
+      t(config.winCondition === 'exceed' ? 'rules.winConditionExceed' : 'rules.winConditionReach'),
+    ],
+    [
+      t('rules.winTiebreak'),
+      t(
+        config.winTiebreak === 'declarer' ? 'rules.winTiebreakDeclarer' : 'rules.winTiebreakHigher',
+      ),
+    ],
+  ];
+
+  const sections: Array<[string, Array<[string, string]>]> = [
+    ['rules.secDeal', deal],
+    ['rules.secCards', cards],
+    ['rules.secBidding', bidding],
+    ['rules.secPlay', play],
+    ['rules.secScoring', scoring],
+    ['rules.secWinning', winning],
+    ['rules.secDisplay', [[t('config.showLastTrick'), yn(config.showLastTrick)]]],
+  ];
+
+  const presetKey = presetOf(config);
+  const presetLabel = t(
+    presetKey === 'illisoft'
+      ? 'config.presetIllisoft'
+      : presetKey === 'paamuoto'
+        ? 'config.presetPaamuoto'
+        : 'config.presetCustom',
+  );
+
+  return (
+    <div className="rules-overlay" role="dialog" aria-modal="true">
+      <div className="rules-overlay__panel stack">
+        <h2>{t('rules.title')}</h2>
+        <p className="dim rules-overlay__preset">{presetLabel}</p>
+        {sections.map(([title, rows]) => (
+          <section key={title} className="stack rules-group">
+            <h3 className="rules-group__title">{t(title)}</h3>
+            <dl className="rules-list">
+              {rows.map(([label, value]) => (
+                <div key={label} className="rules-list__row">
+                  <dt className="dim">{label}</dt>
+                  <dd>{value}</dd>
+                </div>
+              ))}
+            </dl>
+          </section>
+        ))}
+        <button type="button" className="btn--primary" onClick={onClose}>
+          {t('common.close')}
+        </button>
+      </div>
+    </div>
   );
 }
 

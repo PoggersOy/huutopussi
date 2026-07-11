@@ -83,6 +83,9 @@ export async function joinRoomViaHome(page: Page, code: string, nickname: string
   await page.getByPlaceholder('Room code').fill(code);
   await page.getByRole('button', { name: 'Join', exact: true }).click();
   await page.waitForURL(`**/r/${code}`, { timeout: 20_000 });
+  // A fresh join must confirm a name (the room's name gate, pre-filled here).
+  await expect(page.getByRole('heading', { name: `Join room ${code}` })).toBeVisible();
+  await page.getByRole('button', { name: 'Join', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Lobby', exact: true })).toBeVisible();
 }
 

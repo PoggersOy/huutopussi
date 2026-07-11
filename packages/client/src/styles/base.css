@@ -465,6 +465,90 @@ input::placeholder {
   accent-color: var(--gold);
 }
 
+/* ── "View all rules" link + overlay ── */
+
+.rules-link {
+  align-self: flex-start;
+  min-height: 0;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--gold);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.rules-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  background: rgba(4, 26, 18, 0.72);
+}
+
+.rules-overlay__panel {
+  width: 100%;
+  max-width: 380px;
+  max-height: 86vh;
+  overflow-y: auto;
+  padding: var(--space-5);
+  border: 1px solid var(--gold-soft);
+  border-radius: var(--radius-3);
+  background: var(--surface-strong);
+  gap: var(--space-4);
+}
+
+.rules-overlay__panel h2 {
+  text-align: center;
+}
+
+.rules-overlay__preset {
+  text-align: center;
+  margin-top: calc(-1 * var(--space-2));
+}
+
+.rules-group {
+  gap: var(--space-2);
+}
+
+.rules-group__title {
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--gold);
+  border-bottom: 1px solid var(--line);
+  padding-bottom: var(--space-1);
+}
+
+.rules-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.rules-list__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-3);
+}
+
+.rules-list__row dt {
+  flex: 1;
+}
+
+.rules-list__row dd {
+  margin: 0;
+  text-align: right;
+  font-weight: 600;
+}
+
 /* ── Debug raw view ── */
 
 .raw {
