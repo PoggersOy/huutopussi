@@ -12,7 +12,9 @@ concurrency:
 jobs:
   ci:
     name: typecheck / lint / test / sim
-    runs-on: [self-hosted, prod-docker-01]
+    # GitHub-hosted: the self-hosted runner's bundled npm breaks pnpm/action-setup
+    # ("self-installer exits with code 1"). e2e already runs here; keep both hosted.
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
