@@ -105,6 +105,68 @@ export class Db {
     this.raw.pragma('journal_mode = WAL');
     this.raw.pragma('synchronous = NORMAL');
     this.raw.exec(SCHEMA);
+    this.migrate();
+  }
+
+  /**
+   * Idempotent schema migrations for databases created by an OLDER build.
+   * `CREATE TABLE IF NOT EXISTS` never alters an existing table, so any column
+   * or constraint added after a db was first created must be applied here or
+   * writes fail at runtime (e.g. the `deals.bid` column added later would throw
+   * "table deals has no column named bid" at the first deal that reaches
+   * scoring, stalling the game). Safe to run on every boot; a no-op on a db
+   * already at the current schema.
+   */
+  private migrate(): void {
+    this.raw.transaction(() => {
+      // Additive nullable columns (plain ALTER … ADD COLUMN).
+      this.addColumnIfMissing('deals', 'bid', 'INTEGER');
+      this.addColumnIfMissing('matches', 'final_scores', 'TEXT');
+      // The original `deals` schema declared declarer/contract/made NOT NULL;
+      // contract-less (all-pass) deals record them as null, so relax to
+      // nullable by rebuilding the table (SQLite cannot drop a NOT NULL in
+      // place). Preserves existing rows.
+      this.relaxDealsNullability();
+    })();
+  }
+
+  private columnsOf(table: string): Array<{ name: string; notnull: number }> {
+    return this.raw.prepare(`PRAGMA table_info(${table})`).all() as Array<{
+      name: string;
+      notnull: number;
+    }>;
+  }
+
+  private addColumnIfMissing(table: string, column: string, type: string): void {
+    if (!this.columnsOf(table).some((c) => c.name === column)) {
+      this.raw.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+    }
+  }
+
+  private relaxDealsNullability(): void {
+    const declarer = this.columnsOf('deals').find((c) => c.name === 'declarer');
+    if (!declarer || declarer.notnull === 0) return; // already nullable / fresh schema
+    // `bid` is guaranteed present here (addColumnIfMissing ran just above).
+    this.raw.exec(`
+      CREATE TABLE deals_new (
+        match_id    TEXT NOT NULL,
+        deal_index  INTEGER NOT NULL,
+        dealer      INTEGER NOT NULL,
+        declarer    INTEGER,
+        contract    INTEGER,
+        bid         INTEGER,
+        made        INTEGER,
+        result      TEXT NOT NULL,
+        finished_at INTEGER NOT NULL,
+        PRIMARY KEY (match_id, deal_index)
+      );
+      INSERT INTO deals_new
+        (match_id, deal_index, dealer, declarer, contract, bid, made, result, finished_at)
+        SELECT match_id, deal_index, dealer, declarer, contract, bid, made, result, finished_at
+        FROM deals;
+      DROP TABLE deals;
+      ALTER TABLE deals_new RENAME TO deals;
+    `);
   }
 
   transaction<T>(fn: () => T): T {
