@@ -23,6 +23,10 @@ Online multiplayer Finnish card game (Huutopussi) for mobile browsers. TypeScrip
 ## Frozen contracts
 `packages/engine/src/types.ts`, `config.ts`, and `deck.ts` are the frozen public contract, written by the architect. Do not change exported types/signatures without an explicit instruction; build everything else to fit them. If you believe a contract is wrong or insufficient, report it in your final message instead of changing it unilaterally.
 
+## Git workflow
+- **Commit directly to `main`. Do NOT create branches or pull requests.** This overrides the default "branch first" behavior. Push straight to `main`; CI + Deploy run automatically from there.
+- Only commit or push when the user asks.
+
 ## Conventions
 - TypeScript strict; no `any` unless unavoidable at a validated boundary.
 - Engine code throws never — it returns `RuleError` values from `validateAction`; `applyEvent` may `throw` only on impossible states (assertion of engine bugs).
