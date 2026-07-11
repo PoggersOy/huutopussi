@@ -26,7 +26,8 @@
     "signInPrompt": "Sign in to earn a rating",
     "signOut": "Sign out",
     "signedIn": "Signed in",
-    "profile": "Profile"
+    "profile": "Profile",
+    "elo": "ELO"
   },
   "profile": {
     "title": "Profile",

@@ -597,20 +597,29 @@ input::placeholder {
   min-height: 40px;
 }
 
+/* Signed-in control: two separate fields — the ELO field on the left and the
+   avatar "ball" on the far right — sharing one profile link (no wrapping pill). */
 .auth-header__chip {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-1);
-  padding: 3px var(--space-1) 3px 3px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 999px;
+  gap: var(--space-2);
+  padding: 0;
+  background: none;
+  border: none;
   cursor: pointer;
 }
 
+/* Header ELO field: reset the inline-list margin the shared badge carries so it
+   reads as its own boxed field, and give it a touch more presence. */
+.auth-header__chip .rating-badge {
+  margin-left: 0;
+  padding: 3px var(--space-2);
+  font-size: var(--fs-sm);
+}
+
 .auth-header__avatar {
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   border: 1px solid var(--line);
   flex: none;

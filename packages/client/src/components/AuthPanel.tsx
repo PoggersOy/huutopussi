@@ -28,6 +28,8 @@ export function AuthPanel() {
   }, [user, googleClientId, loginReady]);
 
   if (user) {
+    // Layout: the ELO field on the left, then the user's avatar "ball" on the
+    // far right edge. The whole row links to the profile.
     return (
       <button
         type="button"
@@ -36,6 +38,7 @@ export function AuthPanel() {
         aria-label={user.name ?? t('auth.signedIn')}
         title={t('auth.profile')}
       >
+        <RatingBadge rating={user.rating} provisional={user.provisional} label={t('auth.elo')} />
         {user.picture ? (
           <img
             src={user.picture}
@@ -48,7 +51,6 @@ export function AuthPanel() {
             {(user.name ?? '?').charAt(0).toUpperCase()}
           </span>
         )}
-        <RatingBadge rating={user.rating} provisional={user.provisional} />
       </button>
     );
   }
