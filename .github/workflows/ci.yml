@@ -12,7 +12,7 @@ concurrency:
 jobs:
   ci:
     name: typecheck / lint / test / sim
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, prod-docker-01]
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -42,6 +42,9 @@ jobs:
 
   e2e:
     name: e2e (Playwright / chromium)
+    # Kept on GitHub-hosted: the real-time gameplay suite is timing-sensitive and
+    # times out under the load of the shared self-hosted box (ci + deploy run
+    # self-hosted; e2e stays here where it's fast and reliable).
     runs-on: ubuntu-latest
     timeout-minutes: 40
     needs: ci
