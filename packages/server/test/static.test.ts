@@ -69,8 +69,8 @@ test('a room deep-link falls back to the SPA shell (crawlable, no 404)', async (
   expect(res.headers.get('content-type')).toContain('text/html');
 });
 
-test('app-screen deep-links (incl. /privacy, /rules) fall back to the SPA shell', async () => {
-  for (const path of ['/privacy', '/rules', '/profile', '/history']) {
+test('app-screen deep-links (incl. /privacy, /rules, /learn) fall back to the SPA shell', async () => {
+  for (const path of ['/privacy', '/rules', '/profile', '/history', '/learn', '/learn/tutorial']) {
     const res = await fetch(`http://127.0.0.1:${port}${path}`);
     expect(res.status, path).toBe(200);
     expect(res.headers.get('content-type'), path).toContain('text/html');

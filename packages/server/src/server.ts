@@ -1686,7 +1686,9 @@ export function createServer(opts: ServerOpts = {}): HpServer {
         pathname === '/profile' ||
         pathname === '/history' ||
         pathname === '/rules' ||
-        pathname === '/privacy'
+        pathname === '/privacy' ||
+        pathname === '/learn' ||
+        pathname.startsWith('/learn/')
       ) {
         streamFile(join(dir, 'index.html'), res);
         return;
