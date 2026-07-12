@@ -91,6 +91,7 @@ CREATE TABLE IF NOT EXISTS users (
   win_streak   INTEGER NOT NULL DEFAULT 0,
   best_streak  INTEGER NOT NULL DEFAULT 0,
   selected_title TEXT,               -- chosen display title id (null = derived from rating)
+  default_config_id TEXT,            -- starred saved ruleset, auto-selected for new games (null = built-in "Oletus")
   created_at   INTEGER NOT NULL,
   updated_at   INTEGER NOT NULL
 );
@@ -197,6 +198,8 @@ export interface UserRow {
   bestStreak: number;
   /** Chosen display title id, or null when derived from rating. */
   selectedTitle: string | null;
+  /** Starred saved ruleset id, auto-selected for new games; null = "Oletus". */
+  defaultConfigId: string | null;
 }
 
 /**
@@ -333,6 +336,8 @@ export class Db {
         this.addColumnIfMissing('sessions', 'user_id', 'TEXT');
         // Chosen display title id (achievements feature); null = derived from rating.
         this.addColumnIfMissing('users', 'selected_title', 'TEXT');
+        // Starred saved ruleset, auto-selected for new games; null = built-in "Oletus".
+        this.addColumnIfMissing('users', 'default_config_id', 'TEXT');
         this.rebuildDealsIfDrifted();
         this.minimizeUserPii();
       })();
@@ -770,6 +775,7 @@ export class Db {
       winStreak: row.win_streak,
       bestStreak: row.best_streak,
       selectedTitle: row.selected_title ?? null,
+      defaultConfigId: row.default_config_id ?? null,
     };
   }
 
@@ -915,12 +921,24 @@ export class Db {
     return res.changes > 0;
   }
 
-  /** Deletes a saved configuration the user owns. Returns false if not found. */
+  /**
+   * Deletes a saved configuration the user owns. Returns false if not found.
+   * If it was the starred default, clears that too (same transaction) so the DB
+   * never keeps a dangling default — the account falls back to built-in "Oletus".
+   */
   deleteRuleConfig(userId: string, id: string): boolean {
-    const res = this.raw
-      .prepare('DELETE FROM user_rule_configs WHERE id = ? AND user_id = ?')
-      .run(id, userId);
-    return res.changes > 0;
+    return this.transaction(() => {
+      const res = this.raw
+        .prepare('DELETE FROM user_rule_configs WHERE id = ? AND user_id = ?')
+        .run(id, userId);
+      if (res.changes === 0) return false;
+      this.raw
+        .prepare(
+          'UPDATE users SET default_config_id = NULL, updated_at = ? WHERE id = ? AND default_config_id = ?',
+        )
+        .run(Date.now(), userId, id);
+      return true;
+    });
   }
 
   /**
@@ -1136,6 +1154,13 @@ export class Db {
       .run(titleId, Date.now(), userId);
   }
 
+  /** Star a saved ruleset as the auto-selected default (null = built-in "Oletus"). */
+  setDefaultConfigId(userId: string, configId: string | null): void {
+    this.raw
+      .prepare('UPDATE users SET default_config_id = ?, updated_at = ? WHERE id = ?')
+      .run(configId, Date.now(), userId);
+  }
+
   /** All account ids (for the one-time backfill sweep). */
   allUserIds(): string[] {
     return (this.raw.prepare('SELECT id FROM users').all() as Array<{ id: string }>).map(
@@ -1219,6 +1244,7 @@ interface UserDbRow {
   win_streak: number;
   best_streak: number;
   selected_title: string | null;
+  default_config_id: string | null;
   created_at: number;
   updated_at: number;
 }

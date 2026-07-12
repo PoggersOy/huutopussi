@@ -2,7 +2,8 @@
  * Per-user saved rule configurations (the lobby "Sääntömuoto" dropdown beyond
  * the built-in "Oletus"): the /api/profile/configs CRUD endpoints, the max-10
  * per-account cap, player-count-agnostic validation (mode-specific fields are
- * accepted at save time and only gated at room creation), inclusion in the
+ * accepted at save time and only gated at room creation), the starred default
+ * (PUT /configs/default, cleared when its ruleset is deleted), inclusion in the
  * account export, and removal on account erasure.
  */
 import { randomUUID } from 'node:crypto';
@@ -52,6 +53,17 @@ function createConfig(token: string, name: string, config: RuleConfig) {
     headers: auth(token),
     body: JSON.stringify({ name, config }),
   });
+}
+function setDefault(token: string, configId: string | null) {
+  return fetch(`${base()}/api/profile/configs/default`, {
+    method: 'PUT',
+    headers: auth(token),
+    body: JSON.stringify({ configId }),
+  });
+}
+async function readDefault(token: string): Promise<string | null> {
+  const body = (await (await listConfigs(token)).json()) as { defaultConfigId: string | null };
+  return body.defaultConfigId;
 }
 
 test('config endpoints require authentication (401 without a token)', async () => {
@@ -141,6 +153,52 @@ test("another user's config cannot be updated or deleted (404)", async () => {
     headers: auth(other.token),
   });
   expect(del.status).toBe(404);
+});
+
+test('starring a saved ruleset persists as the default (unset initially)', async () => {
+  const u = makeUser('Ha');
+  expect(await readDefault(u.token)).toBeNull();
+
+  const created = await createConfig(u.token, 'suosikki', DEFAULT_RULES);
+  const { config: row } = (await created.json()) as { config: { id: string } };
+
+  const set = await setDefault(u.token, row.id);
+  expect(set.status).toBe(200);
+  expect((await set.json()) as { defaultConfigId: string }).toMatchObject({
+    defaultConfigId: row.id,
+  });
+  expect(await readDefault(u.token)).toBe(row.id);
+
+  // Clearing back to the built-in default ("" / null).
+  expect((await setDefault(u.token, null)).status).toBe(200);
+  expect(await readDefault(u.token)).toBeNull();
+});
+
+test('deleting the starred ruleset clears the default (server-side fallback to Oletus)', async () => {
+  const u = makeUser('Ida');
+  const created = await createConfig(u.token, 'poistuva', DEFAULT_RULES);
+  const { config: row } = (await created.json()) as { config: { id: string } };
+  await setDefault(u.token, row.id);
+  expect(await readDefault(u.token)).toBe(row.id);
+
+  const del = await fetch(`${base()}/api/profile/configs/${row.id}`, {
+    method: 'DELETE',
+    headers: auth(u.token),
+  });
+  expect(del.status).toBe(204);
+  expect(await readDefault(u.token)).toBeNull();
+});
+
+test('setting a default rejects an id the account does not own (404)', async () => {
+  const owner = makeUser('Jo');
+  const other = makeUser('Ky');
+  const created = await createConfig(owner.token, 'omani', DEFAULT_RULES);
+  const { config: row } = (await created.json()) as { config: { id: string } };
+
+  expect((await setDefault(owner.token, 'does-not-exist')).status).toBe(404);
+  // A real id, but owned by someone else → still 404 (not visible to `other`).
+  expect((await setDefault(other.token, row.id)).status).toBe(404);
+  expect(await readDefault(other.token)).toBeNull();
 });
 
 test('account export includes saved configs; erasure removes them', async () => {

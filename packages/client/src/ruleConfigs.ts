@@ -68,6 +68,27 @@ export async function updateRuleConfig(
   }
 }
 
+/**
+ * Star which saved configuration is auto-selected for new games — `''` clears
+ * back to the built-in "Oletus". Persisted server-side, per account. Returns
+ * whether the server accepted it (the caller reflects it optimistically and
+ * reverts on false). No re-sync here, so the optimistic store value stands.
+ */
+export async function setDefaultRuleConfig(configId: string): Promise<boolean> {
+  const token = getAuthToken();
+  if (!token) return false;
+  try {
+    const res = await fetch('/api/profile/configs/default', {
+      method: 'PUT',
+      headers: authHeaders(token),
+      body: JSON.stringify({ configId: configId === '' ? null : configId }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 /** Delete a saved configuration the user owns. Returns whether it succeeded. */
 export async function deleteRuleConfig(id: string): Promise<boolean> {
   const token = getAuthToken();

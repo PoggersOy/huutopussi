@@ -8,16 +8,17 @@
 import type { RuleConfig } from '@hp/engine';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { resolveDefaultConfig, setDefaultConfigId, useDefaultConfigId } from '../defaultRuleConfig';
+import { resolveDefaultConfig } from '../defaultRuleConfig';
 import {
   type ConfigMutationResult,
   createRuleConfig,
   deleteRuleConfig,
   MAX_RULE_CONFIGS,
+  setDefaultRuleConfig,
   updateRuleConfig,
 } from '../ruleConfigs';
 import { DEFAULT_CONFIG, RuleConfigEditor, ruleConfigError } from '../rules';
-import { syncRuleConfigs, useStore } from '../store';
+import { authApply, syncRuleConfigs, useStore } from '../store';
 
 type Draft = { id: string | null; name: string; config: RuleConfig };
 
@@ -31,24 +32,37 @@ const MUTATION_ERROR_KEY: Record<Exclude<ConfigMutationResult, { ok: true }>['er
 export function RuleConfigsPanel() {
   const { t } = useTranslation();
   const configs = useStore((s) => s.auth.ruleConfigs);
-  const userId = useStore((s) => s.auth.user?.id ?? null);
+  const defaultConfigId = useStore((s) => s.auth.defaultConfigId);
+  const pushToast = useStore((s) => s.pushToast);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
-  // Refresh from the server on mount so the list is current even if the account
-  // saved configs in another tab/session since sign-in.
+  // Refresh from the server on mount so the list (and the starred default) is
+  // current even if the account changed it in another tab/session since sign-in.
   useEffect(() => {
     void syncRuleConfigs();
   }, []);
 
   const atLimit = configs.length >= MAX_RULE_CONFIGS;
 
-  // The starred ("ensisijainen") config, auto-selected on new games. An orphaned
-  // star (config deleted elsewhere) resolves to null, i.e. the built-in default,
-  // so exactly one row is always shown starred.
-  const starredId = useDefaultConfigId(userId);
-  const activeStarredId = resolveDefaultConfig(configs, starredId)?.id ?? '';
-  const star = (id: string): void => setDefaultConfigId(userId, id);
+  // The starred config, auto-selected on new games. An orphaned star (config
+  // deleted elsewhere) resolves to null, i.e. the built-in default, so exactly
+  // one row is always shown starred.
+  const activeStarredId = resolveDefaultConfig(configs, defaultConfigId)?.id ?? '';
+
+  // Star a ruleset ('' = built-in default): reflect it at once, persist it, then
+  // confirm with a toast — reverting the optimistic change if the save fails.
+  const star = async (id: string): Promise<void> => {
+    if (id === activeStarredId) return;
+    authApply.setDefaultConfigId(id);
+    const ok = await setDefaultRuleConfig(id);
+    if (ok) {
+      pushToast({ kind: 'info', code: 'config.defaultSaved' });
+    } else {
+      authApply.setDefaultConfigId(activeStarredId);
+      pushToast({ kind: 'error', code: 'config.saveFailed' });
+    }
+  };
 
   return (
     <div className="panel stack">
@@ -60,14 +74,14 @@ export function RuleConfigsPanel() {
         {/* The built-in "Oletus" default: always first, starrable, not editable. */}
         <li className="config-list__row">
           <div className="config-list__lead">
-            <StarButton starred={activeStarredId === ''} onStar={() => star('')} />
+            <StarButton starred={activeStarredId === ''} onStar={() => void star('')} />
             <span className="config-list__name">{t('config.default')}</span>
           </div>
         </li>
         {configs.map((c) => (
           <li key={c.id} className="config-list__row">
             <div className="config-list__lead">
-              <StarButton starred={activeStarredId === c.id} onStar={() => star(c.id)} />
+              <StarButton starred={activeStarredId === c.id} onStar={() => void star(c.id)} />
               <span className="config-list__name">{c.name}</span>
             </div>
             <div className="row" style={{ gap: 'var(--space-2)' }}>
@@ -84,10 +98,17 @@ export function RuleConfigsPanel() {
                     type="button"
                     className="btn--danger"
                     onClick={() => {
-                      void deleteRuleConfig(c.id);
-                      // Deleting the starred config falls back to the default.
-                      if (activeStarredId === c.id) star('');
                       setConfirmDeleteId(null);
+                      // The server clears a starred default when its ruleset is
+                      // deleted, and deleteRuleConfig re-syncs, so the star falls
+                      // back to "Oletus" on its own.
+                      void deleteRuleConfig(c.id).then((ok) =>
+                        pushToast(
+                          ok
+                            ? { kind: 'info', code: 'config.deleted' }
+                            : { kind: 'error', code: 'config.deleteFailed' },
+                        ),
+                      );
                     }}
                   >
                     {t('config.deleteConfirm')}
@@ -152,6 +173,7 @@ function StarButton({ starred, onStar }: { starred: boolean; onStar: () => void 
 /** The create/edit sheet: a name field + the full RuleConfigEditor + Save. */
 function ConfigEditorSheet({ draft, onClose }: { draft: Draft; onClose: () => void }) {
   const { t } = useTranslation();
+  const pushToast = useStore((s) => s.pushToast);
   const [name, setName] = useState(draft.name);
   const [config, setConfig] = useState<RuleConfig>(draft.config);
   const [error, setError] = useState<string | null>(null);
@@ -175,6 +197,7 @@ function ConfigEditorSheet({ draft, onClose }: { draft: Draft; onClose: () => vo
         : await updateRuleConfig(draft.id, trimmed, config);
     setSaving(false);
     if (result.ok) {
+      pushToast({ kind: 'info', code: 'config.saved' });
       onClose();
       return;
     }

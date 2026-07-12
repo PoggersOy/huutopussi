@@ -15,7 +15,7 @@ import { useNavigate } from 'react-router-dom';
 import { fetchMatchmaking, type MatchmakingBucket } from '../api';
 import { AuthPanel } from '../components/AuthPanel';
 import { ConnectionPill } from '../components/ConnectionPill';
-import { resolveDefaultConfig, useDefaultConfigId } from '../defaultRuleConfig';
+import { resolveDefaultConfig } from '../defaultRuleConfig';
 import {
   canVibrate,
   getHapticsOn,
@@ -73,10 +73,11 @@ export function Home() {
   const navigate = useNavigate();
   const user = useStore((s) => s.auth.user);
   const signedIn = user !== null;
-  // The account's saved rulesets + the starred ("ensisijainen") one, auto-applied
-  // as the initial config when this player creates a room (see initialConfig).
+  // The account's saved rulesets + the starred one (persisted server-side),
+  // auto-applied as the initial config when this player creates a room (see
+  // initialConfig).
   const ruleConfigs = useStore((s) => s.auth.ruleConfigs);
-  const starredId = useDefaultConfigId(user?.id ?? null);
+  const starredId = useStore((s) => s.auth.defaultConfigId);
   const [nickname, setNickname] = useState(savedNickname);
   const [code, setCode] = useState('');
   const [pending, setPending] = useState<Pending | null>(null);

@@ -93,6 +93,9 @@ export interface AuthSlice {
   loginReady: boolean;
   /** The signed-in player's saved rule configurations (empty for guests). */
   ruleConfigs: SavedRuleConfig[];
+  /** Id of the starred ruleset auto-selected for new games; '' = built-in
+   *  "Oletus" (also '' for guests). Persisted server-side, per account. */
+  defaultConfigId: string;
 }
 
 export interface ServerSlice {
@@ -262,6 +265,7 @@ const initialAuth: AuthSlice = {
   googleClientId: null,
   loginReady: false,
   ruleConfigs: [],
+  defaultConfigId: '',
 };
 
 const initialAchievements: AchievementsSlice = { unlocked: [], loaded: false };
@@ -540,8 +544,17 @@ export async function syncRuleConfigs(): Promise<void> {
       headers: { authorization: `Bearer ${token}` },
     });
     if (!res.ok) return;
-    const body = (await res.json()) as { configs?: SavedRuleConfig[] };
-    useStore.setState((s) => ({ auth: { ...s.auth, ruleConfigs: body.configs ?? [] } }));
+    const body = (await res.json()) as {
+      configs?: SavedRuleConfig[];
+      defaultConfigId?: string | null;
+    };
+    useStore.setState((s) => ({
+      auth: {
+        ...s.auth,
+        ruleConfigs: body.configs ?? [],
+        defaultConfigId: body.defaultConfigId ?? '',
+      },
+    }));
   } catch {
     // best-effort; a failed sync leaves the cached configs as-is
   }
@@ -757,10 +770,16 @@ export const authApply = {
   /** Set (or clear) the signed-in account. */
   setUser(user: AuthUser | null): void {
     useStore.setState((s) => ({
-      auth: { ...s.auth, user, status: user ? 'signed-in' : 'anon', ruleConfigs: [] },
+      auth: {
+        ...s.auth,
+        user,
+        status: user ? 'signed-in' : 'anon',
+        ruleConfigs: [],
+        defaultConfigId: '',
+      },
     }));
     // Establish (or clear) the achievements baseline for match-end toasts, and
-    // load (or clear) the account's saved rule configurations.
+    // load (or clear) the account's saved rule configurations + starred default.
     if (user) {
       void syncAchievements(false);
       void syncRuleConfigs();
@@ -770,5 +789,11 @@ export const authApply = {
   /** Replace the cached saved rule configurations (after a create/edit/delete). */
   setRuleConfigs(configs: SavedRuleConfig[]): void {
     useStore.setState((s) => ({ auth: { ...s.auth, ruleConfigs: configs } }));
+  },
+
+  /** Set the starred default ruleset id ('' = built-in "Oletus"). Used to reflect
+   *  a star change optimistically before the server confirms it. */
+  setDefaultConfigId(id: string): void {
+    useStore.setState((s) => ({ auth: { ...s.auth, defaultConfigId: id } }));
   },
 };

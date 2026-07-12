@@ -1999,7 +1999,45 @@ export function createServer(opts: ServerOpts = {}): HpServer {
         sendHttpJson(res, 401, { error: 'unauthorized' });
         return;
       }
-      sendHttpJson(res, 200, { configs: db.listRuleConfigs(user.id) });
+      sendHttpJson(res, 200, {
+        configs: db.listRuleConfigs(user.id),
+        defaultConfigId: user.defaultConfigId,
+      });
+      return;
+    }
+
+    // Star which saved ruleset is auto-selected for new games (null/"" = the
+    // built-in "Oletus"). Must precede the generic '/configs/:id' block below,
+    // which would otherwise treat "default" as a config id.
+    if (path === '/api/profile/configs/default' && req.method === 'PUT') {
+      const user = resolveAuth(bearerToken(req) ?? undefined);
+      if (!user) {
+        sendHttpJson(res, 401, { error: 'unauthorized' });
+        return;
+      }
+      let body: unknown;
+      try {
+        body = await readJsonBody(req, 4 * 1024);
+      } catch {
+        sendHttpJson(res, 400, { error: 'bad_request' });
+        return;
+      }
+      const raw =
+        typeof body === 'object' && body !== null && 'configId' in body
+          ? (body as { configId: unknown }).configId
+          : undefined;
+      if (raw !== null && raw !== undefined && typeof raw !== 'string') {
+        sendHttpJson(res, 400, { error: 'bad_request' });
+        return;
+      }
+      const configId: string | null = typeof raw === 'string' && raw !== '' ? raw : null;
+      // Only star a ruleset the account actually owns; "Oletus" (null) is always ok.
+      if (configId !== null && !db.listRuleConfigs(user.id).some((c) => c.id === configId)) {
+        sendHttpJson(res, 404, { error: 'not_found' });
+        return;
+      }
+      db.setDefaultConfigId(user.id, configId);
+      sendHttpJson(res, 200, { defaultConfigId: configId });
       return;
     }
 
@@ -2070,6 +2108,7 @@ export function createServer(opts: ServerOpts = {}): HpServer {
         ratingEvents: db.getRatingEventsForUser(user.id, 1000),
         achievements: db.getUserAchievements(user.id),
         ruleConfigs: db.listRuleConfigs(user.id),
+        defaultConfigId: user.defaultConfigId,
       });
       return;
     }
