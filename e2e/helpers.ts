@@ -5,8 +5,10 @@
  * and buttons are never touched), mirroring how a human plays.
  *
  * Driving policy (deterministic, per DriverState):
- *  - bidding: bid the sheet's minimum once, then pass whenever passing is
- *    offered; when passing is not offered (forced opening), bid the minimum.
+ *  - bidding: bid the sheet's minimum once per deal, then pass whenever passing
+ *    is offered; when passing is not offered (forced opening), bid the minimum.
+ *    A redeal re-arms that one voluntary bid (see actOnce) so every fresh deal
+ *    still gets a declarer under the default all-pass 'contractlessDeal' rule.
  *  - exchange give/return: tap-select cards in the fan until the exact-count
  *    Confirm button enables, then confirm.
  *  - contract: announce the minimum.
@@ -25,7 +27,8 @@ export const mobileContextOptions = {
 };
 
 export interface DriverState {
-  /** True once this player has placed their one voluntary bid. */
+  /** True once this player has placed their one voluntary bid this deal. Reset
+   * when a redeal restarts the deal, so the next deal is bid (and declared) too. */
   hasBid: boolean;
 }
 
@@ -172,13 +175,24 @@ export async function ownScore(page: Page): Promise<number> {
 export async function actOnce(page: Page, state: DriverState): Promise<void> {
   // Never act under an overlay (deal scored / match ended) or while our
   // previous action is still pending (raised-card spinner).
-  if (await page.locator('.overlay').count()) return;
+  if (await page.locator('.overlay').count()) {
+    // A redeal (a bot holding four sixes demands one under the default ruleset)
+    // wipes the deal and re-opens bidding. Our bid-once-per-deal policy must
+    // re-arm here: the default ruleset has forcedOpening:false and an all-pass
+    // 'contractlessDeal' outcome, so without a fresh voluntary bid Anna would
+    // pass every bid and the redealt deal could be played declarer-less (no
+    // "Contract N made/failed" line). The redeal overlay lingers ~5 s, far
+    // longer than the 150 ms poll, so this reliably fires before bidding reopens.
+    if (await page.locator('.overlay .redeal__count').count()) state.hasBid = false;
+    return;
+  }
   if (await page.locator('.hand__spinner').count()) return;
 
   const sheet = page.locator('.tsheet');
   if (await sheet.count()) {
-    // Bidding: bid the minimum once, then pass; bid again only when forced
-    // (no Pass offered, e.g. forced opening — also after a redeal).
+    // Bidding: bid the minimum once per deal, then pass; bid again only when
+    // forced (no Pass offered, e.g. a forcedOpening ruleset) or after a redeal
+    // re-armed hasBid above.
     const bidBtn = await firstEnabled(sheet.getByRole('button', { name: /^Bid \d+$/ }));
     const passBtn = await firstEnabled(sheet.getByRole('button', { name: 'Pass', exact: true }));
     if (bidBtn !== null || passBtn !== null) {

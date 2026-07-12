@@ -8,13 +8,14 @@
  * display name ("First L."). Rejoinable/past games live on the History screen
  * (link at the bottom).
  */
-import type { BotDifficulty } from '@hp/protocol';
+import type { BotDifficulty, ConfigPatch } from '@hp/protocol';
 import { type FormEvent, useEffect, useState, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { fetchMatchmaking, type MatchmakingBucket } from '../api';
 import { AuthPanel } from '../components/AuthPanel';
 import { ConnectionPill } from '../components/ConnectionPill';
+import { resolveDefaultConfig, useDefaultConfigId } from '../defaultRuleConfig';
 import {
   canVibrate,
   getHapticsOn,
@@ -25,6 +26,7 @@ import {
 } from '../feedback';
 import { LANGUAGES, setLanguage } from '../i18n';
 import { installAvailable, promptInstall, subscribeInstall } from '../install';
+import { resolveConfigForPlayers } from '../rules';
 import { connect, findMatch, sendLobby } from '../socket';
 import { useStore } from '../store';
 
@@ -71,6 +73,10 @@ export function Home() {
   const navigate = useNavigate();
   const user = useStore((s) => s.auth.user);
   const signedIn = user !== null;
+  // The account's saved rulesets + the starred ("ensisijainen") one, auto-applied
+  // as the initial config when this player creates a room (see initialConfig).
+  const ruleConfigs = useStore((s) => s.auth.ruleConfigs);
+  const starredId = useDefaultConfigId(user?.id ?? null);
   const [nickname, setNickname] = useState(savedNickname);
   const [code, setCode] = useState('');
   const [pending, setPending] = useState<Pending | null>(null);
@@ -151,14 +157,30 @@ export function Home() {
     }
   }
 
+  /**
+   * The initial room config for a create/quick flow: the player's starred saved
+   * ruleset (resolved to the chosen player count), or the built-in "Oletus"
+   * default when nothing is starred. Matchmaking is excluded — ranked/found rooms
+   * always use standard rules.
+   */
+  function initialConfig(): { patch: ConfigPatch; configName: string | null } {
+    const starred = resolveDefaultConfig(ruleConfigs, starredId);
+    if (starred !== null) {
+      return { patch: resolveConfigForPlayers(starred.config, players), configName: starred.name };
+    }
+    return { patch: { players }, configName: null };
+  }
+
   function onQuickBots(): void {
     setPending('quick');
-    connect(undefined, undefined, persistNickname(), { players });
+    const init = initialConfig();
+    connect(undefined, undefined, persistNickname(), init.patch, init.configName);
   }
 
   function onCreate(): void {
     setPending('create');
-    connect(undefined, undefined, persistNickname(), { players });
+    const init = initialConfig();
+    connect(undefined, undefined, persistNickname(), init.patch, init.configName);
   }
 
   function onJoin(e: FormEvent): void {

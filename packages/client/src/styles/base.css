@@ -607,6 +607,32 @@ input::placeholder {
   justify-content: flex-end;
 }
 
+/* Star (leading) + name group. min-width:0 lets the name break instead of
+   forcing horizontal scroll; flex:1 pushes the Edit/Delete actions to the right. */
+.config-list__lead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  flex: 1;
+}
+
+/* Star toggle: marks the ruleset auto-selected for new games. Borderless icon
+   button — dim outline (☆) when off, gold (★) when it's the current default. */
+.star-btn {
+  flex: none;
+  padding: var(--space-1);
+  border: none;
+  background: none;
+  color: var(--text-dim);
+  font-size: var(--fs-lg);
+  line-height: 1;
+}
+
+.star-btn[aria-pressed="true"] {
+  color: var(--gold);
+}
+
 /* ── "View all rules" link + overlay ── */
 
 .rules-link {

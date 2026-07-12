@@ -8,6 +8,7 @@
 import type { RuleConfig } from '@hp/engine';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { resolveDefaultConfig, setDefaultConfigId, useDefaultConfigId } from '../defaultRuleConfig';
 import {
   type ConfigMutationResult,
   createRuleConfig,
@@ -30,6 +31,7 @@ const MUTATION_ERROR_KEY: Record<Exclude<ConfigMutationResult, { ok: true }>['er
 export function RuleConfigsPanel() {
   const { t } = useTranslation();
   const configs = useStore((s) => s.auth.ruleConfigs);
+  const userId = useStore((s) => s.auth.user?.id ?? null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
@@ -41,60 +43,76 @@ export function RuleConfigsPanel() {
 
   const atLimit = configs.length >= MAX_RULE_CONFIGS;
 
+  // The starred ("ensisijainen") config, auto-selected on new games. An orphaned
+  // star (config deleted elsewhere) resolves to null, i.e. the built-in default,
+  // so exactly one row is always shown starred.
+  const starredId = useDefaultConfigId(userId);
+  const activeStarredId = resolveDefaultConfig(configs, starredId)?.id ?? '';
+  const star = (id: string): void => setDefaultConfigId(userId, id);
+
   return (
     <div className="panel stack">
       <h2>{t('config.savedTitle')}</h2>
       <p className="dim">{t('config.savedIntro', { max: MAX_RULE_CONFIGS })}</p>
+      <p className="dim">{t('config.defaultHint')}</p>
 
-      {configs.length > 0 ? (
-        <ul className="list">
-          {configs.map((c) => (
-            <li key={c.id} className="config-list__row">
+      <ul className="list">
+        {/* The built-in "Oletus" default: always first, starrable, not editable. */}
+        <li className="config-list__row">
+          <div className="config-list__lead">
+            <StarButton starred={activeStarredId === ''} onStar={() => star('')} />
+            <span className="config-list__name">{t('config.default')}</span>
+          </div>
+        </li>
+        {configs.map((c) => (
+          <li key={c.id} className="config-list__row">
+            <div className="config-list__lead">
+              <StarButton starred={activeStarredId === c.id} onStar={() => star(c.id)} />
               <span className="config-list__name">{c.name}</span>
-              <div className="row" style={{ gap: 'var(--space-2)' }}>
-                <button
-                  type="button"
-                  className="btn--ghost"
-                  onClick={() => setDraft({ id: c.id, name: c.name, config: c.config })}
-                >
-                  {t('common.edit')}
-                </button>
-                {confirmDeleteId === c.id ? (
-                  <>
-                    <button
-                      type="button"
-                      className="btn--danger"
-                      onClick={() => {
-                        void deleteRuleConfig(c.id);
-                        setConfirmDeleteId(null);
-                      }}
-                    >
-                      {t('config.deleteConfirm')}
-                    </button>
-                    <button
-                      type="button"
-                      className="btn--ghost"
-                      onClick={() => setConfirmDeleteId(null)}
-                    >
-                      {t('common.cancel')}
-                    </button>
-                  </>
-                ) : (
+            </div>
+            <div className="row" style={{ gap: 'var(--space-2)' }}>
+              <button
+                type="button"
+                className="btn--ghost"
+                onClick={() => setDraft({ id: c.id, name: c.name, config: c.config })}
+              >
+                {t('common.edit')}
+              </button>
+              {confirmDeleteId === c.id ? (
+                <>
+                  <button
+                    type="button"
+                    className="btn--danger"
+                    onClick={() => {
+                      void deleteRuleConfig(c.id);
+                      // Deleting the starred config falls back to the default.
+                      if (activeStarredId === c.id) star('');
+                      setConfirmDeleteId(null);
+                    }}
+                  >
+                    {t('config.deleteConfirm')}
+                  </button>
                   <button
                     type="button"
                     className="btn--ghost"
-                    onClick={() => setConfirmDeleteId(c.id)}
+                    onClick={() => setConfirmDeleteId(null)}
                   >
-                    {t('common.delete')}
+                    {t('common.cancel')}
                   </button>
-                )}
-              </div>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="dim">{t('config.savedEmpty')}</p>
-      )}
+                </>
+              ) : (
+                <button
+                  type="button"
+                  className="btn--ghost"
+                  onClick={() => setConfirmDeleteId(c.id)}
+                >
+                  {t('common.delete')}
+                </button>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
 
       <button
         type="button"
@@ -108,6 +126,26 @@ export function RuleConfigsPanel() {
 
       {draft !== null && <ConfigEditorSheet draft={draft} onClose={() => setDraft(null)} />}
     </div>
+  );
+}
+
+/** The star that marks a ruleset as the one auto-selected for new games. Radio
+ *  semantics: clicking a row's star makes it the default (click the "Oletus" row
+ *  to clear). Filled ★ = current default, hollow ☆ = not. */
+function StarButton({ starred, onStar }: { starred: boolean; onStar: () => void }) {
+  const { t } = useTranslation();
+  const label = t(starred ? 'config.isDefault' : 'config.setDefault');
+  return (
+    <button
+      type="button"
+      className="star-btn"
+      aria-pressed={starred}
+      aria-label={label}
+      title={label}
+      onClick={onStar}
+    >
+      <span aria-hidden="true">{starred ? '★' : '☆'}</span>
+    </button>
   );
 }
 
