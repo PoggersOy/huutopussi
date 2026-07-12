@@ -5,12 +5,13 @@
  * with the two-step raised-card flow. Every move comes from server hints —
  * the driver only ever taps enabled UI elements.
  *
- * Ends by asserting the deal-scored overlay shows numbers that sum per the
- * päämuoto point system: card points + last trick = 130, per-side totals add
- * up, tricks sum to 9, marriage points are multiples of 20.
+ * Ends by asserting the deal-scored overlay shows numbers consistent with the
+ * default ("Oletus") point system: card points + last trick = 140, per-side
+ * totals add up (allowing the ±2 opponent rounding to nearest 5), tricks sum to
+ * 9, marriage points are multiples of 20.
  */
 import { expect, test } from '@playwright/test';
-import { addBots, createRoom, driveUntil, newDriver, setPreset, startMatch } from './helpers';
+import { addBots, createRoom, driveUntil, newDriver, startMatch } from './helpers';
 
 test.setTimeout(420_000);
 
@@ -21,10 +22,9 @@ interface OverlayRow {
 
 test('Anna vs three bots: a full deal reaches a consistent score overlay', async ({ page }) => {
   await createRoom(page, 'Anna');
-  // The product default is illisoft (last trick 20, contract-less deals). This
-  // test asserts the päämuoto point system (130-point deals, always a
-  // declarer), so pin päämuoto explicitly before starting.
-  await setPreset(page, 'paamuoto');
+  // Guest rooms play the built-in default ("Oletus"): last trick 20 → 140-point
+  // deals, opponent totals rounded to the nearest 5. Anna always places one bid
+  // (see the driver), so the deal is never contract-less — there's a declarer.
   await addBots(page, 3);
   await startMatch(page);
 
@@ -67,14 +67,19 @@ test('Anna vs three bots: a full deal reaches a consistent score overlay', async
     expect(Number.isInteger(n)).toBe(true);
   }
 
-  // Point system A + last-trick bonus: every deal distributes exactly 130
-  // card points between the sides.
-  expect((cardUs ?? 0) + (cardThem ?? 0) + (lastUs ?? 0) + (lastThem ?? 0)).toBe(130);
+  // Point system A + last-trick bonus: every deal distributes exactly 140
+  // card points between the sides (120 card points + a 20-point last trick).
+  expect((cardUs ?? 0) + (cardThem ?? 0) + (lastUs ?? 0) + (lastThem ?? 0)).toBe(140);
   // The last-trick bonus goes to exactly one side.
-  expect([lastUs, lastThem].sort((a, b) => (a ?? 0) - (b ?? 0))).toEqual([0, 10]);
-  // Per-side totals are the sum of their parts.
-  expect(totalUs).toBe((cardUs ?? 0) + (lastUs ?? 0) + (marrUs ?? 0));
-  expect(totalThem).toBe((cardThem ?? 0) + (lastThem ?? 0) + (marrThem ?? 0));
+  expect([lastUs, lastThem].sort((a, b) => (a ?? 0) - (b ?? 0))).toEqual([0, 20]);
+  // Per-side totals are the sum of their parts — within the ±2 that the default
+  // ruleset's nearest-5 rounding of the non-declarer side can introduce.
+  expect(
+    Math.abs((totalUs ?? 0) - ((cardUs ?? 0) + (lastUs ?? 0) + (marrUs ?? 0))),
+  ).toBeLessThanOrEqual(2);
+  expect(
+    Math.abs((totalThem ?? 0) - ((cardThem ?? 0) + (lastThem ?? 0) + (marrThem ?? 0))),
+  ).toBeLessThanOrEqual(2);
   // Marriage values are 40/60/80/100 each — always multiples of 20.
   expect((marrUs ?? 0) % 20).toBe(0);
   expect((marrThem ?? 0) % 20).toBe(0);
@@ -87,7 +92,7 @@ test('Anna vs three bots: a full deal reaches a consistent score overlay', async
   expect(Number.isInteger(deltaUs)).toBe(true);
   expect(Number.isInteger(deltaThem)).toBe(true);
 
-  // Päämuoto always has a declarer (forced opening) — the contract line names
-  // one and states made/failed.
+  // Anna always bids, so the deal has a declarer — the contract line names one
+  // and states made/failed.
   await expect(page.locator('.overlay').getByText(/Contract \d+ (made|failed)/)).toBeVisible();
 });

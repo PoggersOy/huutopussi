@@ -99,19 +99,6 @@ export async function addBots(page: Page, count: number): Promise<void> {
   }
 }
 
-/**
- * Host-only: choose a rules preset in the lobby config panel and wait for the
- * server to apply it. The product default is illisoft; tests that assert the
- * päämuoto point system (130-point deals, forced opening) must pin it here.
- */
-export async function setPreset(page: Page, preset: 'paamuoto' | 'illisoft'): Promise<void> {
-  const select = page.locator('select:has(option[value="paamuoto"])');
-  await select.selectOption(preset);
-  // The select value is React-controlled from the server config echo, so this
-  // also confirms the setConfig patch round-tripped and was accepted.
-  await expect(select).toHaveValue(preset);
-}
-
 export async function startMatch(page: Page): Promise<void> {
   const start = page.getByRole('button', { name: 'Start the game', exact: true });
   await expect(start).toBeEnabled();
