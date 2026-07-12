@@ -16,7 +16,7 @@ import { MatchList } from '../components/MatchList';
 import { RatingBadge } from '../components/RatingBadge';
 import { TitleBadge } from '../components/TitleBadge';
 import { loadRoomHistory } from '../history';
-import { configMatches, DEFAULT_CONFIG, RuleSections, resolveConfigForPlayers } from '../rules';
+import { activeConfigId, DEFAULT_CONFIG, RuleSections, resolveConfigForPlayers } from '../rules';
 import { disconnect, sendLobby } from '../socket';
 import { useStore } from '../store';
 
@@ -371,7 +371,9 @@ function ConfigPanel({
     () => [{ id: '', name: t('config.default'), config: DEFAULT_CONFIG }, ...savedConfigs],
     [savedConfigs, t],
   );
-  const activeId = options.find((o) => configMatches(config, o.config))?.id ?? null;
+  // The active entry prefers the host's picked config (by the room's configName)
+  // when several options match structurally — see activeConfigId.
+  const activeId = activeConfigId(options, config, configName);
   // A named config not in the list (e.g. edited/deleted after use) shows as a
   // disabled placeholder; an unnamed unmatched config is just the default.
   const unmatchedNamed = activeId === null && configName !== null;

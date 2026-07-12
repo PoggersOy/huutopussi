@@ -49,6 +49,25 @@ export function configMatches(roomConfig: RuleConfig, candidate: RuleConfig): bo
   return Object.keys(b).every((k) => a[k] === b[k]);
 }
 
+/**
+ * Which lobby-dropdown option the live room reflects. Several options can match
+ * structurally at once — a saved config whose rules equal "Oletus" at the room's
+ * player count (identical, or differing only in fields stripped for that count,
+ * e.g. koini in a 4p room) matches the built-in default too. The room's
+ * `configName` records which one the host actually picked, so among the matches
+ * prefer that; otherwise selecting such a config would snap the dropdown back to
+ * the earlier-listed "Oletus". Returns null when nothing matches (a named config
+ * that was edited/deleted after use — shown as a disabled placeholder).
+ */
+export function activeConfigId(
+  options: readonly { id: string; name: string; config: RuleConfig }[],
+  config: RuleConfig,
+  configName: string | null,
+): string | null {
+  const matches = options.filter((o) => configMatches(config, o.config));
+  return (matches.find((o) => o.id !== '' && o.name === configName) ?? matches[0])?.id ?? null;
+}
+
 /** A save-time validity check the per-field editor can't express on its own.
  *  Returns an i18n error key, or null when the config is valid. */
 export function ruleConfigError(config: RuleConfig): string | null {
