@@ -352,6 +352,26 @@ input::placeholder {
   gap: var(--space-2);
 }
 
+/* Bulleted prose lists (privacy policy). */
+.list-bullets {
+  margin: 0;
+  padding-left: 1.2em;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.list-bullets li {
+  line-height: 1.5;
+}
+
+/* Inline text link (e.g. a mailto in the privacy policy). */
+.link {
+  color: var(--accent);
+  text-decoration: underline;
+  word-break: break-word;
+}
+
 .list__row {
   display: flex;
   align-items: center;
@@ -854,46 +874,293 @@ input::placeholder {
 
 /* ── Profile screen ── */
 
-.profile__head {
+/* Hero card: the rating is the page's thesis, so it gets a gold-tinted panel
+   and the largest type on the screen. Everything below it stays quiet. */
+.profile__hero {
+  display: flex;
+  flex-direction: column;
   align-items: center;
   text-align: center;
+  gap: var(--space-2);
+  background: linear-gradient(180deg, rgba(212, 175, 55, 0.1), rgba(0, 0, 0, 0.12));
+  border-color: var(--gold-soft);
 }
 
+.profile__id {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.profile__avatar {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: 2px solid var(--gold-soft);
+  object-fit: cover;
+}
+
+.profile__name {
+  font-family: var(--font-display);
+  font-size: var(--fs-lg);
+}
+
+/* Crown + numeral, baseline-aligned. The crown ties the rating back to the
+   header ELO field so players read them as the same thing. */
 .profile__rating {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.profile__crown {
+  display: inline-flex;
+  color: var(--gold);
 }
 
 .profile__rating-num {
   font-family: var(--font-display);
-  font-size: var(--fs-xl);
+  font-size: 3.4rem;
   font-weight: 700;
+  line-height: 1;
   color: var(--gold);
+  letter-spacing: -0.01em;
+}
+
+/* Caption directly under the number: the plain-language name leads, the
+   technical term "Elo" trails as a small tag so the two are learned together. */
+.profile__rating-cap {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.profile__rating-name {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.profile__tag {
+  padding: 1px var(--space-2);
+  border: 1px solid var(--gold-soft);
+  border-radius: 999px;
+  color: var(--gold);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.profile__summary {
+  max-width: 30ch;
+}
+
+.profile__delta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: var(--space-1) var(--space-3);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.22);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+}
+
+.profile__provisional {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-2);
+  font-size: var(--fs-xs);
+}
+
+.profile__badge {
+  padding: 1px var(--space-2);
+  border-radius: 999px;
+  background: rgba(212, 175, 55, 0.18);
+  color: var(--gold);
+  font-weight: 700;
+}
+
+/* "What is ELO?" progressive disclosure. */
+.profile__explainer {
+  padding: 0;
+}
+
+.profile__explainer-q {
+  padding: var(--space-3) var(--space-4);
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.profile__explainer-q::-webkit-details-marker {
+  display: none;
+}
+
+/* Chevron that rotates when the details are open. The ⌄ glyph sits low in its
+   own em-box, so nudge it up to sit at the optical centre of the row. */
+.profile__explainer-q::after {
+  content: "⌄";
+  color: var(--gold);
+  font-size: var(--fs-lg);
+  line-height: 1;
+  transform: translateY(-0.15em);
+  transition: transform 0.15s ease;
+}
+
+.profile__explainer[open] .profile__explainer-q::after {
+  transform: translateY(-0.15em) rotate(180deg);
+}
+
+.profile__explainer-a {
+  padding: 0 var(--space-4) var(--space-4);
+  line-height: 1.5;
 }
 
 .profile__stats {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-around;
-  gap: var(--space-3);
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-4) var(--space-2);
 }
 
 .profile__stat {
   display: flex;
   flex-direction: column;
   align-items: center;
-  min-width: 56px;
+  gap: 2px;
 }
 
 .profile__stat-value {
+  font-family: var(--font-display);
   font-size: var(--fs-lg);
   font-weight: 700;
+}
+
+.profile__stat-label {
+  color: var(--text-dim);
+  font-size: var(--fs-xs);
+  text-align: center;
+}
+
+/* Recent rated matches: one row per match, delta | resulting rating | when. */
+.match-row--rating {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.match-row__delta {
+  font-weight: 700;
+  min-width: 4.5ch;
+}
+
+.match-row__after {
+  font-family: var(--font-display);
+  font-weight: 700;
+  color: var(--gold);
+}
+
+.match-row__when {
+  margin-left: auto;
+}
+
+/* A rating row that opens its scorecard: the whole row is a button, laid out
+   as a row (overriding .match-row__btn's column default) so it matches the
+   static rating rows exactly. */
+.match-row__btn--rating {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-3);
 }
 
 .overlay__elo {
   text-align: center;
   font-size: var(--fs-lg);
+}
+
+/* ── Profile scorecard modal (ProfileScorecard) ── */
+
+.scorecard__verdict {
+  margin: 0;
+  text-align: center;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--fs-lg);
+}
+
+.scorecard__sides {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.scorecard__side {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-2);
+}
+
+/* The signed-in player's own side, lifted out of the pack. */
+.scorecard__side--me {
+  border-color: var(--gold-soft);
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.scorecard__players {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.scorecard__you {
+  flex: none;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--gold-soft);
+  color: var(--felt-950);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+}
+
+.scorecard__score {
+  flex: none;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--fs-md);
+}
+
+.scorecard__meta {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  font-size: var(--fs-sm);
+}
+
+.scorecard__rating {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
+.scorecard__rating-label {
+  font-size: var(--fs-sm);
 }
 
 /* ── Matchmaking ── */
@@ -1119,4 +1386,47 @@ input::placeholder {
 
 .mode-card__join button {
   flex: none;
+}
+
+/* ── Empty state ──
+   A rich, vertically-centered placeholder (e.g. no match history yet): a fanned
+   card illustration over the felt, a display-font headline, a supporting line,
+   and a call-to-action. `flex: 1` lets it claim the whole scroll area so the
+   content sits centered rather than clinging to the top. */
+.empty-state {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: var(--space-4);
+  padding: var(--space-6) var(--space-4);
+}
+
+.empty-state__art {
+  width: clamp(150px, 54vw, 230px);
+  height: auto;
+  filter: drop-shadow(0 14px 26px rgba(0, 0, 0, 0.5));
+}
+
+.empty-state__title {
+  font-family: var(--font-display);
+  font-size: var(--fs-xl);
+  color: var(--cream);
+  margin: 0;
+}
+
+.empty-state__text {
+  max-width: 34ch;
+  margin: calc(var(--space-3) * -1) 0 0;
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+}
+
+.empty-state__cta {
+  margin-top: var(--space-2);
+  padding-inline: var(--space-6);
 }

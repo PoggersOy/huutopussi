@@ -11,15 +11,20 @@
  */
 import { createHash, randomBytes } from 'node:crypto';
 import { OAuth2Client } from 'google-auth-library';
+import { shortenDisplayName } from './names.js';
 
 /** App tokens live ~90 days, then the client must sign in again. */
 export const AUTH_TOKEN_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 
-/** The verified identity we take from a Google ID token. */
+/**
+ * The verified identity we take from a Google ID token. We deliberately do NOT
+ * keep the email (not needed to run the game — data minimization), and the name
+ * is already reduced to "First L." here so a full surname never enters the app.
+ */
 export interface GoogleIdentity {
   /** Google's stable subject id — the account key (never trust email as key). */
   sub: string;
-  email: string | null;
+  /** Reduced to "First L." (see names.ts); null when Google sent no name. */
   name: string | null;
   picture: string | null;
 }
@@ -52,11 +57,11 @@ export function createGoogleVerifier(clientId: string | null | undefined): Googl
       const payload = ticket.getPayload();
       if (!payload || !payload.sub) return null;
       // Reject explicitly-unverified emails; absent flag (no email scope) is ok.
+      // We never retain the address itself — it only gates account creation.
       if (payload.email_verified === false) return null;
       return {
         sub: payload.sub,
-        email: payload.email ?? null,
-        name: payload.name ?? null,
+        name: shortenDisplayName(payload.name ?? null),
         picture: payload.picture ?? null,
       };
     } catch {

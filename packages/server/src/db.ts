@@ -17,6 +17,7 @@ import type { DealResult, GameEvent, RuleConfig, Seat, Side } from '@hp/engine';
 import type { MatchSummary } from '@hp/protocol';
 import Database from 'better-sqlite3';
 import { STARTING_RATING } from './elo.js';
+import { shortenDisplayName } from './names.js';
 import type { RoomTableSettings } from './rooms.js';
 import type { SessionKind } from './sessions.js';
 
@@ -76,11 +77,11 @@ CREATE TABLE IF NOT EXISTS deal_events (
   PRIMARY KEY (match_id, seq)
 );
 -- Google-linked accounts and their Elo. Keyed on the Google 'sub' (stable),
--- never email (emails change/recycle). Guests never get a row here.
+-- never email (we don't store the email at all — data minimization). Guests
+-- never get a row here. The name is stored already reduced to First L. form.
 CREATE TABLE IF NOT EXISTS users (
   id           TEXT PRIMARY KEY,
   google_sub   TEXT NOT NULL UNIQUE,
-  email        TEXT,
   name         TEXT,
   picture      TEXT,
   rating       INTEGER NOT NULL,
@@ -131,7 +132,6 @@ export interface SessionRow {
 export interface UserRow {
   id: string;
   googleSub: string;
-  email: string | null;
   name: string | null;
   picture: string | null;
   rating: number;
@@ -140,6 +140,22 @@ export interface UserRow {
   losses: number;
   winStreak: number;
   bestStreak: number;
+}
+
+/**
+ * Compact finished-match scorecard embedded in a profile rating event, so the
+ * profile screen can show "who did I play, what was the final result" without a
+ * second round-trip. Built from the `matches` row joined on `match_id`.
+ */
+export interface RatingMatchInfo {
+  players: 2 | 3 | 4;
+  /** 4p: 0|1 (pairs). 2-3p: side === seat. */
+  winnerSide: Side;
+  /** One total per side (length === sideCount). */
+  finalScores: number[];
+  /** Seat-indexed display names at match end (bots stored null); null = unknown. */
+  names: (string | null)[] | null;
+  deals: number;
 }
 
 /** One persisted per-match rating change for a user. */
@@ -151,6 +167,9 @@ export interface RatingEventRow {
   delta: number;
   streakAfter: number;
   createdAt: number;
+  /** Scorecard for the profile modal; null when the match row is gone or the
+   *  match didn't finish normally (abandoned/legacy — no scores recorded). */
+  match: RatingMatchInfo | null;
 }
 
 /** A single participant's rating outcome, written at match end. */
@@ -219,9 +238,48 @@ export class Db {
         // Links a live session to a signed-in account; null = guest.
         this.addColumnIfMissing('sessions', 'user_id', 'TEXT');
         this.rebuildDealsIfDrifted();
+        this.minimizeUserPii();
       })();
     } catch (err) {
       console.error('[db] schema migration failed (continuing without it):', err);
+    }
+    // Best-effort hard removal of the now-unused email column (separate from the
+    // transaction above so a DROP COLUMN unsupported by an older SQLite can't
+    // roll back the other migrations). No-op once the column is gone.
+    this.dropEmailColumnIfPresent();
+  }
+
+  /**
+   * Retro-fits the privacy posture onto accounts written by an OLDER build:
+   *   - erases any stored email address (we no longer collect it at all), and
+   *   - reduces every stored display name to "First L." (shortenDisplayName),
+   * so a full surname or address left behind by a previous version is scrubbed
+   * on the next boot. Idempotent: already-minimized rows are left untouched.
+   */
+  private minimizeUserPii(): void {
+    if (this.columnsOf('users').some((c) => c.name === 'email')) {
+      this.raw.exec('UPDATE users SET email = NULL WHERE email IS NOT NULL');
+    }
+    const rows = this.raw.prepare('SELECT id, name FROM users').all() as Array<{
+      id: string;
+      name: string | null;
+    }>;
+    const upd = this.raw.prepare('UPDATE users SET name = ? WHERE id = ?');
+    for (const r of rows) {
+      const short = shortenDisplayName(r.name);
+      if (short !== r.name) upd.run(short, r.id);
+    }
+  }
+
+  /** Drops the legacy `email` column if present (SQLite ≥3.35); tolerates any
+   *  failure so it can never block boot — a nulled, unused column is harmless. */
+  private dropEmailColumnIfPresent(): void {
+    try {
+      if (this.columnsOf('users').some((c) => c.name === 'email')) {
+        this.raw.exec('ALTER TABLE users DROP COLUMN email');
+      }
+    } catch (err) {
+      console.error('[db] could not drop legacy email column (nulled, ignoring):', err);
     }
   }
 
@@ -563,35 +621,26 @@ export class Db {
 
   /**
    * Insert a user (with the starting rating) on first sign-in, or refresh the
-   * profile fields (email/name/picture) on a returning sign-in. Keyed on the
-   * Google `sub`. Returns the full current row.
+   * profile fields (name/picture) on a returning sign-in. Keyed on the Google
+   * `sub`. `name` is expected already reduced to "First L." (see names.ts).
+   * Returns the full current row.
    */
   upsertUserByGoogleSub(profile: {
     id: string;
     googleSub: string;
-    email: string | null;
     name: string | null;
     picture: string | null;
   }): UserRow {
     const now = Date.now();
     this.raw
       .prepare(
-        `INSERT INTO users (id, google_sub, email, name, picture, rating, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO users (id, google_sub, name, picture, rating, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(google_sub) DO UPDATE
-           SET email = excluded.email, name = excluded.name,
+           SET name = excluded.name,
                picture = excluded.picture, updated_at = excluded.updated_at`,
       )
-      .run(
-        profile.id,
-        profile.googleSub,
-        profile.email,
-        profile.name,
-        profile.picture,
-        STARTING_RATING,
-        now,
-        now,
-      );
+      .run(profile.id, profile.googleSub, profile.name, profile.picture, STARTING_RATING, now, now);
     const row = this.getUserByGoogleSub(profile.googleSub);
     if (!row) throw new Error('upsertUserByGoogleSub: row missing after upsert');
     return row;
@@ -616,7 +665,6 @@ export class Db {
     return {
       id: row.id,
       googleSub: row.google_sub,
-      email: row.email,
       name: row.name,
       picture: row.picture,
       rating: row.rating,
@@ -656,6 +704,45 @@ export class Db {
   /** Removes expired auth tokens; returns the number deleted. */
   pruneExpiredTokens(nowMs: number): number {
     return this.raw.prepare('DELETE FROM auth_tokens WHERE expires_at <= ?').run(nowMs).changes;
+  }
+
+  /**
+   * Erase a user account and every trace of it (GDPR art. 17 — right to
+   * erasure). In one transaction we:
+   *   1. anonymize the user's name out of the seat-indexed roster of each match
+   *      they played (rating_events pins the exact match_id + seat, so only
+   *      THEIR entry is nulled — other players' names in that match survive),
+   *   2. delete their rating history, auth tokens, and the account row,
+   *   3. unlink any live session (user_id → null → it becomes a guest).
+   * Historical match rows and Elo deltas of the OTHER participants are left
+   * intact; only this user's identifying data is removed.
+   */
+  deleteUserAccount(userId: string): void {
+    this.transaction(() => {
+      const events = this.raw
+        .prepare('SELECT match_id, seat FROM rating_events WHERE user_id = ?')
+        .all(userId) as Array<{ match_id: string; seat: number }>;
+      const getNames = this.raw.prepare('SELECT names FROM matches WHERE id = ?');
+      const setNames = this.raw.prepare('UPDATE matches SET names = ? WHERE id = ?');
+      for (const ev of events) {
+        const row = getNames.get(ev.match_id) as { names: string | null } | undefined;
+        if (!row || row.names === null) continue;
+        let names: (string | null)[];
+        try {
+          names = JSON.parse(row.names) as (string | null)[];
+        } catch {
+          continue;
+        }
+        if (ev.seat >= 0 && ev.seat < names.length) {
+          names[ev.seat] = null; // null → the history screen falls back to a generic label
+          setNames.run(JSON.stringify(names), ev.match_id);
+        }
+      }
+      this.raw.prepare('DELETE FROM rating_events WHERE user_id = ?').run(userId);
+      this.raw.prepare('DELETE FROM auth_tokens WHERE user_id = ?').run(userId);
+      this.raw.prepare('UPDATE sessions SET user_id = NULL WHERE user_id = ?').run(userId);
+      this.raw.prepare('DELETE FROM users WHERE id = ?').run(userId);
+    });
   }
 
   /**
@@ -703,8 +790,14 @@ export class Db {
   getRatingEventsForUser(userId: string, limit: number): RatingEventRow[] {
     const rows = this.raw
       .prepare(
-        `SELECT match_id, seat, rating_before, rating_after, delta, streak_after, created_at
-         FROM rating_events WHERE user_id = ? ORDER BY created_at DESC LIMIT ?`,
+        `SELECT r.match_id, r.seat, r.rating_before, r.rating_after, r.delta,
+                r.streak_after, r.created_at,
+                m.winner_side  AS m_winner, m.final_scores AS m_scores,
+                m.names        AS m_names,  m.config       AS m_config,
+                m.deals        AS m_deals,  m.status       AS m_status
+         FROM rating_events r
+         LEFT JOIN matches m ON m.id = r.match_id
+         WHERE r.user_id = ? ORDER BY r.created_at DESC LIMIT ?`,
       )
       .all(userId, limit) as Array<{
       match_id: string;
@@ -714,16 +807,41 @@ export class Db {
       delta: number;
       streak_after: number;
       created_at: number;
+      m_winner: number | null;
+      m_scores: string | null;
+      m_names: string | null;
+      m_config: string | null;
+      m_deals: number | null;
+      m_status: string | null;
     }>;
-    return rows.map((r) => ({
-      matchId: r.match_id,
-      seat: r.seat as Seat,
-      ratingBefore: r.rating_before,
-      ratingAfter: r.rating_after,
-      delta: r.delta,
-      streakAfter: r.streak_after,
-      createdAt: r.created_at,
-    }));
+    return rows.map((r) => {
+      let match: RatingMatchInfo | null = null;
+      // Only a normally-finished match has scores/winner to show a scorecard.
+      if (
+        r.m_status === 'finished' &&
+        r.m_config !== null &&
+        r.m_scores !== null &&
+        r.m_winner !== null
+      ) {
+        match = {
+          players: (JSON.parse(r.m_config) as RuleConfig).players,
+          winnerSide: (r.m_winner === 1 || r.m_winner === 2 ? r.m_winner : 0) as Side,
+          finalScores: JSON.parse(r.m_scores) as number[],
+          names: r.m_names === null ? null : (JSON.parse(r.m_names) as (string | null)[]),
+          deals: r.m_deals ?? 0,
+        };
+      }
+      return {
+        matchId: r.match_id,
+        seat: r.seat as Seat,
+        ratingBefore: r.rating_before,
+        ratingAfter: r.rating_after,
+        delta: r.delta,
+        streakAfter: r.streak_after,
+        createdAt: r.created_at,
+        match,
+      };
+    });
   }
 }
 
@@ -731,7 +849,6 @@ export class Db {
 interface UserDbRow {
   id: string;
   google_sub: string;
-  email: string | null;
   name: string | null;
   picture: string | null;
   rating: number;

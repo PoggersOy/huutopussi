@@ -40,7 +40,6 @@ export interface ServerError {
 export interface AuthUser {
   id: string;
   name: string | null;
-  email: string | null;
   picture: string | null;
   rating: number;
   gamesPlayed: number;

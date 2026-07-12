@@ -1626,7 +1626,9 @@ export function createServer(opts: ServerOpts = {}): HpServer {
         pathname === '/' ||
         pathname.startsWith('/r/') ||
         pathname === '/profile' ||
-        pathname === '/history'
+        pathname === '/history' ||
+        pathname === '/rules' ||
+        pathname === '/privacy'
       ) {
         streamFile(join(dir, 'index.html'), res);
         return;
@@ -1724,7 +1726,6 @@ export function createServer(opts: ServerOpts = {}): HpServer {
     return {
       id: u.id,
       name: u.name,
-      email: u.email,
       picture: u.picture,
       rating: u.rating,
       gamesPlayed: u.gamesPlayed,
@@ -1784,7 +1785,6 @@ export function createServer(opts: ServerOpts = {}): HpServer {
       const user = db.upsertUserByGoogleSub({
         id: randomUUID(),
         googleSub: identity.sub,
-        email: identity.email,
         name: identity.name,
         picture: identity.picture,
       });
@@ -1825,6 +1825,36 @@ export function createServer(opts: ServerOpts = {}): HpServer {
       return;
     }
 
+    // GDPR art. 20 (portability): the signed-in user downloads everything we
+    // hold about them as JSON. Reuses the same shapes the profile screen sees.
+    if (path === '/api/account/export' && req.method === 'GET') {
+      const user = resolveAuth(bearerToken(req) ?? undefined);
+      if (!user) {
+        sendHttpJson(res, 401, { error: 'unauthorized' });
+        return;
+      }
+      sendHttpJson(res, 200, {
+        exportedAt: now,
+        account: publicUser(user),
+        ratingEvents: db.getRatingEventsForUser(user.id, 1000),
+      });
+      return;
+    }
+
+    // GDPR art. 17 (erasure): the signed-in user deletes their whole account.
+    // deleteUserAccount also removes every auth token, so this token dies too.
+    if (path === '/auth/account' && req.method === 'DELETE') {
+      const user = resolveAuth(bearerToken(req) ?? undefined);
+      if (!user) {
+        sendHttpJson(res, 401, { error: 'unauthorized' });
+        return;
+      }
+      db.deleteUserAccount(user.id);
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
     sendHttpJson(res, 404, { error: 'not_found' });
   }
 
@@ -1841,6 +1871,7 @@ export function createServer(opts: ServerOpts = {}): HpServer {
     if (
       url.pathname === '/api/auth-config' ||
       url.pathname === '/api/profile' ||
+      url.pathname === '/api/account/export' ||
       url.pathname.startsWith('/auth/')
     ) {
       void handleHttpAuth(req, res, url).catch(() => {

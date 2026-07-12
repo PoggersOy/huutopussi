@@ -10,6 +10,10 @@
  * Login is entirely optional: if the server reports no client id
  * (`/api/auth-config` → { googleClientId: null }) the whole flow self-disables
  * and the app runs guest-only.
+ *
+ * Privacy: the Google GIS script is loaded LAZILY (warmGoogleSignIn), only when
+ * a visitor shows intent to sign in — so no Google script or cookie touches
+ * anyone who never signs in, and the app sets no cookies of its own at all.
  */
 import { type AuthUser, authApply } from './store';
 
@@ -39,6 +43,7 @@ declare global {
 let clientId: string | null = null;
 let gisReady = false;
 let gisLoading: Promise<boolean> | null = null;
+let gisInitialized = false;
 
 // ── App-token storage (localStorage) ─────────────────────────────────────────
 
@@ -67,8 +72,11 @@ function clearStoredToken(): void {
 // ── Boot ─────────────────────────────────────────────────────────────────────
 
 /**
- * Restore any existing session and enable Google Sign-In if the server has a
- * client id. Safe to call once at app start; resolves when auth state settles.
+ * Restore any existing session and learn whether login is enabled. Safe to call
+ * once at app start; resolves when auth state settles. Deliberately does NOT
+ * load Google Identity Services — that happens lazily on the first sign-in
+ * intent (warmGoogleSignIn), so a visitor who never signs in is never touched
+ * by Google's script or cookies.
  */
 export async function initAuth(): Promise<void> {
   // 1. Restore a stored session first (works regardless of the client id).
@@ -86,19 +94,31 @@ export async function initAuth(): Promise<void> {
     clientId = null;
   }
   authApply.setClientId(clientId);
+}
 
-  // 3. Load + initialise GIS when login is enabled.
-  if (clientId) {
+/**
+ * Lazily load + initialise Google Identity Services. Called the moment a
+ * visitor signals they want to sign in (hover/focus/press on the sign-in
+ * control) — never at boot — so Google is contacted only for people who choose
+ * to. Idempotent and safe to call repeatedly; no-op when login is disabled.
+ * `auto_select: false` keeps us off One Tap (no silent prompt / auto sign-in).
+ */
+export async function warmGoogleSignIn(): Promise<void> {
+  if (!clientId) return;
+  if (!gisReady) {
     const ok = await loadGis();
-    if (ok && window.google) {
-      window.google.accounts.id.initialize({
-        client_id: clientId,
-        callback: (resp) => {
-          void onGoogleCredential(resp.credential);
-        },
-      });
-      authApply.setLoginReady();
-    }
+    if (!ok) return;
+  }
+  if (window.google && !gisInitialized) {
+    window.google.accounts.id.initialize({
+      client_id: clientId,
+      auto_select: false,
+      callback: (resp) => {
+        void onGoogleCredential(resp.credential);
+      },
+    });
+    gisInitialized = true;
+    authApply.setLoginReady();
   }
 }
 
@@ -196,4 +216,31 @@ export function signOut(): void {
   clearStoredToken();
   window.google?.accounts.id.disableAutoSelect();
   authApply.setUser(null);
+}
+
+/**
+ * Permanently delete the signed-in account (GDPR art. 17). On success the
+ * server has already erased everything it holds and revoked every token, so we
+ * forget the local token and drop to the anonymous state. Returns whether the
+ * deletion succeeded; false leaves the session untouched so the UI can retry.
+ */
+export async function deleteAccount(): Promise<boolean> {
+  const token = getAuthToken();
+  if (!token) return false;
+  let ok = false;
+  try {
+    const res = await fetch('/auth/account', {
+      method: 'DELETE',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    ok = res.ok; // 204 on success
+  } catch {
+    ok = false;
+  }
+  if (ok) {
+    clearStoredToken();
+    window.google?.accounts.id.disableAutoSelect();
+    authApply.setUser(null);
+  }
+  return ok;
 }

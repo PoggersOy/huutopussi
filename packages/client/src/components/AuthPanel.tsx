@@ -7,7 +7,7 @@
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { renderGoogleButton } from '../auth';
+import { renderGoogleButton, warmGoogleSignIn } from '../auth';
 import { useStore } from '../store';
 import { RatingBadge } from './RatingBadge';
 
@@ -18,6 +18,7 @@ export function AuthPanel() {
   const googleClientId = useStore((s) => s.auth.googleClientId);
   const loginReady = useStore((s) => s.auth.loginReady);
   const btnRef = useRef<HTMLDivElement>(null);
+  const signinRef = useRef<HTMLDivElement>(null);
 
   // (Re)render the GIS button whenever it can be shown (login enabled, GIS
   // ready, and no user yet). loginReady flips true once GIS finishes loading.
@@ -26,6 +27,27 @@ export function AuthPanel() {
       renderGoogleButton(btnRef.current);
     }
   }, [user, googleClientId, loginReady]);
+
+  // Lazily warm up Google Identity Services on the first hover/press/focus of
+  // the sign-in control, so Google (and any cookie it sets) is contacted only
+  // once a visitor moves to sign in — never for people who never do. The
+  // listeners are attached imperatively (not as JSX handlers on a static div)
+  // because the real interactive element is the GIS button inside the overlay.
+  useEffect(() => {
+    const el = signinRef.current;
+    if (!el || user || !googleClientId) return;
+    const warm = (): void => {
+      void warmGoogleSignIn();
+    };
+    el.addEventListener('pointerenter', warm);
+    el.addEventListener('pointerdown', warm);
+    el.addEventListener('focusin', warm);
+    return () => {
+      el.removeEventListener('pointerenter', warm);
+      el.removeEventListener('pointerdown', warm);
+      el.removeEventListener('focusin', warm);
+    };
+  }, [user, googleClientId]);
 
   if (user) {
     // Layout: the ELO field on the left, then the user's avatar "ball" on the
@@ -61,8 +83,12 @@ export function AuthPanel() {
     // Google "G"). The *real* GIS icon button is rendered into the overlay slot
     // on top of it at opacity 0, so the actual sign-in click still runs through
     // Google Identity Services — we get our look without touching the flow.
+    //
+    // GIS is loaded LAZILY (see the warm-up effect above): on a warm hover the
+    // overlay is ready for the click; on a cold first tap it arms and the
+    // visitor taps once more.
     return (
-      <div className="auth-header__signin" title={t('auth.signInPrompt')}>
+      <div ref={signinRef} className="auth-header__signin" title={t('auth.signInPrompt')}>
         <span className="auth-header__signin-face" aria-hidden="true">
           <GoogleG />
         </span>

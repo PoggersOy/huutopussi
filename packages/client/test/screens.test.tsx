@@ -75,7 +75,7 @@ describe('History screen', () => {
   it('shows an empty state without history', () => {
     window.history.pushState({}, '', '/history');
     render(<App />);
-    expect(screen.getByText('No matches played yet.')).toBeTruthy();
+    expect(screen.getByText('No matches played yet')).toBeTruthy();
   });
 
   it('lists live rooms from /api/rooms with a rejoin button, newest first', async () => {
@@ -116,7 +116,7 @@ describe('History screen', () => {
     // The probe fired…
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     // …but with no live rooms and no finished matches, we fall to the empty state.
-    expect(screen.getByText('No matches played yet.')).toBeTruthy();
+    expect(screen.getByText('No matches played yet')).toBeTruthy();
     expect(screen.queryByText('Open games')).toBeNull();
   });
 });

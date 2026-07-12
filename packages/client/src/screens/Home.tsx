@@ -4,8 +4,9 @@
  *   1. Etsi peli   — online matchmaking against real opponents (ranked/unranked).
  *   2. Pikapeli    — one tap to start immediately against bots.
  *   3. Kaverit     — create a private room to share, or join one by code.
- * A signed-in player's nickname field is pre-filled (editably) with their first
- * name. Rejoinable/past games live on the History screen (link at the bottom).
+ * A signed-in player's nickname field is pre-filled (editably) with their
+ * display name ("First L."). Rejoinable/past games live on the History screen
+ * (link at the bottom).
  */
 import type { BotDifficulty } from '@hp/protocol';
 import { type FormEvent, useEffect, useState, useSyncExternalStore } from 'react';
@@ -54,11 +55,6 @@ export function storeNickname(nick: string): void {
   }
 }
 
-/** The leading token of a full name ("Samuli Vainio" → "Samuli"); '' if none. */
-function firstName(name: string | null): string {
-  return (name ?? '').trim().split(/\s+/)[0] ?? '';
-}
-
 /** Which start flow is in flight — decides how we route on the room's welcome. */
 type Pending = 'find' | 'quick' | 'create';
 
@@ -80,14 +76,15 @@ export function Home() {
   const createdCode = useStore((s) => s.server.room?.code);
   const effectiveRanked = ranked && signedIn;
 
-  // Signing in pre-fills the nickname with the account's first name — but only
-  // when the field is empty, so a name the player deliberately typed/saved wins.
-  // Keyed on `user` alone on purpose: run once per sign-in, not per keystroke.
+  // Signing in pre-fills the nickname with the account's display name ("First
+  // L.") — but only when the field is empty, so a name the player deliberately
+  // typed/saved wins. Keyed on `user` alone on purpose: run once per sign-in,
+  // not per keystroke.
   // biome-ignore lint/correctness/useExhaustiveDependencies: `nickname` is read as a one-shot guard, not a trigger.
   useEffect(() => {
     if (user && nickname.trim() === '') {
-      const first = firstName(user.name);
-      if (first !== '') setNickname(first);
+      const displayName = (user.name ?? '').trim();
+      if (displayName !== '') setNickname(displayName);
     }
   }, [user]);
 
@@ -332,6 +329,10 @@ export function Home() {
 
         <button type="button" className="btn--ghost" onClick={() => navigate('/rules')}>
           {t('home.rulesLink')}
+        </button>
+
+        <button type="button" className="btn--ghost" onClick={() => navigate('/privacy')}>
+          {t('home.privacyLink')}
         </button>
       </main>
 

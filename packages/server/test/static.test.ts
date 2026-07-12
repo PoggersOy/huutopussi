@@ -69,6 +69,14 @@ test('a room deep-link falls back to the SPA shell (crawlable, no 404)', async (
   expect(res.headers.get('content-type')).toContain('text/html');
 });
 
+test('app-screen deep-links (incl. /privacy, /rules) fall back to the SPA shell', async () => {
+  for (const path of ['/privacy', '/rules', '/profile', '/history']) {
+    const res = await fetch(`http://127.0.0.1:${port}${path}`);
+    expect(res.status, path).toBe(200);
+    expect(res.headers.get('content-type'), path).toContain('text/html');
+  }
+});
+
 test('an unknown asset is a 404', async () => {
   const res = await fetch(`http://127.0.0.1:${port}/nope.js`);
   expect(res.status).toBe(404);

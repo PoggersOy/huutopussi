@@ -39,7 +39,6 @@ function makeUser(name: string): { id: string; token: string } {
   const user = server.db.upsertUserByGoogleSub({
     id: randomUUID(),
     googleSub: `sub-${name}-${randomUUID()}`,
-    email: `${name}@example.test`,
     name,
     picture: null,
   });

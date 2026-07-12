@@ -49,11 +49,19 @@ function sourceFiles(dir: string): string[] {
     .map((entry) => join(entry.parentPath, entry.name));
 }
 
+/**
+ * Dotted literals that match the key-shaped regex but are NOT i18n keys —
+ * bare domains/URLs hardcoded in source (e.g. the privacy policy's canonical
+ * site name, which must be a fixed string, not `location.host`). Extend this
+ * when a new such literal is added; the failure message names the offender.
+ */
+const NON_KEY_LITERALS = new Set(['huutopussi.online']);
+
 /** Dotted string literals ('a.b', "a.b") — i18n keys by repo convention. */
 function dottedLiterals(source: string): string[] {
-  return [...source.matchAll(/['"]([a-z][a-zA-Z]*\.[a-zA-Z][a-zA-Z.]*)['"]/g)].map(
-    (m) => m[1] as string,
-  );
+  return [...source.matchAll(/['"]([a-z][a-zA-Z]*\.[a-zA-Z][a-zA-Z.]*)['"]/g)]
+    .map((m) => m[1] as string)
+    .filter((literal) => !NON_KEY_LITERALS.has(literal));
 }
 
 function collectUsedKeys(): Set<string> {

@@ -15,6 +15,48 @@ import { MatchList } from '../components/MatchList';
 import { loadAllHistory, loadRecentRooms } from '../history';
 import { useStore } from '../store';
 
+/**
+ * A fanned hand of playing cards — the empty-state motif for "no matches yet".
+ * Cream faces over a soft gold glow, in the four-colour deck the game uses
+ * (K♠ black, A♥ red, 10♦ blue), splayed rightward like a held hand so each
+ * card's corner index stays visible.
+ */
+function CardFanArt() {
+  const cards = [
+    { rank: 'K', suit: '♠', color: 'var(--card-black)', rot: -20 },
+    { rank: 'A', suit: '♥', color: 'var(--card-red)', rot: 0 },
+    { rank: '10', suit: '♦', color: 'var(--card-blue)', rot: 20 },
+  ];
+  return (
+    <svg className="empty-state__art" viewBox="0 0 220 168" role="img" aria-hidden="true">
+      <ellipse cx="110" cy="100" rx="88" ry="50" fill="var(--gold)" opacity="0.1" />
+      {cards.map((c) => (
+        <g key={c.rank} transform={`translate(110 152) rotate(${c.rot})`}>
+          <rect
+            x="-33"
+            y="-96"
+            width="66"
+            height="94"
+            rx="8"
+            fill="var(--card-face)"
+            stroke="var(--card-border)"
+            strokeWidth="1.5"
+          />
+          <text x="-25" y="-73" fontSize="15" fontWeight="700" fill={c.color}>
+            {c.rank}
+          </text>
+          <text x="-25.5" y="-59" fontSize="13" fill={c.color}>
+            {c.suit}
+          </text>
+          <text x="0" y="-40" fontSize="34" textAnchor="middle" fill={c.color}>
+            {c.suit}
+          </text>
+        </g>
+      ))}
+    </svg>
+  );
+}
+
 export function History() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -48,9 +90,18 @@ export function History() {
       </header>
       <main className="screen__main">
         {empty ? (
-          <p className="dim" style={{ textAlign: 'center' }}>
-            {t('history.empty')}
-          </p>
+          <div className="empty-state">
+            <CardFanArt />
+            <h2 className="empty-state__title">{t('history.empty')}</h2>
+            <p className="empty-state__text">{t('history.emptyText')}</p>
+            <button
+              type="button"
+              className="btn--primary empty-state__cta"
+              onClick={() => navigate('/')}
+            >
+              {t('history.emptyCta')}
+            </button>
+          </div>
         ) : (
           <>
             {openRooms.length > 0 && (

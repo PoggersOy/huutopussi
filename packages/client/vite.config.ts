@@ -12,7 +12,7 @@ export default defineConfig({
       manifest: {
         name: 'Huutopussi',
         short_name: 'Huutopussi',
-        description: 'Suomalainen tikkipeli — online multiplayer Huutopussi.',
+        description: 'Ilmainen Huutopussi verkossa – pelaa heti yksin tai kavereiden kanssa.',
         lang: 'fi',
         display: 'standalone',
         orientation: 'portrait',

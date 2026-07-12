@@ -187,7 +187,6 @@ test('opening a pre-auth db adds sessions.user_id, creates the account tables, k
   const user = db.upsertUserByGoogleSub({
     id: 'u1',
     googleSub: 'sub-1',
-    email: 'a@b.test',
     name: 'A',
     picture: null,
   });

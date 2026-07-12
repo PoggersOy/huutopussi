@@ -1,169 +1,119 @@
 /**
- * Generates the PWA icons (icon-192.png, icon-512.png, icon-maskable-512.png)
- * into public/ with zero dependencies: a tiny supersampled rasterizer draws a
- * two-card fan with a heart pip on a felt-green ground, and a minimal PNG
- * encoder (zlib + CRC32) writes the files. Deterministic; outputs are
- * committed, re-run with `pnpm --filter @hp/client icons` after art changes.
+ * Regenerates the PWA icons — icon-192.png, icon-512.png,
+ * icon-maskable-512.png — into public/.
+ *
+ * Each icon is the brand logo (public/logo.png, the card-fan + megaphone)
+ * composited on a dark felt-green ground with a soft highlight behind it. That
+ * means the logo is a *raster* asset, and drawing it needs a real image
+ * decoder — which this zero-dependency package doesn't have. So, exactly like
+ * generate-og.mjs, this script emits a self-contained HTML file
+ * (scripts/icons-card.html, git-ignored) that renders all three icons on a
+ * <canvas> (supersampled ×2) with the logo embedded as a data URI. Open it in a
+ * browser and click each **Download** button, saving over the matching file in
+ * public/. The design (felt, glow, logo scale, shadow) lives here, so it stays
+ * version-controlled, and because it derives from public/logo.png the icons can
+ * never drift from the logo again.
+ *
+ *   pnpm --filter @hp/client icons          # writes scripts/icons-card.html
+ *   open packages/client/scripts/icons-card.html   # click each Download
+ *
+ * Placement was calibrated to the previous committed icons: the logo is
+ * centered and spans 80% of the canvas (63% for the maskable, whose extra
+ * padding keeps the art inside the safe zone).
  */
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { deflateSync } from 'node:zlib';
 
-const OUT_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'public');
+const here = dirname(fileURLToPath(import.meta.url));
+const pub = join(here, '..', 'public');
+const logoB64 = readFileSync(join(pub, 'logo.png')).toString('base64');
 
-// ── Palette (matches src/styles/tokens.css) ──────────────────────────────────
-const FELT_DARK = [7, 39, 28];
-const FELT_LIGHT = [22, 88, 66];
-const CARD_FACE = [253, 251, 244];
-const CARD_FACE_BACK = [240, 234, 218];
-const CARD_BORDER = [26, 26, 36];
-const PIP_RED = [200, 16, 46];
+// [filename, size, motif width as a fraction of the canvas]
+const ICONS = [
+  ['icon-192.png', 192, 0.8],
+  ['icon-512.png', 512, 0.8],
+  ['icon-maskable-512.png', 512, 0.63],
+];
 
-// ── PNG encoding ─────────────────────────────────────────────────────────────
+const html = `<!doctype html>
+<meta charset="utf-8">
+<title>Huutopussi — PWA icons</title>
+<body style="margin:0;background:#07271c;font-family:-apple-system,sans-serif;color:#f6f1e3;text-align:center">
+<p style="padding:12px 0 2px">Click each button to save over <code>public/&lt;name&gt;</code>.</p>
+<div id="out"></div>
+<script>
+const LOGO = 'data:image/png;base64,${logoB64}';
+const ICONS = ${JSON.stringify(ICONS)};
+const S = 2; // supersample
 
-const CRC_TABLE = new Int32Array(256).map((_, n) => {
-  let c = n;
-  for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-  return c;
-});
+function draw(logo, N, mw) {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = N * S;
+  const g = cv.getContext('2d');
+  const D = N * S;
 
-function crc32(buf) {
-  let c = 0xffffffff;
-  for (const byte of buf) c = CRC_TABLE[(c ^ byte) & 0xff] ^ (c >>> 8);
-  return (c ^ 0xffffffff) >>> 0;
-}
+  // Base felt — radial, subtly lighter at centre.
+  const base = g.createRadialGradient(D * 0.5, D * 0.5, 0, D * 0.5, D * 0.5, D * 0.72);
+  base.addColorStop(0, '#0d3c2c');
+  base.addColorStop(1, '#07221a');
+  g.fillStyle = base;
+  g.fillRect(0, 0, D, D);
 
-function chunk(type, data) {
-  const out = Buffer.alloc(12 + data.length);
-  out.writeUInt32BE(data.length, 0);
-  out.write(type, 4, 'ascii');
-  data.copy(out, 8);
-  out.writeUInt32BE(crc32(out.subarray(4, 8 + data.length)), 8 + data.length);
+  // Soft green highlight behind the logo.
+  const glow = g.createRadialGradient(D * 0.5, D * 0.37, 0, D * 0.5, D * 0.37, D * 0.44);
+  glow.addColorStop(0, 'rgba(46,122,80,0.85)');
+  glow.addColorStop(1, 'rgba(46,122,80,0)');
+  g.fillStyle = glow;
+  g.fillRect(0, 0, D, D);
+
+  // Logo, centred, with a soft drop shadow.
+  const lw = mw * D;
+  const lh = lw * (logo.height / logo.width);
+  g.save();
+  g.shadowColor = 'rgba(0,0,0,0.4)';
+  g.shadowBlur = 0.03 * D;
+  g.shadowOffsetY = 0.012 * D;
+  g.drawImage(logo, (D - lw) / 2, (D - lh) / 2, lw, lh);
+  g.restore();
+
+  // Downscale ×2 → crisp N×N.
+  const out = document.createElement('canvas');
+  out.width = out.height = N;
+  const o = out.getContext('2d');
+  o.imageSmoothingEnabled = true;
+  o.imageSmoothingQuality = 'high';
+  o.drawImage(cv, 0, 0, N, N);
   return out;
 }
 
-/** rgb: Uint8Array of size*size*3 (opaque). */
-function encodePng(size, rgb) {
-  const stride = size * 3 + 1;
-  const raw = Buffer.alloc(stride * size);
-  for (let y = 0; y < size; y++) {
-    raw[y * stride] = 0; // filter: none
-    rgb.subarray(y * size * 3, (y + 1) * size * 3).forEach((v, i) => {
-      raw[y * stride + 1 + i] = v;
-    });
+const img = new Image();
+img.onload = () => {
+  const out = document.getElementById('out');
+  for (const [name, N, mw] of ICONS) {
+    const canvas = draw(img, N, mw);
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'display:inline-block;margin:10px 14px;vertical-align:top';
+    const a = document.createElement('a');
+    a.href = canvas.toDataURL('image/png');
+    a.download = name;
+    a.textContent = 'Download ' + name;
+    a.style.cssText = 'display:block;margin-top:6px;color:#e7c766;text-decoration:none;border:1px solid #c9aa66;border-radius:8px;padding:6px 10px';
+    canvas.style.cssText = 'width:' + Math.min(N, 160) + 'px;image-rendering:auto;background:#000';
+    wrap.appendChild(canvas);
+    wrap.appendChild(a);
+    out.appendChild(wrap);
+    window.__icons = window.__icons || {};
+    window.__icons[name] = a.href.split(',')[1];
   }
-  const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(size, 0);
-  ihdr.writeUInt32BE(size, 4);
-  ihdr[8] = 8; // bit depth
-  ihdr[9] = 2; // color type: truecolor
-  return Buffer.concat([
-    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-    chunk('IHDR', ihdr),
-    chunk('IDAT', deflateSync(raw, { level: 9 })),
-    chunk('IEND', Buffer.alloc(0)),
-  ]);
-}
+  window.__ready = true;
+};
+img.src = LOGO;
+</script>`;
 
-// ── Shape tests ──────────────────────────────────────────────────────────────
-
-function roundRectSdf(lx, ly, hw, hh, r) {
-  const qx = Math.abs(lx) - (hw - r);
-  const qy = Math.abs(ly) - (hh - r);
-  return Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - r;
-}
-
-/** Classic implicit heart, u right / v up, spans roughly |u|<1.15, -1<v<1.25. */
-function inHeart(u, v) {
-  if (u * u + v * v > 2.6) return false;
-  const t = u * u + v * v - 1;
-  return t * t * t - u * u * v * v * v <= 0;
-}
-
-/** Local coordinates of point p relative to a card rotated by `deg`. */
-function toLocal(px, py, cx, cy, deg) {
-  const th = (deg * Math.PI) / 180;
-  const dx = px - cx;
-  const dy = py - cy;
-  return [dx * Math.cos(th) + dy * Math.sin(th), -dx * Math.sin(th) + dy * Math.cos(th)];
-}
-
-// ── Scene ────────────────────────────────────────────────────────────────────
-
-/**
- * Color of the scene at point (px, py) on a canvas of width w.
- * `m` scales the motif toward the canvas center (maskable safe zone).
- */
-function sceneColor(px, py, w, m) {
-  const place = (fx, fy) => [w * (0.5 + (fx - 0.5) * m), w * (0.5 + (fy - 0.5) * m)];
-  const hw = 0.2 * m * w; // card half-width
-  const hh = 0.28 * m * w;
-  const r = 0.045 * m * w;
-  const border = 0.016 * m * w;
-
-  // Front card (drawn on top): heart pip in the middle.
-  {
-    const [cx, cy] = place(0.585, 0.5);
-    const [lx, ly] = toLocal(px, py, cx, cy, 9);
-    const d = roundRectSdf(lx, ly, hw, hh, r);
-    if (d <= 0) {
-      if (d > -border) return CARD_BORDER;
-      const s = 0.115 * m * w;
-      if (inHeart(lx / s, -(ly - 0.015 * m * w) / s)) return PIP_RED;
-      return CARD_FACE;
-    }
-  }
-
-  // Back card: diamond pip on its visible edge.
-  {
-    const [cx, cy] = place(0.4, 0.54);
-    const [lx, ly] = toLocal(px, py, cx, cy, -16);
-    const d = roundRectSdf(lx, ly, hw, hh, r);
-    if (d <= 0) {
-      if (d > -border) return CARD_BORDER;
-      const du = Math.abs(lx + 0.1 * m * w) + Math.abs(ly + 0.14 * m * w);
-      if (du <= 0.06 * m * w) return PIP_RED;
-      return CARD_FACE_BACK;
-    }
-  }
-
-  // Felt background: radial falloff from upper center.
-  const t = Math.min(1, Math.hypot(px - 0.5 * w, py - 0.42 * w) / (0.72 * w));
-  return FELT_LIGHT.map((c, i) => c + (FELT_DARK[i] - c) * t);
-}
-
-// ── Render ───────────────────────────────────────────────────────────────────
-
-function render(size, motifScale) {
-  const SS = 3; // supersampling factor (poor man's anti-aliasing)
-  const w = size * SS;
-  const rgb = new Uint8Array(size * size * 3);
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      let acc = [0, 0, 0];
-      for (let sy = 0; sy < SS; sy++) {
-        for (let sx = 0; sx < SS; sx++) {
-          const c = sceneColor(x * SS + sx + 0.5, y * SS + sy + 0.5, w, motifScale);
-          acc = [acc[0] + c[0], acc[1] + c[1], acc[2] + c[2]];
-        }
-      }
-      const i = (y * size + x) * 3;
-      rgb[i] = Math.round(acc[0] / (SS * SS));
-      rgb[i + 1] = Math.round(acc[1] / (SS * SS));
-      rgb[i + 2] = Math.round(acc[2] / (SS * SS));
-    }
-  }
-  return encodePng(size, rgb);
-}
-
-mkdirSync(OUT_DIR, { recursive: true });
-for (const [file, size, motifScale] of [
-  ['icon-192.png', 192, 1],
-  ['icon-512.png', 512, 1],
-  ['icon-maskable-512.png', 512, 0.68],
-]) {
-  const png = render(size, motifScale);
-  writeFileSync(join(OUT_DIR, file), png);
-  console.log(`wrote public/${file} (${png.length} bytes)`);
-}
+const out = join(here, 'icons-card.html');
+writeFileSync(out, html);
+console.log(
+  'wrote scripts/icons-card.html — open it in a browser and click each Download,\n' +
+    'saving over packages/client/public/{icon-192,icon-512,icon-maskable-512}.png.',
+);
