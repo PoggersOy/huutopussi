@@ -29,7 +29,8 @@ export function AuthPanel() {
 
   if (user) {
     // Layout: the ELO field on the left, then the user's avatar "ball" on the
-    // far right edge. The whole row links to the profile.
+    // far right edge. The whole row links to the profile. A crown glyph stands
+    // in for the "ELO" label so the whole cluster stays on one header line.
     return (
       <button
         type="button"
@@ -38,7 +39,7 @@ export function AuthPanel() {
         aria-label={user.name ?? t('auth.signedIn')}
         title={t('auth.profile')}
       >
-        <RatingBadge rating={user.rating} provisional={user.provisional} label={t('auth.elo')} />
+        <RatingBadge rating={user.rating} provisional={user.provisional} icon={<CrownIcon />} />
         {user.picture ? (
           <img
             src={user.picture}
@@ -71,6 +72,19 @@ export function AuthPanel() {
   }
 
   return null; // login disabled → guest-only
+}
+
+/** A compact gold crown that prefixes the ELO value (inherits `currentColor`). */
+function CrownIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="13" height="13" role="img" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M2.5 8.2a1.25 1.25 0 1 0-1.2-1.6L3.2 17.2A1 1 0 0 0 4.18 18h15.64a1 1 0 0 0 .98-.8L22.7 6.6a1.25 1.25 0 1 0-1.2 1.6l-4.03 2.9-3.5-5.2a1.2 1.2 0 0 0-1.94 0l-3.5 5.2L2.5 8.2z"
+      />
+      <rect x="4.6" y="19.2" width="14.8" height="1.7" rx="0.85" fill="currentColor" />
+    </svg>
+  );
 }
 
 /** The official multi-colour Google "G" mark. */

@@ -165,7 +165,7 @@ export function Home() {
   return (
     <div className="screen">
       <header className="screen__top">
-        <div className="row" style={{ justifyContent: 'space-between' }}>
+        <div className="screen__topbar">
           <h1 className="brand">
             <img
               className="brand__logo"
@@ -175,7 +175,7 @@ export function Home() {
               width={68}
               height={44}
             />
-            {t('app.title')}
+            <span className="brand__title">{t('app.title')}</span>
           </h1>
           <div className="row auth-header">
             <ConnectionPill />

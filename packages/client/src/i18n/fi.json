@@ -48,8 +48,7 @@
     "signInPrompt": "Kirjaudu kerätäksesi ratingia",
     "signOut": "Kirjaudu ulos",
     "signedIn": "Kirjautunut",
-    "profile": "Profiili",
-    "elo": "ELO"
+    "profile": "Profiili"
   },
   "profile": {
     "title": "Profiili",

@@ -60,6 +60,29 @@ h2 {
   flex: none;
 }
 
+/* Home header bar: brand on the left, connection + account cluster on the
+   right, locked to a single row. The account cluster keeps its intrinsic size
+   (flex: none); the brand is the item that yields, its wordmark ellipsizing on
+   very narrow phones rather than pushing the ELO + avatar onto a second line. */
+.screen__topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: nowrap;
+}
+
+.screen__topbar .brand {
+  min-width: 0;
+  font-size: var(--fs-xl);
+}
+
+.screen__topbar .brand__title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ── Portrait-first screen grid: header / scrollable main / action bar ── */
 
 .screen {
@@ -716,6 +739,14 @@ input::placeholder {
   font-size: var(--fs-xs);
   font-weight: 700;
   vertical-align: middle;
+}
+
+/* Crown glyph standing in for the "ELO" label; nudged to sit on the numeral's
+   baseline and given a hair of breathing room before the value. */
+.rating-badge__icon {
+  display: inline-flex;
+  margin-right: 3px;
+  vertical-align: -2px;
 }
 
 /* Header account control (top-right): a GIS icon button or an avatar+rating
