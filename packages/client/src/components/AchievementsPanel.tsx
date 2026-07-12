@@ -45,15 +45,18 @@ export function AchievementsPanel({
   const { t } = useTranslation();
   const unlockedCount = ACHIEVEMENTS.filter((a) => unlocked.has(a.id)).length;
 
+  // Collapsed by default: the full catalogue is long, so it's tucked into an
+  // accordion (same chrome as the "What is Elo?" explainer). The unlocked count
+  // stays in the summary so progress reads at a glance without expanding.
   return (
-    <div className="panel stack">
-      <div className="row" style={{ justifyContent: 'space-between' }}>
-        <h2>{t('achievements.heading')}</h2>
-        <span className="dim">
+    <details className="panel profile__explainer">
+      <summary className="profile__explainer-q">
+        <span className="ach-accordion__title">{t('achievements.heading')}</span>
+        <span className="dim ach-accordion__count">
           {unlockedCount} / {ACHIEVEMENTS.length}
         </span>
-      </div>
-      <ul className="ach-grid">
+      </summary>
+      <ul className="ach-grid ach-accordion__grid">
         {ACHIEVEMENTS.map((a) => {
           const isUnlocked = unlocked.has(a.id);
           const prog = a.kind === 'counter' ? progress[a.id] : undefined;
@@ -87,6 +90,6 @@ export function AchievementsPanel({
           );
         })}
       </ul>
-    </div>
+    </details>
   );
 }

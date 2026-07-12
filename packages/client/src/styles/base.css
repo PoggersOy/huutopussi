@@ -14,6 +14,11 @@ body,
 
 body {
   margin: 0;
+  /* Belt-and-suspenders: the whole app is a fixed-height shell with its own
+     inner scrollers, so the page must never scroll sideways. Anything genuinely
+     wider than the viewport (talon strip, raw debug) carries its own
+     overflow-x: auto and is unaffected. */
+  overflow-x: hidden;
   font-family: var(--font-ui);
   font-size: var(--fs-md);
   color: var(--text);
@@ -100,6 +105,9 @@ h2 {
 
 .screen__main {
   overflow-y: auto;
+  /* Scroll vertically, never sideways. (overflow-y:auto alone would compute
+     overflow-x to auto, letting a too-wide child add a horizontal scrollbar.) */
+  overflow-x: hidden;
   padding: var(--space-4);
   display: flex;
   flex-direction: column;
@@ -542,15 +550,32 @@ input::placeholder {
   min-height: var(--touch-min);
 }
 
+/* The label is the element that yields: it flexes and wraps so the row always
+   fits. This matters because iOS Safari refuses to shrink a <select> below its
+   content width in flexbox — with a non-shrinking label the long compound
+   Finnish labels pushed the whole ruleset editor wider than the screen (a
+   horizontal scroll on the create-ruleset sheet). Let the label wrap instead. */
 .config-row > span {
-  flex: none;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .config-row select {
+  flex: 0 1 auto;
   width: auto;
-  max-width: 60%;
+  max-width: 55%;
   min-width: 0;
   text-overflow: ellipsis;
+}
+
+/* Non-host lobby ruleset value (a host-chosen name, up to 40 chars): kept on
+   the value side, capped, and allowed to break so a long name never overflows. */
+.config-row > strong {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 55%;
+  text-align: right;
+  overflow-wrap: anywhere;
 }
 
 .config-row input[type="checkbox"] {
@@ -559,6 +584,27 @@ input::placeholder {
   min-height: 0;
   flex: none;
   accent-color: var(--gold);
+}
+
+/* Saved rule-configs list (profile): name on the left, actions on the right.
+   The name can be an arbitrary 40-char string, so it must be able to break —
+   min-width:0 + overflow-wrap keep it from forcing horizontal scroll. */
+.config-list__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  width: 100%;
+}
+
+.config-list__name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.config-list__row .row {
+  flex: none;
+  justify-content: flex-end;
 }
 
 /* ── "View all rules" link + overlay ── */
@@ -1496,6 +1542,21 @@ input::placeholder {
   display: grid;
   grid-template-columns: 1fr;
   gap: var(--space-2);
+}
+
+/* Achievements accordion (reuses .profile__explainer chrome): the title claims
+   the row so the unlocked count + chevron sit together on the right, and the
+   grid gets the same inset the explainer answer uses. */
+.ach-accordion__title {
+  margin-right: auto;
+}
+
+.ach-accordion__count {
+  font-size: var(--fs-sm);
+}
+
+.ach-accordion__grid {
+  padding: 0 var(--space-4) var(--space-4);
 }
 
 @media (min-width: 440px) {
