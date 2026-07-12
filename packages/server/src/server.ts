@@ -14,7 +14,7 @@
 import { randomInt, randomUUID } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as http from 'node:http';
-import { extname, join, normalize, resolve } from 'node:path';
+import { basename, extname, join, normalize, resolve, sep } from 'node:path';
 import {
   activeSeats,
   allowedActions,
@@ -213,6 +213,39 @@ const MIME: Record<string, string> = {
   '.txt': 'text/plain; charset=utf-8',
   '.xml': 'application/xml; charset=utf-8',
 };
+
+/**
+ * `Cache-Control` for a static asset. Critical for PWA update propagation: if
+ * the origin sends no header, the CDN (Cloudflare) invents `max-age=14400`,
+ * which pins a *stale service worker* for 4h so new deploys are never even
+ * detected. So we send explicit, correct policies:
+ *
+ *  - `sw.js` / `registerSW.js` / the app shell / the manifest → `no-cache`
+ *    (may be stored, but MUST be revalidated before use). These gate every
+ *    update, so they must always reflect the latest deploy.
+ *  - content-hashed build output (`/assets/*`, `workbox-<hash>.js`) → cache
+ *    forever + `immutable`: the filename changes when the bytes change, so a
+ *    given URL is safe to keep indefinitely.
+ *  - everything else (icons, logo, favicon) → revalidate daily.
+ *
+ * (Cloudflare must also be told to honour these — Browser Cache TTL "Respect
+ * Existing Headers", and a rule to bypass the edge cache for `/sw.js`.)
+ */
+function cacheControlFor(filePath: string): string {
+  const base = basename(filePath);
+  if (
+    base === 'sw.js' ||
+    base === 'registerSW.js' ||
+    base === 'index.html' ||
+    base.endsWith('.webmanifest')
+  ) {
+    return 'no-cache';
+  }
+  if (filePath.includes(`${sep}assets${sep}`) || /^workbox-[\w-]+\.js$/.test(base)) {
+    return 'public, max-age=31536000, immutable';
+  }
+  return 'public, max-age=86400';
+}
 
 export function createServer(opts: ServerOpts = {}): HpServer {
   const cfg: TimerConfig = { ...DEFAULT_TIMER_CONFIG, ...opts.timers };
@@ -1610,7 +1643,10 @@ export function createServer(opts: ServerOpts = {}): HpServer {
         res.end('not found');
         return;
       }
-      res.writeHead(200, { 'content-type': MIME[extname(filePath)] ?? 'application/octet-stream' });
+      res.writeHead(200, {
+        'content-type': MIME[extname(filePath)] ?? 'application/octet-stream',
+        'cache-control': cacheControlFor(filePath),
+      });
       res.end(data);
     });
   }
