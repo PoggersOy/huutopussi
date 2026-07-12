@@ -17,6 +17,7 @@ import {
 import type { MatchRatingResult } from '@hp/protocol';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Confetti } from '../../components/Confetti';
 import { DealBreakdownTable, DealContractLine } from '../../components/DealBreakdownTable';
 import { sendLobby } from '../../socket';
 import { useStore } from '../../store';
@@ -211,9 +212,25 @@ export function DealScoredOverlay({
   const sideLabel = (side: Side): string =>
     players === 4 ? (side === mySide ? t('table.us') : t('table.them')) : nameOf(side as Seat);
 
+  // Läpäri: one side took every trick of the deal. Derived from the result (no
+  // config needed — a side's tricks equalling the deal's total is a clean sweep).
+  const totalTricks = result.sides.reduce((a, s) => a + s.tricks, 0);
+  const sweepSide = totalTricks > 0 ? result.sides.findIndex((s) => s.tricks === totalTricks) : -1;
+  const laapari = sweepSide >= 0;
+  const laapariMine = laapari && (sweepSide as Side) === mySide;
+
   return (
     <div className="overlay" role="dialog" aria-modal="true">
       <div className="overlay__panel stack">
+        {laapari && (
+          <div className={`laapari${laapariMine ? ' laapari--mine' : ''}`}>
+            <Confetti count={50} />
+            <span className="laapari__word">{t('overlay.laapari')}</span>
+            <span className="laapari__by dim">
+              {t('overlay.laapariBy', { name: sideLabel(sweepSide as Side) })}
+            </span>
+          </div>
+        )}
         <h2>{t('overlay.dealResults')}</h2>
         <DealContractLine result={result} nameOf={nameOf} />
         <DealBreakdownTable result={result} scores={scores} order={order} sideLabel={sideLabel} />
@@ -297,6 +314,7 @@ export function MatchEndedOverlay({
   return (
     <div className="overlay" role="dialog" aria-modal="true">
       <div className="overlay__panel stack">
+        {won && <Confetti count={90} />}
         <h2 className={won ? 'overlay__win' : undefined}>{title}</h2>
         {showWinners && (
           <p className="tsheet__center">

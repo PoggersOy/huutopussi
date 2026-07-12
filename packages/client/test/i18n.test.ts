@@ -16,8 +16,10 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { ACHIEVEMENTS, PRESTIGE_TITLES, RATING_TITLES, TULOKAS } from '@hp/achievements';
 import { describe, expect, it } from 'vitest';
+import { EMOTE_CATEGORIES } from '../src/emotes';
 import en from '../src/i18n/en.json';
 import fi from '../src/i18n/fi.json';
+import { PUZZLES, SCENARIOS } from '../src/scenarios';
 
 // Vitest runs with cwd = packages/client (the vitest.config.ts root).
 const CLIENT_SRC = resolve(process.cwd(), 'src');
@@ -89,6 +91,31 @@ function collectUsedKeys(): Set<string> {
 
   // 3b. Dynamic `home.bots.level.${difficulty}` labels (Pikapeli level picker).
   for (const level of ['easy', 'medium', 'hard']) used.add(`home.bots.level.${level}`);
+
+  // 3b'. Dynamic `emote.cat.${category}` labels (reaction picker group headers).
+  for (const cat of EMOTE_CATEGORIES) used.add(`emote.cat.${cat}`);
+
+  // 3b''. Learn-mode dynamic keys: each scenario's goal line, the puzzle
+  //       titles/descriptions/done messages, and the per-phase guidance text.
+  for (const sc of SCENARIOS) used.add(`learn.${sc.id}.goal`);
+  for (const p of PUZZLES) {
+    used.add(`learn.scenarioTitle.${p.id}`);
+    used.add(`learn.scenarioDesc.${p.id}`);
+    used.add(`learn.${p.id}.doneWin`);
+    used.add(`learn.${p.id}.doneLose`);
+  }
+  for (const phase of [
+    'bidding',
+    'exchangeGive',
+    'exchangeReturn',
+    'exchangeContract',
+    'exchangeDiscard',
+    'awaitWholeAnswer',
+    'lead',
+    'follow',
+  ]) {
+    used.add(`learn.common.${phase}`);
+  }
 
   // 3c. Dynamic title + achievement labels, resolved via the @hp/achievements
   //     catalogue (t(tier.i18nKey), t(`${a.i18nKey}.name|.desc`)).

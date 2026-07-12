@@ -56,6 +56,8 @@ export interface Room {
   /** Session token of the seat holding lobby powers (usually the creator). */
   hostToken: string | null;
   config: RuleConfig;
+  /** Display name of the active config; null = the built-in "Oletus" default. */
+  configName: string | null;
   /** Turn pacing (autoplay + timeout); host-editable, independent of config. */
   tableSettings: RoomTableSettings;
   /** Skill level of bots in this room (Pikapeli setting; default medium). */
@@ -85,6 +87,7 @@ export function createRoom(init: {
   code: string;
   hostToken: string | null;
   config: RuleConfig;
+  configName?: string | null;
   tableSettings: RoomTableSettings;
   matchmaking?: RoomMatchmaking | null;
 }): Room {
@@ -93,6 +96,7 @@ export function createRoom(init: {
     code: init.code,
     hostToken: init.hostToken,
     config: init.config,
+    configName: init.configName ?? null,
     tableSettings: init.tableSettings,
     botDifficulty: 'medium',
     matchmaking: init.matchmaking ?? null,
@@ -161,6 +165,7 @@ export function roomPublic(room: Room): RoomStatePublic {
     seats,
     hostSeat: host ? host.seat : null,
     config: room.config,
+    configName: room.configName,
     tableSettings: toWireTableSettings(room.tableSettings),
     status: room.status,
     matchmaking: room.matchmaking,

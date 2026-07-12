@@ -6,13 +6,7 @@
  * authority stays server-side — every control just submits a lobby command.
  */
 import type { RuleConfig, Seat } from '@hp/engine';
-import type {
-  ConfigPatch,
-  RoomStatePublic,
-  SeatInfo,
-  TableSettings,
-  TableSettingsPatch,
-} from '@hp/protocol';
+import type { RoomStatePublic, SeatInfo, TableSettings, TableSettingsPatch } from '@hp/protocol';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
@@ -22,7 +16,7 @@ import { MatchList } from '../components/MatchList';
 import { RatingBadge } from '../components/RatingBadge';
 import { TitleBadge } from '../components/TitleBadge';
 import { loadRoomHistory } from '../history';
-import { presetLabelKey, presetOf, RuleSections } from '../rules';
+import { configMatches, DEFAULT_CONFIG, RuleSections, resolveConfigForPlayers } from '../rules';
 import { disconnect, sendLobby } from '../socket';
 import { useStore } from '../store';
 
@@ -60,7 +54,7 @@ export function Lobby() {
       <main className="screen__main">
         <MiniTable room={room} mySeat={mySeat} isHost={isHost} />
         <ShareBlock code={room.code} />
-        <ConfigPanel config={room.config} isHost={isHost} />
+        <ConfigPanel config={room.config} configName={room.configName} isHost={isHost} />
         <TableSettingsPanel settings={room.tableSettings} isHost={isHost} />
         <PastMatches roomCode={room.code} />
       </main>
@@ -347,22 +341,52 @@ function ShareBlock({ code }: { code: string }) {
   );
 }
 
-// ── Rules config panel (configPatchSchema fields; host-editable) ─────────────
+// ── Rules config panel: player count + saved-config picker (host-editable) ────
 
-const MIN_BID_OPTIONS = [0, 25, 50, 60, 75, 100, 150, 200];
-const WIN_TARGET_OPTIONS = [250, 500, 750, 1000];
-
-function numberOptions(base: readonly number[], current: number): number[] {
-  return base.includes(current) ? [...base] : [...base, current].sort((a, b) => a - b);
-}
-
-function ConfigPanel({ config, isHost }: { config: RuleConfig; isHost: boolean }) {
+/**
+ * The lobby's rules control. The host picks the player count (2/3/4) and a rule
+ * configuration from a dropdown — the built-in "Oletus" plus any the account
+ * saved in their profile. There is no per-field editing here: full customization
+ * lives in the profile. Everyone sees the active config's name and can open the
+ * "view all rules" overlay for the complete, always-accurate picture. The turn
+ * timer is a SEPARATE panel (TableSettingsPanel), not a rule.
+ */
+function ConfigPanel({
+  config,
+  configName,
+  isHost,
+}: {
+  config: RuleConfig;
+  configName: string | null;
+  isHost: boolean;
+}) {
   const { t } = useTranslation();
   const [showAllRules, setShowAllRules] = useState(false);
-  const patch = (p: ConfigPatch): void => {
-    sendLobby({ type: 'setConfig', patch: p });
+  const savedConfigs = useStore((s) => s.auth.ruleConfigs);
+  const players = config.players;
+
+  // Built-in "Oletus" (id '') + the account's saved configs. The active entry is
+  // whichever the live room config currently resolves to (mode fields aside).
+  const options = useMemo(
+    () => [{ id: '', name: t('config.default'), config: DEFAULT_CONFIG }, ...savedConfigs],
+    [savedConfigs, t],
+  );
+  const activeId = options.find((o) => configMatches(config, o.config))?.id ?? null;
+  // A named config not in the list (e.g. edited/deleted after use) shows as a
+  // disabled placeholder; an unnamed unmatched config is just the default.
+  const unmatchedNamed = activeId === null && configName !== null;
+  const selectValue = activeId ?? (unmatchedNamed ? '__current__' : '');
+
+  const send = (
+    opt: { id: string; name: string; config: RuleConfig },
+    nextPlayers: 2 | 3 | 4,
+  ): void => {
+    sendLobby({
+      type: 'setConfig',
+      patch: resolveConfigForPlayers(opt.config, nextPlayers),
+      configName: opt.id === '' ? null : opt.name,
+    });
   };
-  const preset = presetOf(config);
 
   return (
     <section className="panel stack">
@@ -370,38 +394,15 @@ function ConfigPanel({ config, isHost }: { config: RuleConfig; isHost: boolean }
       {!isHost && <p className="dim">{t('config.hostOnly')}</p>}
 
       <label className="config-row">
-        <span>{t('config.preset')}</span>
-        <select
-          value={preset}
-          disabled={!isHost}
-          onChange={(e) => {
-            const value = e.target.value;
-            if (value === 'illisoft' || value === 'paamuoto') patch({ preset: value });
-          }}
-        >
-          <option value="illisoft">{t('config.presetIllisoft')}</option>
-          <option value="paamuoto">{t('config.presetPaamuoto')}</option>
-          {preset === 'custom' && (
-            <option value="custom" disabled>
-              {t('config.presetCustom')}
-            </option>
-          )}
-        </select>
-      </label>
-
-      {/* The editable fields below are a subset; the ruleset choice also sets many
-          rules that aren't shown here (bidding order, Porvoo, redeals…). This
-          link opens the full, always-accurate picture derived from room.config. */}
-      <button type="button" className="rules-link" onClick={() => setShowAllRules(true)}>
-        {t('config.viewAll')}
-      </button>
-
-      <label className="config-row">
         <span>{t('config.players')}</span>
         <select
-          value={config.players}
+          value={players}
           disabled={!isHost}
-          onChange={(e) => patch({ players: Number(e.target.value) as 2 | 3 | 4 })}
+          onChange={(e) => {
+            const next = Number(e.target.value) as 2 | 3 | 4;
+            const cur = options.find((o) => o.id === (activeId ?? '')) ?? options[0];
+            if (cur) send(cur, next);
+          }}
         >
           {([2, 3, 4] as const).map((n) => (
             <option key={n} value={n}>
@@ -411,116 +412,46 @@ function ConfigPanel({ config, isHost }: { config: RuleConfig; isHost: boolean }
         </select>
       </label>
 
-      {config.players !== 4 && (
-        <>
-          <label className="config-row">
-            <span>{t('config.talonSize')}</span>
-            <select
-              value={config.talonSize}
-              disabled={!isHost}
-              onChange={(e) => patch({ talonSize: Number(e.target.value) as 3 | 6 })}
-            >
-              {([3, 6] as const).map((n) => (
-                <option key={n} value={n}>
-                  {t('config.cardsOpt', { n })}
-                </option>
-              ))}
-            </select>
-          </label>
+      {/* A div (not a label): the non-host branch renders plain text, not a
+          form control, and the host select carries its own aria-label. */}
+      <div className="config-row">
+        <span>{t('config.ruleset')}</span>
+        {isHost ? (
+          <select
+            aria-label={t('config.ruleset')}
+            value={selectValue}
+            onChange={(e) => {
+              const chosen = options.find((o) => o.id === e.target.value);
+              if (chosen) send(chosen, players);
+            }}
+          >
+            {unmatchedNamed && (
+              <option value="__current__" disabled>
+                {configName}
+              </option>
+            )}
+            {options.map((o) => (
+              <option key={o.id || 'default'} value={o.id}>
+                {o.name}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <strong>{configName ?? t('config.default')}</strong>
+        )}
+      </div>
 
-          <label className="config-row">
-            <span>{t('config.openTalon')}</span>
-            <select
-              value={config.openTalon ? 'open' : 'secret'}
-              disabled={!isHost}
-              onChange={(e) => patch({ openTalon: e.target.value === 'open' })}
-            >
-              <option value="open">{t('config.openTalonOpen')}</option>
-              <option value="secret">{t('config.openTalonSecret')}</option>
-            </select>
-          </label>
-        </>
-      )}
+      <button type="button" className="rules-link" onClick={() => setShowAllRules(true)}>
+        {t('config.viewAll')}
+      </button>
 
-      <label className="config-row">
-        <span>{t('config.cardPoints')}</span>
-        <select
-          value={config.cardPoints}
-          disabled={!isHost}
-          onChange={(e) => patch({ cardPoints: e.target.value as 'A' | 'B' })}
-        >
-          <option value="A">{t('config.cardPointsA')}</option>
-          <option value="B">{t('config.cardPointsB')}</option>
-        </select>
-      </label>
-
-      <label className="config-row">
-        <span>{t('config.trumpValues')}</span>
-        <select
-          value={config.trumpValues}
-          disabled={!isHost}
-          onChange={(e) => patch({ trumpValues: e.target.value as 'heartsHigh' | 'bridge' })}
-        >
-          <option value="heartsHigh">{t('config.trumpValuesHeartsHigh')}</option>
-          <option value="bridge">{t('config.trumpValuesBridge')}</option>
-        </select>
-      </label>
-
-      <label className="config-row">
-        <span>{t('config.minBid')}</span>
-        <select
-          value={config.minBid}
-          disabled={!isHost}
-          onChange={(e) => patch({ minBid: Number(e.target.value) })}
-        >
-          {numberOptions(MIN_BID_OPTIONS, config.minBid).map((n) => (
-            <option key={n} value={n}>
-              {n}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <label className="config-row">
-        <span>{t('config.winTarget')}</span>
-        <select
-          value={config.winTarget}
-          disabled={!isHost}
-          onChange={(e) => patch({ winTarget: Number(e.target.value) })}
-        >
-          {numberOptions(WIN_TARGET_OPTIONS, config.winTarget).map((n) => (
-            <option key={n} value={n}>
-              {n}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <label className="config-row">
-        <span>{t('config.declareRight')}</span>
-        <select
-          value={config.declareRight}
-          disabled={!isHost}
-          onChange={(e) =>
-            patch({ declareRight: e.target.value as 'ownLedWonTrick' | 'anyWonTrick' })
-          }
-        >
-          <option value="ownLedWonTrick">{t('config.declareRightOwnLedWonTrick')}</option>
-          <option value="anyWonTrick">{t('config.declareRightAnyWonTrick')}</option>
-        </select>
-      </label>
-
-      <label className="config-row">
-        <span>{t('config.showLastTrick')}</span>
-        <input
-          type="checkbox"
-          checked={config.showLastTrick}
-          disabled={!isHost}
-          onChange={(e) => patch({ showLastTrick: e.target.checked })}
+      {showAllRules && (
+        <AllRulesOverlay
+          config={config}
+          configName={configName}
+          onClose={() => setShowAllRules(false)}
         />
-      </label>
-
-      {showAllRules && <AllRulesOverlay config={config} onClose={() => setShowAllRules(false)} />}
+      )}
     </section>
   );
 }
@@ -533,7 +464,15 @@ function ConfigPanel({ config, isHost }: { config: RuleConfig; isHost: boolean }
  * shared with the standalone Peliohjeet screen). The lobby panel only exposes a
  * handful of fields; this overlay shows all of them.
  */
-function AllRulesOverlay({ config, onClose }: { config: RuleConfig; onClose: () => void }) {
+function AllRulesOverlay({
+  config,
+  configName,
+  onClose,
+}: {
+  config: RuleConfig;
+  configName: string | null;
+  onClose: () => void;
+}) {
   const { t } = useTranslation();
 
   // Dismiss on Escape, mirroring the click-outside affordance below.
@@ -545,7 +484,7 @@ function AllRulesOverlay({ config, onClose }: { config: RuleConfig; onClose: () 
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const presetLabel = t(presetLabelKey(presetOf(config)));
+  const rulesetLabel = configName ?? t('config.default');
 
   return (
     // biome-ignore lint/a11y/useKeyWithClickEvents: keyboard users dismiss via Escape (handled above) or the × / Close buttons; this is the click-outside touch affordance
@@ -568,7 +507,7 @@ function AllRulesOverlay({ config, onClose }: { config: RuleConfig; onClose: () 
           ✕
         </button>
         <h2>{t('rules.title')}</h2>
-        <p className="dim rules-overlay__preset">{presetLabel}</p>
+        <p className="dim rules-overlay__preset">{rulesetLabel}</p>
         <RuleSections config={config} />
         <button type="button" className="btn--primary" onClick={onClose}>
           {t('common.close')}
@@ -581,6 +520,11 @@ function AllRulesOverlay({ config, onClose }: { config: RuleConfig; onClose: () 
 // ── Turn timer panel (tableSettingsPatchSchema; host-editable) ───────────────
 
 const TIMEOUT_OPTIONS = [30, 45, 60, 90, 120, 180];
+
+/** Base option list plus `current` if it isn't already one of them (sorted). */
+function numberOptions(base: readonly number[], current: number): number[] {
+  return base.includes(current) ? [...base] : [...base, current].sort((a, b) => a - b);
+}
 
 /**
  * Autoplay + per-turn time limit. These are turn PACING, not game rules (the

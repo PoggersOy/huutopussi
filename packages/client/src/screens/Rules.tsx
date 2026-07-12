@@ -13,7 +13,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { ConnectionPill } from '../components/ConnectionPill';
-import { type Preset, presetConfig, RuleSections } from '../rules';
+import { DEFAULT_CONFIG, RuleSections } from '../rules';
 
 /** The A 10 K Q J 9 8 7 6 rank order (10 beats the King — a classic gotcha). */
 const RANK_ORDER = ['A', '10', 'K', 'Q', 'J', '9', '8', '7', '6'] as const;
@@ -49,7 +49,6 @@ const STEPS: ReadonlyArray<{ icon: string; title: string; body: string; visual?:
 export function Rules() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const [preset, setPreset] = useState<Preset>('illisoft');
   const [players, setPlayers] = useState<2 | 3 | 4>(4);
 
   return (
@@ -108,27 +107,10 @@ export function Rules() {
           </section>
         ))}
 
-        {/* 2 — Ruleset explorer: exact settings for the chosen preset + size. */}
+        {/* 2 — Ruleset explorer: exact default settings for the chosen size. */}
         <h2 className="home-heading">{t('rulesPage.settingsTitle')}</h2>
         <section className="panel stack">
           <p className="dim">{t('rulesPage.settingsIntro')}</p>
-
-          <div className="stack">
-            <span className="dim">{t('config.preset')}</span>
-            <div className="seg">
-              {(['illisoft', 'paamuoto'] as const).map((p) => (
-                <button
-                  type="button"
-                  key={p}
-                  className="seg__opt"
-                  aria-pressed={preset === p}
-                  onClick={() => setPreset(p)}
-                >
-                  {t(p === 'illisoft' ? 'config.presetIllisoft' : 'config.presetPaamuoto')}
-                </button>
-              ))}
-            </div>
-          </div>
 
           <div className="stack">
             <span className="dim">{t('config.players')}</span>
@@ -147,15 +129,7 @@ export function Rules() {
             </div>
           </div>
 
-          <p className="dim rules-preset-desc">
-            {t(
-              preset === 'illisoft'
-                ? 'rulesPage.presetIllisoftDesc'
-                : 'rulesPage.presetPaamuotoDesc',
-            )}
-          </p>
-
-          <RuleSections config={presetConfig(preset, players)} />
+          <RuleSections config={{ ...DEFAULT_CONFIG, players }} />
 
           <p className="dim rules-cap">{t('rulesPage.hostNote')}</p>
         </section>

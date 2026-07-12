@@ -22,12 +22,14 @@ import type { PlayerAction } from '@hp/engine';
 import {
   type ClientMsg,
   type ConfigPatch,
+  type Emote,
   type LobbyCmd,
   PROTOCOL_VERSION,
   type ServerMsg,
 } from '@hp/protocol';
 import { getAuthToken } from './auth';
 import { recordRoomHistory } from './history';
+import { isLearnActive, stopLearn, submitLearnAction } from './localMatch';
 import { serverApply, useStore } from './store';
 
 // ── Tunables (exported for tests) ────────────────────────────────────────────
@@ -96,6 +98,8 @@ interface Desired {
   nickname: string | undefined;
   /** Initial room config for creation; ignored by the server on join/rejoin. */
   config: ConfigPatch | undefined;
+  /** Display name of the initial config (null = "Oletus"); creation only. */
+  configName: string | null | undefined;
   /**
    * Matchmaking intent for the INITIAL find (no roomCode yet). Cleared once the
    * server's welcome tells us the room code, so reconnects rejoin by code.
@@ -162,6 +166,7 @@ function openSocket(): void {
     // Only meaningful when creating a room (no roomCode / no matchmaking yet).
     else if (desired.roomCode === undefined && desired.config !== undefined) {
       hello.config = desired.config;
+      if (desired.configName !== undefined) hello.configName = desired.configName;
     }
     socket.send(JSON.stringify(hello));
     if (pingTimer !== null) clearInterval(pingTimer);
@@ -244,6 +249,9 @@ function handleMessage(msg: ServerMsg): void {
     case 'update':
       serverApply.update(msg);
       break;
+    case 'emote':
+      serverApply.emote(msg);
+      break;
     case 'error':
       if (TERMINAL_ERROR_CODES.has(msg.code)) {
         // Dead-end reason as a message: stop the reconnect loop (as onclose
@@ -282,6 +290,7 @@ export function connect(
   sessionToken?: string,
   nickname?: string,
   config?: ConfigPatch,
+  configName?: string | null,
 ): void {
   const code = roomCode?.toUpperCase();
   installWakeHandlers();
@@ -311,6 +320,7 @@ export function connect(
       sessionToken ?? (code !== undefined ? (loadSessionToken(code) ?? undefined) : undefined),
     nickname,
     config,
+    configName,
     matchmaking: undefined,
   };
   attempts = 0;
@@ -335,6 +345,7 @@ export function findMatch(players: 2 | 3 | 4, ranked: boolean, nickname?: string
     sessionToken: undefined,
     nickname,
     config: undefined,
+    configName: undefined,
     matchmaking: { players, ranked },
   };
   attempts = 0;
@@ -344,6 +355,8 @@ export function findMatch(players: 2 | 3 | 4, ranked: boolean, nickname?: string
 
 /** Tear the connection down on purpose (leaving the room). */
 export function disconnect(): void {
+  // Also stop any offline learn driver so its timers don't fire post-exit.
+  stopLearn();
   intentionalClose = true;
   clearTimers();
   ws?.close();
@@ -361,6 +374,13 @@ export function disconnect(): void {
  */
 export function sendAction(action: PlayerAction): string | null {
   const actionId = crypto.randomUUID();
+  // Learning modes run the engine locally — route the move to the offline
+  // driver instead of the socket. It applies + re-snapshots the store itself.
+  if (isLearnActive()) {
+    useStore.getState().setPendingAction(actionId);
+    submitLearnAction(action);
+    return actionId;
+  }
   const knownSeq = useStore.getState().server.seq;
   if (!send({ t: 'action', actionId, knownSeq, action })) {
     useStore.getState().pushToast({ kind: 'error', code: 'error.notConnected' });
@@ -373,6 +393,8 @@ export function sendAction(action: PlayerAction): string | null {
 /** Submit a lobby command. Returns the generated actionId, or null if offline. */
 export function sendLobby(cmd: LobbyCmd): string | null {
   const actionId = crypto.randomUUID();
+  // Learn mode has no lobby (single scripted deal); such commands are no-ops.
+  if (isLearnActive()) return actionId;
   if (!send({ t: 'lobby', actionId, cmd })) {
     useStore.getState().pushToast({ kind: 'error', code: 'error.notConnected' });
     return null;
@@ -383,6 +405,15 @@ export function sendLobby(cmd: LobbyCmd): string | null {
 /** Ask the server for a fresh full snapshot. */
 export function resync(): void {
   send({ t: 'resync' });
+}
+
+/**
+ * Fire a preset table reaction. Best-effort: returns false if the socket is
+ * down (no toast — a dropped emote is silent). The server echoes it back to
+ * everyone including us, so the bubble appears via the normal `emote` message.
+ */
+export function sendEmote(emote: Emote): boolean {
+  return send({ t: 'emote', emote });
 }
 
 // ── Wake-from-suspend handling (iOS rule — unconditional) ───────────────────

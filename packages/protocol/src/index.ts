@@ -22,6 +22,11 @@
  * match's per-deal `DealResult` breakdowns (already persisted server-side) so
  * the History screen can browse deal-by-deal. Additive/optional — pre-feature
  * summaries simply omit them; PROTOCOL_VERSION still NOT bumped.
+ * Extended 2026-07-12 (user-authorized) for in-table reactions: a client→server
+ * `emote` message and a server→client `emote` broadcast, both carrying an id
+ * from the fixed `emoteSchema` set (NO free text — a curated preset palette).
+ * Reactions are ephemeral table flair, never game state; the server rate-limits
+ * them and attributes each to the sender's seat. Additive — no version bump.
  *
  * Direction rules:
  *  - Client→server messages are UNTRUSTED: they are parsed with zod
@@ -71,6 +76,34 @@ export const nicknameSchema = z.string().trim().min(1).max(20);
 /** Room codes are 5 chars, unambiguous alphabet (no 0/O/1/I). */
 export const roomCodeSchema = z.string().regex(/^[A-HJ-NP-Z2-9]{5}$/);
 
+/**
+ * In-table reactions — a FIXED, curated palette (no free text, ever). Ids are
+ * the wire contract; the client owns the presentation (emoji/label/sound) keyed
+ * by these ids. Grouped by situation: greetings, praise, celebration, dismay,
+ * good-game. Add to the tail only (older clients drop ids they don't render).
+ */
+export const emoteSchema = z.enum([
+  // greetings / courtesy
+  'greet',
+  'thanks',
+  // praise
+  'wellPlayed',
+  'nice',
+  'fire',
+  // celebration / confidence
+  'celebrate',
+  'confident',
+  'strong',
+  // dismay / humor
+  'thinking',
+  'sweat',
+  'shock',
+  'laugh',
+  // good game
+  'gg',
+]);
+export type Emote = z.infer<typeof emoteSchema>;
+
 // ── Client → server: game actions (mirrors engine PlayerAction) ─────────────
 
 /**
@@ -112,21 +145,19 @@ void _playerActionSchemaMatchesEngine;
 // ── Client → server: lobby commands ──────────────────────────────────────────
 
 /**
- * Rule-config fields a room host may override from the lobby (host-only).
- *
- * Application order (server-side): `preset` first — it resets the room config
- * to the named base ruleset (DEFAULT_RULES for 'paamuoto', ILLISOFT_RULES for
- * 'illisoft'; `preset` is NOT itself a RuleConfig field) — then the remaining
- * fields override individual values on top of that base.
+ * Rule-config fields a room host may set from the lobby (host-only). The client
+ * always sends a COMPLETE config (every field) — either the built-in default
+ * ("Oletus") or one of the user's saved configurations — so there is no named
+ * base ruleset on the wire; the patch fully determines the resulting config.
  *
  * Every field is zod-bounded, but only per-field: CROSS-FIELD validity
  * (talonSize/openTalon apply to 2-3p only, exchangeCount/contractTiming/
  * askLockouts to 4p only, minBid ≤ maxBid, patches rejected mid-match, etc.)
- * is enforced server-side when the patch is applied.
+ * is enforced server-side when the patch is applied. The client strips the
+ * mode-incompatible fields for the chosen player count before sending.
  */
 export const configPatchSchema = z
   .object({
-    preset: z.enum(['paamuoto', 'illisoft']),
     players: z.union([z.literal(2), z.literal(3), z.literal(4)]),
     talonSize: z.union([z.literal(3), z.literal(6)]),
     openTalon: z.boolean(),
@@ -155,6 +186,14 @@ export const configPatchSchema = z
     showLastTrick: z.boolean(),
   })
   .partial();
+
+/**
+ * Display name of the rule configuration a room is using. `null` means the
+ * built-in default ("Oletus"); a non-empty string is the host-chosen name of
+ * one of their saved configurations. Purely a label — the rules themselves ride
+ * in the config patch. Bounded so an untrusted host can't send a huge string.
+ */
+export const configNameSchema = z.string().trim().min(1).max(40).nullable();
 
 /**
  * Per-room TABLE settings — turn pacing, NOT game rules. Kept deliberately
@@ -192,7 +231,12 @@ export const lobbyCmdSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('setNickname'), nickname: nicknameSchema }),
   z.object({ type: z.literal('addBot'), seat: seatSchema }),
   z.object({ type: z.literal('removeBot'), seat: seatSchema }),
-  z.object({ type: z.literal('setConfig'), patch: configPatchSchema }),
+  z.object({
+    type: z.literal('setConfig'),
+    patch: configPatchSchema,
+    /** Display name of the chosen configuration (null = the "Oletus" default). */
+    configName: configNameSchema.optional(),
+  }),
   // Host-only: change turn pacing (autoplay + timeout); allowed mid-match.
   z.object({ type: z.literal('setTableSettings'), patch: tableSettingsPatchSchema }),
   z.object({ type: z.literal('startMatch') }),
@@ -245,11 +289,13 @@ export const clientMsgSchema = z.discriminatedUnion('t', [
       })
       .optional(),
     /**
-     * Initial room config (preset + overrides), applied at creation exactly
+     * Initial room config (a complete config patch), applied at creation exactly
      * like a lobby setConfig patch. Only meaningful when creating a room
      * (roomCode omitted); ignored on join/rejoin.
      */
     config: configPatchSchema.optional(),
+    /** Display name of the initial configuration (null/omitted = "Oletus"). */
+    configName: configNameSchema.optional(),
   }),
   z.object({
     t: z.literal('action'),
@@ -264,6 +310,13 @@ export const clientMsgSchema = z.discriminatedUnion('t', [
   }),
   z.object({ t: z.literal('resync') }),
   z.object({ t: z.literal('ping') }),
+  /**
+   * A seated player fires a preset reaction. Untrusted → validated against the
+   * fixed `emoteSchema` set. The server attributes it to the sender's seat,
+   * rate-limits it, and broadcasts a server `emote` to the room. Ephemeral
+   * table flair — never touches game state or the seq stream.
+   */
+  z.object({ t: z.literal('emote'), emote: emoteSchema }),
 ]);
 
 export type ClientMsg = z.infer<typeof clientMsgSchema>;
@@ -285,14 +338,14 @@ const _tableSettingsPatchSubset: _TableSettingsPatchSubset = true;
 void _tableSettingsPatchSubset;
 
 /**
- * Compile-time drift guard: every configPatchSchema field except `preset`
- * must exist on RuleConfig with an assignable type. Fails to typecheck if
- * the patch schema and the engine contract diverge. (The mapped type strips
- * the `| undefined` that exactOptionalPropertyTypes keeps on partials.)
+ * Compile-time drift guard: every configPatchSchema field must exist on
+ * RuleConfig with an assignable type. Fails to typecheck if the patch schema
+ * and the engine contract diverge. (The mapped type strips the `| undefined`
+ * that exactOptionalPropertyTypes keeps on partials.)
  */
 type _ConfigPatchIsRuleConfigSubset = {
-  [K in keyof Omit<ConfigPatch, 'preset'>]-?: Exclude<ConfigPatch[K], undefined>;
-} extends Pick<RuleConfig, keyof Omit<ConfigPatch, 'preset'>>
+  [K in keyof ConfigPatch]-?: Exclude<ConfigPatch[K], undefined>;
+} extends Pick<RuleConfig, keyof ConfigPatch>
   ? true
   : never;
 const _configPatchIsRuleConfigSubset: _ConfigPatchIsRuleConfigSubset = true;
@@ -322,6 +375,8 @@ export interface RoomStatePublic {
   /** Seat that created the room / holds lobby powers; null if host absent. */
   hostSeat: Seat | null;
   config: RuleConfig;
+  /** Display name of the active configuration; null = the "Oletus" default. */
+  configName: string | null;
   /** Turn pacing (autoplay + timeout); host-editable, independent of RuleConfig. */
   tableSettings: TableSettings;
   status: 'lobby' | 'playing' | 'finished';
@@ -429,4 +484,11 @@ export type ServerMsg =
       params?: Record<string, string | number>;
     }
   | { t: 'history'; matches: MatchSummary[] }
+  /**
+   * A player's reaction, broadcast to everyone in the room (sender included, so
+   * the client can render optimistically or defer to the echo). Ephemeral — no
+   * seq, no state change; clients show a transient bubble by the seat and drop
+   * any `emote` id they don't recognize.
+   */
+  | { t: 'emote'; seat: Seat; emote: Emote }
   | { t: 'pong' };

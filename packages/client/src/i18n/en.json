@@ -8,7 +8,12 @@
     "close": "Close",
     "back": "Back",
     "loading": "Loading…",
-    "you": "You"
+    "you": "You",
+    "on": "On",
+    "off": "Off",
+    "edit": "Edit",
+    "delete": "Delete",
+    "save": "Save"
   },
   "home": {
     "tagline": "Free Huutopussi online – play now, solo or with friends.",
@@ -43,7 +48,11 @@
     "historyLink": "Match history",
     "rulesLink": "How to play",
     "privacyLink": "Privacy",
-    "install": "Install the app"
+    "install": "Install the app",
+    "prefs": {
+      "sound": "Sound",
+      "haptics": "Vibration"
+    }
   },
   "auth": {
     "signInPrompt": "Sign in to earn a rating",
@@ -175,10 +184,23 @@
   },
   "config": {
     "hostOnly": "Only the host can change the rules",
-    "preset": "Ruleset",
-    "presetIllisoft": "Illisoft (2002)",
-    "presetPaamuoto": "Main variant (päämuoto)",
-    "presetCustom": "Custom",
+    "ruleset": "Ruleset",
+    "default": "Default",
+    "modeFourPlayers": "(4 players)",
+    "modeTwoThreePlayers": "(2–3 players)",
+    "savedTitle": "Your rulesets",
+    "savedIntro": "Create your own rulesets and pick them when you create a lobby. You can save up to {{max}} rulesets.",
+    "savedEmpty": "No saved rulesets yet.",
+    "createNew": "Create new ruleset",
+    "name": "Name",
+    "namePlaceholder": "e.g. Our house rules",
+    "deleteConfirm": "Delete permanently",
+    "errName": "Give the ruleset a name.",
+    "errMinMaxBid": "The minimum bid can't be higher than the maximum bid.",
+    "errLimit": "You can save at most 10 rulesets. Delete one first.",
+    "errInvalid": "Check the values and try again.",
+    "errUnauthorized": "Sign in to save rulesets.",
+    "errNetwork": "Saving failed. Please try again.",
     "players": "Players",
     "playersOpt": "{{n}} players",
     "talonSize": "Talon size",
@@ -298,11 +320,9 @@
     "strongest": "strongest",
     "weakest": "weakest",
     "suitValues": "Suit values (marriage / trump)",
-    "settingsTitle": "Rulesets",
-    "settingsIntro": "Pick a ruleset and table size to see the exact rules that will be played.",
-    "presetIllisoftDesc": "The classic Illisoft 2002 Huutopussi.exe game. This is the default online.",
-    "presetPaamuotoDesc": "The traditional main variant, without the Illisoft additions.",
-    "hostNote": "A room's host can still fine-tune individual rules in the lobby."
+    "settingsTitle": "Default rules",
+    "settingsIntro": "Pick a table size to see the exact default rules that will be played.",
+    "hostNote": "A room's host can pick a ruleset they saved to their profile in the lobby."
   },
   "tableSettings": {
     "title": "Turn timer",
@@ -463,7 +483,102 @@
     "matchOver": "Match over",
     "winners": "Winners: {{names}}",
     "waitRematch": "Waiting for the host to start a rematch…",
-    "backToMenu": "Back to menu"
+    "backToMenu": "Back to menu",
+    "laapari": "CLEAN SWEEP!",
+    "laapariBy": "{{name}} took every trick"
+  },
+  "emote": {
+    "open": "Reactions",
+    "paletteLabel": "Pick a reaction",
+    "cat": {
+      "greeting": "Greeting",
+      "praise": "Praise",
+      "celebrate": "Celebrate",
+      "dismay": "Dismay",
+      "gg": "Good game"
+    },
+    "greet": "Hi!",
+    "wellPlayed": "Well played!",
+    "nice": "Nice!",
+    "fire": "On fire!",
+    "celebrate": "Let's go!",
+    "confident": "Confident",
+    "strong": "Strong!",
+    "thinking": "Hmm…",
+    "sweat": "Phew!",
+    "shock": "No way!",
+    "laugh": "Haha!",
+    "gg": "Good game!",
+    "thanks": "Thanks!"
+  },
+  "learn": {
+    "menuTitle": "Learn to play",
+    "menuIntro": "A guided walkthrough plus practice puzzles — learn Huutopussi step by step against bots. Works offline.",
+    "tutorialTitle": "Guided tutorial",
+    "tutorialDesc": "Play one full deal from start to finish. The game guides you at every step with big instructions on what to do and why.",
+    "homeDesc": "New here? Learn the rules with a guided deal or practice with puzzles.",
+    "homeAction": "Start learning",
+    "puzzlesTitle": "Practice puzzles",
+    "start": "Start guided deal",
+    "play": "Play",
+    "retry": "Try again",
+    "backToMenu": "Back to menu",
+    "exit": "Exit",
+    "common": {
+      "act": "Your turn — tap the highlighted option.",
+      "wait": "Wait — the others are taking their turns.",
+      "bidding": "Bidding. Weigh your hand. With a strong hand you should BID (tap Bid and offer). Otherwise pass.",
+      "exchangeGive": "Your partner is passing you cards. Hang on a moment.",
+      "exchangeReturn": "You got cards from your partner. Pick the same number to give back — keep the strong ones, return the weak.",
+      "exchangeContract": "Commit to a score (the contract). Tap the highlighted amount — at least your bid.",
+      "exchangeDiscard": "You took the talon. Discard the extra cards (no aces or tens).",
+      "awaitWholeAnswer": "You're being asked about a marriage. Answer by tapping a suit if you hold the pair.",
+      "lead": "You lead the trick. If you hold the KING and QUEEN of a suit, you can announce the marriage (tap Announce) — it scores points and switches trump. Otherwise play a card.",
+      "follow": "Follow the led suit if you can. Greyed cards aren't allowed: you must beat the highest card when you can (head-trick rule)."
+    },
+    "done": {
+      "tutorialTitle": "Well played!",
+      "tutorialBody": "You played a full deal. Now you know the phases: bidding, exchange, declarations, tricks and scoring. Try the puzzles or a real game!",
+      "winTitle": "Goal reached!",
+      "winBody": "Nice — you solved the puzzle.",
+      "loseTitle": "So close!",
+      "loseBody": "The goal wasn't reached this time. Try again — the hints are at the top of the screen."
+    },
+    "scenarioTitle": {
+      "bidding": "Bidding & the deal",
+      "marriage": "Marriages & declarations",
+      "trick": "Winning tricks & head-trick",
+      "endgame": "Clean sweep & scoring"
+    },
+    "scenarioDesc": {
+      "bidding": "A strong hand — learn to bid and win the auction.",
+      "marriage": "King + queen in hand — declare the marriage for points.",
+      "trick": "Follow suit and beat the highest — take the majority of tricks.",
+      "endgame": "A dominant hand — try to take EVERY trick."
+    },
+    "tutorial": {
+      "goal": "Tutorial: play a deal from start to finish, following the hints."
+    },
+    "bidding": {
+      "goal": "Goal: win the auction and become the declarer.",
+      "doneWin": "You won the auction and became the declarer. That's exactly how to use a strong hand!",
+      "doneLose": "You didn't become the declarer. Remember to bid (Bid) right on your turn with a strong hand."
+    },
+    "marriage": {
+      "goal": "Goal: declare the king–queen marriage.",
+      "doneWin": "You declared the marriage and scored its points. Always declare when you lead a trick and hold the pair!",
+      "doneLose": "The marriage went undeclared. When you lead a trick and hold the K and Q of a suit, tap Announce."
+    },
+    "trick": {
+      "goal": "Goal: take at least 5 of the 9 tricks.",
+      "doneWin": "You took the majority of tricks! Following suit and beating high pays off.",
+      "doneLose": "Too few tricks. Play high cards and trump in when you can."
+    },
+    "endgame": {
+      "goal": "Goal: take EVERY trick (a clean sweep)!",
+      "doneWin": "CLEAN SWEEP! You took every trick. With a dominant hand, lead your highest card.",
+      "doneLose": "The sweep slipped away this time. Always lead your strongest card and don't let an opponent in."
+    }
   },
   "event": {
     "redealDemanded": "Redeal demanded",
@@ -558,17 +673,13 @@
       "name": "Regular face",
       "desc": "Play 25 games."
     },
-    "kalkkis": {
-      "name": "Old-timer",
-      "desc": "Play 100 games."
-    },
     "voittajatyyppi": {
       "name": "Winner type",
       "desc": "Win 25 games."
     },
     "legenda": {
       "name": "Legend",
-      "desc": "Win 100 games."
+      "desc": "Win 1000 games."
     },
     "putki-3": {
       "name": "On a roll",
@@ -608,11 +719,11 @@
     },
     "kuninkaalliset-haat": {
       "name": "Royal wedding",
-      "desc": "Declare 100+ points of marriages in one deal."
+      "desc": "Declare 200+ points of marriages in one deal."
     },
     "uhkarohkea": {
       "name": "Daredevil",
-      "desc": "Bid and make a contract of 200 or more."
+      "desc": "Bid and make a contract of 240 or more."
     },
     "tayslaidallinen": {
       "name": "Full broadside",
@@ -662,17 +773,29 @@
       "name": "Sorry hand",
       "desc": "Demand a redeal."
     },
-    "hertta-huulilla": {
-      "name": "Hearts aflutter",
-      "desc": "Declare the hearts marriage (♥100)."
-    },
     "valtinvaihtaja": {
       "name": "Trump switcher",
-      "desc": "Change the trump mid-deal (2+ marriages)."
+      "desc": "Change the trump twice in one deal (play three trumps)."
     },
     "koinikuningas": {
       "name": "Koini king",
-      "desc": "Take the koini and still win the deal."
+      "desc": "Take the entire koinipakka into your hand (discard none of it) and still make the contract."
+    },
+    "punaiset-haat": {
+      "name": "Red Wedding",
+      "desc": "Declare both the hearts and diamonds marriages in one match."
+    },
+    "pussikonkari": {
+      "name": "Bag Veteran",
+      "desc": "Play 100 games."
+    },
+    "voittokone": {
+      "name": "Winning Machine",
+      "desc": "Win 100 games."
+    },
+    "korttikuningas": {
+      "name": "Card King",
+      "desc": "Win 500 games."
     }
   }
 }

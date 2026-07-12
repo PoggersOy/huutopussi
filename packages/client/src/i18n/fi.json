@@ -8,7 +8,12 @@
     "close": "Sulje",
     "back": "Takaisin",
     "loading": "Ladataan…",
-    "you": "Sinä"
+    "you": "Sinä",
+    "on": "Päällä",
+    "off": "Pois",
+    "edit": "Muokkaa",
+    "delete": "Poista",
+    "save": "Tallenna"
   },
   "home": {
     "tagline": "Ilmainen Huutopussi verkossa – pelaa heti yksin tai kavereiden kanssa.",
@@ -43,7 +48,11 @@
     "historyLink": "Pelihistoria",
     "rulesLink": "Peliohjeet",
     "privacyLink": "Tietosuoja",
-    "install": "Asenna sovellus"
+    "install": "Asenna sovellus",
+    "prefs": {
+      "sound": "Äänet",
+      "haptics": "Värinä"
+    }
   },
   "auth": {
     "signInPrompt": "Kirjaudu kerätäksesi ratingia",
@@ -175,10 +184,23 @@
   },
   "config": {
     "hostOnly": "Vain isäntä voi muokata sääntöjä",
-    "preset": "Sääntömuoto",
-    "presetIllisoft": "Illisoft (2002)",
-    "presetPaamuoto": "Päämuoto",
-    "presetCustom": "Mukautettu",
+    "ruleset": "Sääntömuoto",
+    "default": "Oletus",
+    "modeFourPlayers": "(4 pelaajaa)",
+    "modeTwoThreePlayers": "(2–3 pelaajaa)",
+    "savedTitle": "Omat sääntömuodot",
+    "savedIntro": "Luo omia sääntömuotoja ja valitse ne aulassa peliä luodessasi. Voit tallentaa enintään {{max}} sääntömuotoa.",
+    "savedEmpty": "Ei tallennettuja sääntömuotoja vielä.",
+    "createNew": "Luo uusi sääntömuoto",
+    "name": "Nimi",
+    "namePlaceholder": "esim. Meidän talon säännöt",
+    "deleteConfirm": "Poista lopullisesti",
+    "errName": "Anna sääntömuodolle nimi.",
+    "errMinMaxBid": "Alin huuto ei voi olla suurempi kuin ylin huuto.",
+    "errLimit": "Voit tallentaa enintään 10 sääntömuotoa. Poista jokin ensin.",
+    "errInvalid": "Tarkista arvot ja yritä uudelleen.",
+    "errUnauthorized": "Kirjaudu sisään tallentaaksesi sääntömuotoja.",
+    "errNetwork": "Tallennus epäonnistui. Yritä uudelleen.",
     "players": "Pelaajia",
     "playersOpt": "{{n}} pelaajaa",
     "talonSize": "Koinipakan koko",
@@ -298,11 +320,9 @@
     "strongest": "vahvin",
     "weakest": "heikoin",
     "suitValues": "Maiden arvot (avioliitto / valtti)",
-    "settingsTitle": "Sääntömuodot",
-    "settingsIntro": "Valitse sääntömuoto ja pöydän koko nähdäksesi tarkat säännöt, joilla pelataan.",
-    "presetIllisoftDesc": "Klassinen Illisoftin vuoden 2002 Huutopussi.exe. Tämä on verkon oletusmuoto.",
-    "presetPaamuotoDesc": "Perinteinen päämuoto ilman Illisoftin lisäyksiä.",
-    "hostNote": "Huoneen isäntä voi vielä hienosäätää yksittäisiä sääntöjä aulassa."
+    "settingsTitle": "Oletussäännöt",
+    "settingsIntro": "Valitse pöydän koko nähdäksesi tarkat oletussäännöt, joilla pelataan.",
+    "hostNote": "Huoneen isäntä voi valita aulassa oman profiiliin tallennetun sääntömuodon."
   },
   "tableSettings": {
     "title": "Vuoron ajastin",
@@ -463,7 +483,102 @@
     "matchOver": "Ottelu päättyi",
     "winners": "Voittajat: {{names}}",
     "waitRematch": "Odotetaan, että isäntä käynnistää uusinnan…",
-    "backToMenu": "Takaisin valikkoon"
+    "backToMenu": "Takaisin valikkoon",
+    "laapari": "LÄPÄRI!",
+    "laapariBy": "{{name}} vei kaikki tikit"
+  },
+  "emote": {
+    "open": "Reaktiot",
+    "paletteLabel": "Valitse reaktio",
+    "cat": {
+      "greeting": "Tervehdys",
+      "praise": "Kehut",
+      "celebrate": "Juhlinta",
+      "dismay": "Harmi",
+      "gg": "Hyvä peli"
+    },
+    "greet": "Moi!",
+    "wellPlayed": "Hyvin pelattu!",
+    "nice": "Hienoa!",
+    "fire": "Tulista!",
+    "celebrate": "Juhlitaan!",
+    "confident": "Itsevarma",
+    "strong": "Vahvaa!",
+    "thinking": "Hmm…",
+    "sweat": "Huh!",
+    "shock": "Ei voi olla!",
+    "laugh": "Haha!",
+    "gg": "Hyvä peli!",
+    "thanks": "Kiitos!"
+  },
+  "learn": {
+    "menuTitle": "Opettele pelaamaan",
+    "menuIntro": "Ohjattu läpipeluu ja harjoituspulmat — opi Huutopussi askel askeleelta botteja vastaan. Toimii offline.",
+    "tutorialTitle": "Ohjattu opettelu",
+    "tutorialDesc": "Pelaa yksi kokonainen jako alusta loppuun. Peli neuvoo joka vaiheessa isolla ohjeella mitä tehdä ja miksi.",
+    "homeDesc": "Uusi peli? Opi säännöt ohjatusti tai harjoittele pulmilla.",
+    "homeAction": "Aloita opettelu",
+    "puzzlesTitle": "Harjoituspulmat",
+    "start": "Aloita ohjattu jako",
+    "play": "Pelaa",
+    "retry": "Yritä uudelleen",
+    "backToMenu": "Takaisin valikkoon",
+    "exit": "Poistu",
+    "common": {
+      "act": "Sinun vuorosi — napauta korostettua vaihtoehtoa.",
+      "wait": "Odota — muut pelaavat vuoronsa.",
+      "bidding": "Huutovaihe. Arvioi kätesi vahvuus. Vahvalla kädellä kannattaa HUUTAA (napauta Huuda ja tarjoa). Muuten sano Ohi.",
+      "exchangeGive": "Parisi antaa sinulle kortteja. Odota hetki.",
+      "exchangeReturn": "Sait kortit parilta. Valitse yhtä monta korttia palautettavaksi — pidä vahvat, palauta heikot.",
+      "exchangeContract": "Lupaa pistemäärä (kontrahti). Napauta korostettua summaa — vähintään huutosi verran.",
+      "exchangeDiscard": "Olet ottanut koinipakan. Hylkää ylimääräiset kortit (ei ässiä eikä kymppejä).",
+      "awaitWholeAnswer": "Sinulta kysytään avioliittoa. Vastaa napauttamalla maata, jos sinulla on pari.",
+      "lead": "Sinä aloitat tikin. Jos sinulla on saman maan KUNINGAS ja ROUVA, voit ilmoittaa avioliiton (napauta Ilmoita) — se antaa pisteet ja vaihtaa valtin. Muuten lyö kortti.",
+      "follow": "Seuraa johdettua maata jos voit. Harmaat kortit eivät ole sallittuja: sinun on lyötävä yli kun voit (pakko tunnustaa)."
+    },
+    "done": {
+      "tutorialTitle": "Hyvin pelattu!",
+      "tutorialBody": "Pelasit koko jaon läpi. Nyt tunnet vaiheet: huuto, vaihto, ilmoitukset, tikit ja pisteytys. Kokeile pulmia tai oikeaa peliä!",
+      "winTitle": "Tavoite saavutettu!",
+      "winBody": "Hienoa — ratkaisit pulman.",
+      "loseTitle": "Melkein!",
+      "loseBody": "Tavoite jäi tällä kertaa saavuttamatta. Yritä uudelleen — vinkit ovat ruudun yläreunassa."
+    },
+    "scenarioTitle": {
+      "bidding": "Huutokauppa & jako",
+      "marriage": "Avioliitot & ilmoitukset",
+      "trick": "Tikin voitto & pakko tunnustaa",
+      "endgame": "Läpäri & pisteet"
+    },
+    "scenarioDesc": {
+      "bidding": "Vahva käsi — opettele huutamaan ja voittamaan huutokauppa.",
+      "marriage": "Kuningas + rouva kädessä — ilmoita avioliitto pisteiksi.",
+      "trick": "Seuraa maata ja lyö yli — vie tikkien enemmistö.",
+      "endgame": "Ylivoimainen käsi — yritä viedä KAIKKI tikit."
+    },
+    "tutorial": {
+      "goal": "Opettelu: pelaa jako alusta loppuun ohjeiden mukaan."
+    },
+    "bidding": {
+      "goal": "Tavoite: voita huutokauppa ja tule huutajaksi.",
+      "doneWin": "Voitit huutokaupan ja pääsit huutajaksi. Juuri näin vahva käsi kannattaa hyödyntää!",
+      "doneLose": "Et päässyt huutajaksi. Muista huutaa (Huuda) heti vuorollasi vahvalla kädellä."
+    },
+    "marriage": {
+      "goal": "Tavoite: ilmoita kuningas–rouva-avioliitto.",
+      "doneWin": "Ilmoitit avioliiton ja sait sen pisteet. Ilmoita aina kun johdat tikkiä ja sinulla on pari!",
+      "doneLose": "Avioliitto jäi ilmoittamatta. Kun johdat tikkiä ja sinulla on saman maan K ja Q, napauta Ilmoita."
+    },
+    "trick": {
+      "goal": "Tavoite: vie vähintään 5 tikkiä 9:stä.",
+      "doneWin": "Veit tikkien enemmistön! Maan seuraaminen ja yli lyöminen kannattaa.",
+      "doneLose": "Tikkejä jäi liian vähän. Lyö korkeilla korteilla ja valtaa kun voit."
+    },
+    "endgame": {
+      "goal": "Tavoite: vie KAIKKI tikit (läpäri)!",
+      "doneWin": "LÄPÄRI! Veit kaikki tikit. Ylivoimaisella kädellä johda korkeimmalla kortilla.",
+      "doneLose": "Läpäri jäi tällä kertaa. Johda aina vahvimmalla kortillasi äläkä päästä vastustajaa väliin."
+    }
   },
   "event": {
     "redealDemanded": "Uusi jako vaadittu",
@@ -558,17 +673,13 @@
       "name": "Vakiokasvo",
       "desc": "Pelaa 25 peliä."
     },
-    "kalkkis": {
-      "name": "Kalkkis",
-      "desc": "Pelaa 100 peliä."
-    },
     "voittajatyyppi": {
       "name": "Voittajatyyppi",
       "desc": "Voita 25 peliä."
     },
     "legenda": {
       "name": "Legenda",
-      "desc": "Voita 100 peliä."
+      "desc": "Voita 1000 peliä."
     },
     "putki-3": {
       "name": "Putki päällä",
@@ -608,11 +719,11 @@
     },
     "kuninkaalliset-haat": {
       "name": "Kuninkaalliset häät",
-      "desc": "Julista avioliittoja 100+ pisteen edestä yhdessä jaossa."
+      "desc": "Julista avioliittoja 200+ pisteen edestä yhdessä jaossa."
     },
     "uhkarohkea": {
       "name": "Uhkarohkea",
-      "desc": "Huuda ja tee vähintään 200 pisteen sopimus."
+      "desc": "Huuda ja tee vähintään 240 pisteen sopimus."
     },
     "tayslaidallinen": {
       "name": "Täyslaidallinen",
@@ -662,17 +773,29 @@
       "name": "Kurja käsi",
       "desc": "Vaadi uusjako."
     },
-    "hertta-huulilla": {
-      "name": "Hertta huulilla",
-      "desc": "Julista hertta-avioliitto (♥100)."
-    },
     "valtinvaihtaja": {
       "name": "Valtinvaihtaja",
-      "desc": "Vaihda valtti kesken jaon."
+      "desc": "Vaihda valtti kahdesti samassa jaossa (pelaa kolme valttia)."
     },
     "koinikuningas": {
       "name": "Koinikuningas",
-      "desc": "Ota koini ja voita silti jako."
+      "desc": "Ota koko koinipakka omaan käteen (älä laita yhtään sen korttia pois) ja tee silti sopimus."
+    },
+    "punaiset-haat": {
+      "name": "Punaiset häät",
+      "desc": "Pelaa sekä hertta- että ruutu-avioliitto samassa pelissä."
+    },
+    "pussikonkari": {
+      "name": "Pussikonkari",
+      "desc": "Pelaa 100 peliä."
+    },
+    "voittokone": {
+      "name": "Voittokone",
+      "desc": "Voita 100 peliä."
+    },
+    "korttikuningas": {
+      "name": "Korttikuningas",
+      "desc": "Voita 500 peliä."
     }
   }
 }

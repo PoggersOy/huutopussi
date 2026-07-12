@@ -11,6 +11,7 @@ import { useNavigate } from 'react-router-dom';
 import { deleteAccount, getAuthToken, signOut } from '../auth';
 import { type AchievementProgress, AchievementsPanel } from '../components/AchievementsPanel';
 import { ProfileScorecard } from '../components/ProfileScorecard';
+import { RuleConfigsPanel } from '../components/RuleConfigsPanel';
 import { TitleSelector } from '../components/TitleSelector';
 import { type AuthUser, useStore } from '../store';
 
@@ -335,6 +336,10 @@ export function Profile() {
                 <p className="dim">{t('profile.noGames')}</p>
               )}
             </div>
+
+            {/* Saved rule configurations: create/edit the presets that show up
+                in the lobby "Sääntömuoto" dropdown (beyond the built-in Oletus). */}
+            <RuleConfigsPanel />
 
             {/* Account management: the GDPR self-service controls — download
                 everything we hold (art. 20), read the policy, or permanently

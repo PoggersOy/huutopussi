@@ -15,12 +15,15 @@ import {
   partnerOf,
   type Rank,
   type RedealReason,
+  type RuleConfig,
   SEATS,
   type Seat,
   type Suit,
+  sideOf,
   type TrickPlay,
 } from '@hp/engine';
 import type {
+  Emote,
   MatchRatingResult,
   MatchSummary,
   RoomStatePublic,
@@ -28,6 +31,7 @@ import type {
   TurnInfo,
 } from '@hp/protocol';
 import { create } from 'zustand';
+import { cue } from './feedback';
 import i18n from './i18n';
 
 /** App-token localStorage key (mirrors auth.ts; read directly to avoid a cycle). */
@@ -63,6 +67,14 @@ export interface AuthUser {
 
 export type AuthStatus = 'loading' | 'anon' | 'authing' | 'signed-in';
 
+/** A user's saved rule configuration (the lobby "Sääntömuoto" dropdown beyond
+ *  the built-in "Oletus"). `config` is a complete RuleConfig. */
+export interface SavedRuleConfig {
+  id: string;
+  name: string;
+  config: RuleConfig;
+}
+
 /** Cache of the signed-in player's unlocked achievement ids, for match-end
  *  toasts (diffed against a fresh /api/profile fetch). */
 export interface AchievementsSlice {
@@ -79,6 +91,8 @@ export interface AuthSlice {
   googleClientId: string | null;
   /** True once GIS has loaded + initialised and the Sign-In button can render. */
   loginReady: boolean;
+  /** The signed-in player's saved rule configurations (empty for guests). */
+  ruleConfigs: SavedRuleConfig[];
 }
 
 export interface ServerSlice {
@@ -117,6 +131,32 @@ export interface SpeechBubble {
   params?: Record<string, string | number>;
 }
 
+/** A transient reaction popping by a seat (see @hp/protocol `emoteSchema`). */
+export interface EmoteBubble {
+  id: number;
+  seat: Seat;
+  emote: Emote;
+}
+
+/** The learning topics a scenario can teach (mirrors scenarios.ts). */
+export type LearnTopic = 'bidding' | 'marriage' | 'trick' | 'endgame';
+
+/**
+ * An active offline learning session (tutorial or puzzle). Drives the SAME
+ * Table UI as a live game, but the game runs locally (see localMatch.ts) and a
+ * guidance overlay (LearnGuide) narrates each phase. Non-null ⇒ we're in a
+ * learn flow, which the Table uses to swap in learning chrome.
+ */
+export interface LearnSession {
+  scenarioId: string;
+  kind: 'tutorial' | 'puzzle';
+  topic: LearnTopic;
+  /** 'playing' until the deal is scored, then 'complete'. */
+  status: 'playing' | 'complete';
+  /** Puzzle goal outcome once complete; null for the tutorial / while playing. */
+  won: boolean | null;
+}
+
 /**
  * The just-completed trick, kept around briefly so the table can show the
  * fourth card + flash the winner before the felt clears (the server snapshot
@@ -142,6 +182,8 @@ export interface UiSlice {
   toasts: Toast[];
   /** Speech bubbles derived from update events; at most one per seat. */
   bubbles: SpeechBubble[];
+  /** Player reactions currently floating by a seat; at most one per seat. */
+  emotes: EmoteBubble[];
   /** Winner flash / trick linger state (see CompletedTrick). */
   completedTrick: CompletedTrick | null;
   /**
@@ -158,6 +200,12 @@ export interface UiSlice {
    * a fresh snapshot / new match.
    */
   matchRating: MatchRatingResult | null;
+  /**
+   * Active offline learning session, or null in a normal game. Set by the local
+   * driver (localMatch.ts); the Table renders learning chrome (guidance overlay,
+   * no emote bar) while it's non-null.
+   */
+  learn: LearnSession | null;
 }
 
 interface Store {
@@ -175,8 +223,10 @@ interface Store {
   pushToast(toast: Omit<Toast, 'id'>): void;
   dismissToast(id: number): void;
   dismissBubble(id: number): void;
+  dismissEmote(id: number): void;
   clearCompletedTrick(id: number): void;
   setHistory(matches: MatchSummary[]): void;
+  setLearn(learn: LearnSession | null): void;
 }
 
 const initialServer: ServerSlice = {
@@ -198,10 +248,12 @@ const initialUi: UiSlice = {
   pendingActionId: null,
   toasts: [],
   bubbles: [],
+  emotes: [],
   completedTrick: null,
   redeal: null,
   history: null,
   matchRating: null,
+  learn: null,
 };
 
 const initialAuth: AuthSlice = {
@@ -209,6 +261,7 @@ const initialAuth: AuthSlice = {
   user: null,
   googleClientId: null,
   loginReady: false,
+  ruleConfigs: [],
 };
 
 const initialAchievements: AchievementsSlice = { unlocked: [], loaded: false };
@@ -222,6 +275,7 @@ const REDEAL_COUNTDOWN_MS = 5_000;
 
 let toastSeq = 0;
 let bubbleSeq = 0;
+let emoteSeq = 0;
 let trickFlashSeq = 0;
 const TOAST_LIMIT = 5;
 
@@ -254,9 +308,12 @@ export const useStore = create<Store>()((set) => ({
     set((s) => ({ ui: { ...s.ui, toasts: s.ui.toasts.filter((t) => t.id !== id) } })),
   dismissBubble: (id) =>
     set((s) => ({ ui: { ...s.ui, bubbles: s.ui.bubbles.filter((b) => b.id !== id) } })),
+  dismissEmote: (id) =>
+    set((s) => ({ ui: { ...s.ui, emotes: s.ui.emotes.filter((e) => e.id !== id) } })),
   clearCompletedTrick: (id) =>
     set((s) => (s.ui.completedTrick?.id === id ? { ui: { ...s.ui, completedTrick: null } } : s)),
   setHistory: (matches) => set((s) => ({ ui: { ...s.ui, history: matches } })),
+  setLearn: (learn) => set((s) => ({ ui: { ...s.ui, learn } })),
 }));
 
 // ── Server-slice writers (socket layer ONLY — see module doc) ───────────────
@@ -381,6 +438,58 @@ function deriveCompletedTrick(
 }
 
 /**
+ * Fire sound + haptic feedback for a live `update`. Kept out of the setState
+ * updater (which must stay pure); called after the snapshot is applied with the
+ * PREVIOUS view/turn so it can tell a trick win from a loss, a sweep (läpäri)
+ * from an ordinary score, and detect "it just became my turn". A null event or
+ * a fresh/reconnect snapshot (prevView === null) produces no juice.
+ */
+function playUpdateJuice(
+  msg: Extract<ServerMsg, { t: 'update' }>,
+  prevView: PlayerView | null,
+  prevTurnSeat: Seat | null,
+  mySeat: Seat | null,
+): void {
+  const ev = msg.event;
+  const next = msg.view;
+  const players = next.config.players;
+
+  // A scored deal that we just watched resolve — läpäri (clean sweep) or a plain
+  // deal score. The winning trick's own chime is suppressed in favour of this.
+  const scored =
+    next.deal !== null && next.deal.phase.name === 'scored' ? next.deal.phase.result : null;
+  const justScored = scored !== null && prevView !== null && prevView.deal?.phase.name !== 'scored';
+
+  if (justScored && next.winnerSide === null) {
+    const total = scored.sides.reduce((a, sd) => a + sd.tricks, 0);
+    const sweep = total > 0 && scored.sides.some((sd) => sd.tricks === total);
+    cue(sweep ? 'lapari' : 'dealScore');
+  } else {
+    const completed = ev !== null ? deriveCompletedTrick(ev, prevView, next) : null;
+    if (completed !== null) {
+      const mine = mySeat !== null && sideOf(completed.winner, players) === sideOf(mySeat, players);
+      cue(mine ? 'trickWin' : 'trickLose');
+    } else if (ev?.type === 'cardPlayed') cue('card');
+    else if (ev?.type === 'bidPlaced') cue('bid');
+    else if (ev?.type === 'trumpSet') cue('declare');
+  }
+
+  if (ev?.type === 'matchEnded') {
+    const won = mySeat !== null && sideOf(mySeat, players) === ev.winnerSide;
+    cue(won ? 'matchWin' : 'matchLose');
+  } else if (
+    // It just became my turn (a real transition, not a reconnect landing on it).
+    mySeat !== null &&
+    prevView !== null &&
+    next.winnerSide === null &&
+    msg.turn?.seat === mySeat &&
+    prevTurnSeat !== mySeat
+  ) {
+    cue('yourTurn');
+  }
+}
+
+/**
  * Refresh the signed-in player's unlocked achievements from /api/profile and,
  * when `toastNew` is set (a match just ended) and a baseline already exists,
  * toast each newly-unlocked one. First call establishes the baseline silently.
@@ -422,6 +531,22 @@ export async function syncAchievements(toastNew: boolean): Promise<void> {
   }
 }
 
+/** Refresh the signed-in player's saved rule configurations from the server. */
+export async function syncRuleConfigs(): Promise<void> {
+  const token = readAuthToken();
+  if (token === null) return;
+  try {
+    const res = await fetch('/api/profile/configs', {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return;
+    const body = (await res.json()) as { configs?: SavedRuleConfig[] };
+    useStore.setState((s) => ({ auth: { ...s.auth, ruleConfigs: body.configs ?? [] } }));
+  } catch {
+    // best-effort; a failed sync leaves the cached configs as-is
+  }
+}
+
 export const serverApply = {
   /** Socket opened but no welcome yet / socket lost. Keeps the stale view so
    *  the table stays visible under a "reconnecting" banner. */
@@ -449,6 +574,7 @@ export const serverApply = {
         raisedCard: null,
         pendingActionId: null,
         bubbles: [],
+        emotes: [],
         completedTrick: null,
         redeal: null,
         matchRating: null,
@@ -465,6 +591,11 @@ export const serverApply = {
 
   /** Snapshot-per-change: replace the game state wholesale, never merge. */
   update(msg: Extract<ServerMsg, { t: 'update' }>): void {
+    // Captured before the snapshot is replaced — juice compares prev vs next.
+    const beforeServer = useStore.getState().server;
+    const prevView = beforeServer.view;
+    const prevTurnSeat = beforeServer.turn?.seat ?? null;
+    const mySeat = beforeServer.seat;
     useStore.setState((s) => {
       const toast = msg.event ? eventToast(msg.event) : null;
       const prevView = s.server.view;
@@ -541,8 +672,24 @@ export const serverApply = {
         },
       };
     });
+    // Sound + haptic feedback for the moment that just landed.
+    playUpdateJuice(msg, prevView, prevTurnSeat, mySeat);
     // A finished match may have unlocked achievements — refresh + toast them.
     if (msg.event?.type === 'matchEnded') void syncAchievements(true);
+  },
+
+  emote(msg: Extract<ServerMsg, { t: 'emote' }>): void {
+    useStore.setState((s) => ({
+      ui: {
+        ...s.ui,
+        // One reaction per seat: a newer one replaces the seat's current bubble.
+        emotes: [
+          ...s.ui.emotes.filter((e) => e.seat !== msg.seat),
+          { id: ++emoteSeq, seat: msg.seat, emote: msg.emote },
+        ],
+      },
+    }));
+    cue('emote');
   },
 
   error(msg: Extract<ServerMsg, { t: 'error' }>): void {
@@ -610,10 +757,18 @@ export const authApply = {
   /** Set (or clear) the signed-in account. */
   setUser(user: AuthUser | null): void {
     useStore.setState((s) => ({
-      auth: { ...s.auth, user, status: user ? 'signed-in' : 'anon' },
+      auth: { ...s.auth, user, status: user ? 'signed-in' : 'anon', ruleConfigs: [] },
     }));
-    // Establish (or clear) the achievements baseline for match-end toasts.
-    if (user) void syncAchievements(false);
-    else useStore.setState({ achievements: initialAchievements });
+    // Establish (or clear) the achievements baseline for match-end toasts, and
+    // load (or clear) the account's saved rule configurations.
+    if (user) {
+      void syncAchievements(false);
+      void syncRuleConfigs();
+    } else useStore.setState({ achievements: initialAchievements });
+  },
+
+  /** Replace the cached saved rule configurations (after a create/edit/delete). */
+  setRuleConfigs(configs: SavedRuleConfig[]): void {
+    useStore.setState((s) => ({ auth: { ...s.auth, ruleConfigs: configs } }));
   },
 };

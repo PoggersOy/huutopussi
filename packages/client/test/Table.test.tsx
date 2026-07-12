@@ -29,6 +29,7 @@ const room: RoomStatePublic = {
   seats: [seatInfo(0), seatInfo(1), seatInfo(2), seatInfo(3)],
   hostSeat: 0,
   config: DEFAULT_RULES,
+  configName: null,
   tableSettings: { autoplay: true, turnTimeoutSec: 90 },
   status: 'playing',
 };

@@ -1298,6 +1298,18 @@ input::placeholder {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
 }
 
+/* Label + on/off segmented control on one line (device feedback prefs). */
+.prefrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.prefrow .seg {
+  min-width: 148px;
+}
+
 /* ── Home: "how to play" mode cards ── */
 
 .home-heading {

@@ -21,12 +21,12 @@ function side(p: Partial<SideBreakdown> = {}): SideBreakdown {
   };
 }
 
-/** A slam by side 0, declared and made a 200 contract; side 1 shut out (Porvoo). */
+/** A slam by side 0, declared and made a 260 contract; side 1 shut out (Porvoo). */
 function slamDeal(): DealResult {
   return {
     declarer: 0,
-    contract: 200,
-    bid: 200,
+    contract: 260,
+    bid: 240,
     made: true,
     // tricksPerDeal(2p, talon 3) === 11.
     sides: [
@@ -179,7 +179,7 @@ describe('backfill', () => {
     expect(a).toContain('ensivoitto');
     expect(a).toContain('nousukiito'); // rating reached 1450
     // Seat-level feats are skipped in backfill (events=null).
-    expect(a).not.toContain('hertta-huulilla');
+    expect(a).not.toContain('punaiset-haat');
   });
 
   it('re-running backfill is a no-op', () => {

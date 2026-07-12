@@ -141,6 +141,19 @@ CREATE TABLE IF NOT EXISTS match_participants (
   PRIMARY KEY (match_id, user_id)
 );
 CREATE INDEX IF NOT EXISTS idx_match_participants_user ON match_participants(user_id);
+-- Per-user saved rule configurations (the lobby "Sääntömuoto" dropdown beyond
+-- the built-in "Oletus"). config is a complete RuleConfig JSON; players is
+-- nominal and overridden by the lobby's chosen player count at room creation.
+-- Capped at 10 per user (enforced in createRuleConfig). Deleted on erasure.
+CREATE TABLE IF NOT EXISTS user_rule_configs (
+  id         TEXT PRIMARY KEY,
+  user_id    TEXT NOT NULL,
+  name       TEXT NOT NULL,
+  config     TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_user_rule_configs_user ON user_rule_configs(user_id, created_at);
 -- Small key/value store (e.g. the one-time backfill marker).
 CREATE TABLE IF NOT EXISTS meta (
   key   TEXT PRIMARY KEY,
@@ -156,6 +169,18 @@ export interface SessionRow {
   kind: SessionKind;
   /** Signed-in account behind this session, or null for a guest. */
   userId: string | null;
+}
+
+/** Max saved rule configurations per account (the lobby dropdown quota). */
+export const MAX_RULE_CONFIGS = 10;
+
+/** A saved rule configuration (camelCased). `config` is a complete RuleConfig. */
+export interface RuleConfigRow {
+  id: string;
+  name: string;
+  config: RuleConfig;
+  createdAt: number;
+  updatedAt: number;
 }
 
 /** A user account row (camelCased). */
@@ -814,9 +839,88 @@ export class Db {
       this.raw.prepare('DELETE FROM user_achievements WHERE user_id = ?').run(userId);
       this.raw.prepare('DELETE FROM match_participants WHERE user_id = ?').run(userId);
       this.raw.prepare('DELETE FROM auth_tokens WHERE user_id = ?').run(userId);
+      this.raw.prepare('DELETE FROM user_rule_configs WHERE user_id = ?').run(userId);
       this.raw.prepare('UPDATE sessions SET user_id = NULL WHERE user_id = ?').run(userId);
       this.raw.prepare('DELETE FROM users WHERE id = ?').run(userId);
     });
+  }
+
+  // ── user rule configs (saved lobby "Sääntömuoto" presets) ───────────────────
+
+  /** A user's saved rule configurations, oldest first (creation order). */
+  listRuleConfigs(userId: string): RuleConfigRow[] {
+    const rows = this.raw
+      .prepare(
+        `SELECT id, name, config, created_at, updated_at
+         FROM user_rule_configs WHERE user_id = ? ORDER BY created_at ASC`,
+      )
+      .all(userId) as Array<{
+      id: string;
+      name: string;
+      config: string;
+      created_at: number;
+      updated_at: number;
+    }>;
+    return rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      config: JSON.parse(r.config) as RuleConfig,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    }));
+  }
+
+  /**
+   * Inserts a saved configuration, enforcing the per-user cap inside the
+   * transaction (count → insert) so two concurrent creates can't both slip past
+   * the limit. Returns the new row, or null when the account is already at
+   * MAX_RULE_CONFIGS.
+   */
+  createRuleConfig(
+    userId: string,
+    id: string,
+    name: string,
+    config: RuleConfig,
+    now: number,
+  ): RuleConfigRow | null {
+    return this.transaction(() => {
+      const { n } = this.raw
+        .prepare('SELECT COUNT(*) AS n FROM user_rule_configs WHERE user_id = ?')
+        .get(userId) as { n: number };
+      if (n >= MAX_RULE_CONFIGS) return null;
+      this.raw
+        .prepare(
+          `INSERT INTO user_rule_configs (id, user_id, name, config, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+        )
+        .run(id, userId, name, JSON.stringify(config), now, now);
+      return { id, name, config, createdAt: now, updatedAt: now };
+    });
+  }
+
+  /** Updates a saved configuration the user owns. Returns false if not found. */
+  updateRuleConfig(
+    userId: string,
+    id: string,
+    name: string,
+    config: RuleConfig,
+    now: number,
+  ): boolean {
+    const res = this.raw
+      .prepare(
+        `UPDATE user_rule_configs SET name = ?, config = ?, updated_at = ?
+         WHERE id = ? AND user_id = ?`,
+      )
+      .run(name, JSON.stringify(config), now, id, userId);
+    return res.changes > 0;
+  }
+
+  /** Deletes a saved configuration the user owns. Returns false if not found. */
+  deleteRuleConfig(userId: string, id: string): boolean {
+    const res = this.raw
+      .prepare('DELETE FROM user_rule_configs WHERE id = ? AND user_id = ?')
+      .run(id, userId);
+    return res.changes > 0;
   }
 
   /**

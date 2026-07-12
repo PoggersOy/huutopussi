@@ -7,7 +7,8 @@
  * the deal gets a declarer and the exchange/koini phases run.
  */
 import { randomUUID } from 'node:crypto';
-import type { ActionHint, Card, PlayerAction, PlayerView, Seat } from '@hp/engine';
+import type { ActionHint, Card, PlayerAction, PlayerView, RuleConfig, Seat } from '@hp/engine';
+import { DEFAULT_RULES } from '@hp/engine';
 import {
   type ClientMsg,
   type ConfigPatch,
@@ -122,7 +123,7 @@ export class TestClient {
       sessionToken?: string;
       nickname?: string;
       v?: number;
-      /** Initial room config (create only): preset + overrides. */
+      /** Initial room config (create only): a complete or partial config patch. */
       config?: ConfigPatch;
       /** Opaque app auth token binding the connection to a signed-in account. */
       auth?: string;
@@ -319,9 +320,25 @@ export async function seatHumans(
   return clients;
 }
 
-/** 4 seated scripted humans on the päämuoto ruleset (the original harness). */
+/**
+ * A complete RuleConfig as a wire config patch, minus the fields that don't
+ * apply to its player count (the server rejects talonSize/openTalon in 4p and
+ * exchangeCount in 2-3p). Mirrors the client's resolveConfigForPlayers.
+ */
+export function fullConfigPatch(config: RuleConfig): ConfigPatch {
+  const patch = { ...config } as Record<string, unknown>;
+  if (config.players === 4) {
+    delete patch.talonSize;
+    delete patch.openTalon;
+  } else {
+    delete patch.exchangeCount;
+  }
+  return patch as ConfigPatch;
+}
+
+/** 4 seated scripted humans on the DEFAULT_RULES ruleset (the original harness). */
 export async function seatFourHumans(port: number): Promise<TestClient[]> {
-  return seatHumans(port, 4, { preset: 'paamuoto' });
+  return seatHumans(port, 4, fullConfigPatch(DEFAULT_RULES));
 }
 
 /** Resolves when the client sees the deal reach the scored phase. */

@@ -1,7 +1,7 @@
 /**
- * illisoft game modes over the wire: rooms default to ILLISOFT_RULES, lobby
- * presets/patches with cross-field validation, active-seat bookkeeping for
- * 2/3-player modes (the 2p dummy hand is NOT a seat), and full 3p/2p koini
+ * illisoft game modes over the wire: rooms default to ILLISOFT_RULES, full/
+ * partial config patches with cross-field validation, active-seat bookkeeping
+ * for 2/3-player modes (the 2p dummy hand is NOT a seat), and full 3p/2p koini
  * deals driven over WS by bots + a scripted human.
  */
 import type { Seat, Side } from '@hp/engine';
@@ -9,7 +9,7 @@ import { DEFAULT_RULES, ILLISOFT_RULES } from '@hp/engine';
 import type { ServerMsg } from '@hp/protocol';
 import { afterAll, beforeAll, expect, test } from 'vitest';
 import { createServer, type HpServer } from '../src/index.js';
-import { attachDriver, TestClient, waitForDealScored } from './helpers.js';
+import { attachDriver, fullConfigPatch, TestClient, waitForDealScored } from './helpers.js';
 
 type RoomMsg = Extract<ServerMsg, { t: 'room' }>;
 type ErrorMsg = Extract<ServerMsg, { t: 'error' }>;
@@ -60,19 +60,20 @@ async function setConfigOk(
   return reply as RoomMsg;
 }
 
-test('rooms default to ILLISOFT_RULES; lobby presets switch the base ruleset', async () => {
+test('rooms default to the Oletus (ILLISOFT) config; a full patch replaces it', async () => {
   const c = await TestClient.connect(port);
   const w = await c.hello({ nickname: 'illi' });
   if (w.t !== 'welcome') throw new Error('hello failed');
   expect(w.room.config).toEqual(ILLISOFT_RULES);
   expect(w.room.seats.length).toBe(4);
 
-  const paamuoto = await setConfigOk(c, { preset: 'paamuoto' });
-  expect(paamuoto.room.config).toEqual(DEFAULT_RULES);
+  // A complete config patch replaces the whole ruleset.
+  const swapped = await setConfigOk(c, fullConfigPatch(DEFAULT_RULES));
+  expect(swapped.room.config).toEqual(DEFAULT_RULES);
 
-  // Preset resets first, then the remaining fields override on top of it.
-  const back = await setConfigOk(c, { preset: 'illisoft', winTarget: 300 });
-  expect(back.room.config).toEqual({ ...ILLISOFT_RULES, winTarget: 300 });
+  // A partial patch overrides individual fields on top of the current config.
+  const raised = await setConfigOk(c, { winTarget: 300 });
+  expect(raised.room.config).toEqual({ ...DEFAULT_RULES, winTarget: 300 });
   c.close();
 });
 

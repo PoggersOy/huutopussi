@@ -15,6 +15,14 @@ import { useNavigate } from 'react-router-dom';
 import { fetchMatchmaking, type MatchmakingBucket } from '../api';
 import { AuthPanel } from '../components/AuthPanel';
 import { ConnectionPill } from '../components/ConnectionPill';
+import {
+  canVibrate,
+  getHapticsOn,
+  getSoundOn,
+  setHapticsOn,
+  setSoundOn,
+  subscribePrefs,
+} from '../feedback';
 import { LANGUAGES, setLanguage } from '../i18n';
 import { installAvailable, promptInstall, subscribeInstall } from '../install';
 import { connect, findMatch, sendLobby } from '../socket';
@@ -75,6 +83,9 @@ export function Home() {
   const canInstall = useSyncExternalStore(subscribeInstall, installAvailable);
   const createdCode = useStore((s) => s.server.room?.code);
   const effectiveRanked = ranked && signedIn;
+  // Device feedback prefs (sound + haptics) — persisted, read via the feedback store.
+  const soundOn = useSyncExternalStore(subscribePrefs, getSoundOn, getSoundOn);
+  const hapticsOn = useSyncExternalStore(subscribePrefs, getHapticsOn, getHapticsOn);
 
   // Signing in pre-fills the nickname with the account's display name ("First
   // L.") — but only when the field is empty, so a name the player deliberately
@@ -322,6 +333,70 @@ export function Home() {
             </button>
           </form>
         </section>
+
+        {/* Learn to play: guided tutorial + practice puzzles (offline). */}
+        <section className="mode-card">
+          <div className="mode-card__head">
+            <span className="mode-card__icon" aria-hidden="true">
+              🎓
+            </span>
+            <div className="mode-card__text">
+              <h3 className="mode-card__title">{t('learn.tutorialTitle')}</h3>
+              <p className="dim mode-card__desc">{t('learn.homeDesc')}</p>
+            </div>
+          </div>
+          <button type="button" onClick={() => navigate('/learn')}>
+            {t('learn.homeAction')}
+          </button>
+        </section>
+
+        {/* Device feedback: sound effects + haptics (this device only). */}
+        <div className="panel stack">
+          <div className="prefrow">
+            <span>{t('home.prefs.sound')}</span>
+            <div className="seg">
+              <button
+                type="button"
+                className="seg__opt"
+                aria-pressed={soundOn}
+                onClick={() => setSoundOn(true)}
+              >
+                {t('common.on')}
+              </button>
+              <button
+                type="button"
+                className="seg__opt"
+                aria-pressed={!soundOn}
+                onClick={() => setSoundOn(false)}
+              >
+                {t('common.off')}
+              </button>
+            </div>
+          </div>
+          {canVibrate() && (
+            <div className="prefrow">
+              <span>{t('home.prefs.haptics')}</span>
+              <div className="seg">
+                <button
+                  type="button"
+                  className="seg__opt"
+                  aria-pressed={hapticsOn}
+                  onClick={() => setHapticsOn(true)}
+                >
+                  {t('common.on')}
+                </button>
+                <button
+                  type="button"
+                  className="seg__opt"
+                  aria-pressed={!hapticsOn}
+                  onClick={() => setHapticsOn(false)}
+                >
+                  {t('common.off')}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
 
         <button type="button" className="btn--ghost" onClick={() => navigate('/history')}>
           {t('home.historyLink')}

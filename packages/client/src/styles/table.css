@@ -557,7 +557,7 @@
 .peek__win {
   color: var(--gold);
   font-weight: 700;
-  font-size: var(--fs-xs);
+  font-size: var(--fs-sm);
 }
 
 /* ── 2-3p felt fixtures: koinipakka / dummy pile counts + open-talon strip ── */
@@ -1245,4 +1245,284 @@
   .table-reclaim {
     animation: none;
   }
+}
+
+/* ── Reactions (emotes) ──
+   A preset emoji that pops by a seat, floats up a little and fades. Positioned
+   like the speech bubble (centered over each opponent panel; above the hand for
+   yourself) but on its own layer above bubbles. Base transform is the centering
+   translate; the life animation overrides it while playing. */
+.emote {
+  position: absolute;
+  z-index: 6;
+  left: 50%;
+  top: -14px;
+  transform: translateX(-50%);
+  pointer-events: none;
+  animation: emote-life 2800ms ease-out both;
+}
+
+.emote--me {
+  top: auto;
+  bottom: 23%;
+}
+
+.emote__emoji {
+  display: block;
+  font-size: 2rem;
+  line-height: 1;
+  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.55));
+}
+
+@keyframes emote-life {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 8px) scale(0.4);
+  }
+  10% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1.18);
+  }
+  22% {
+    transform: translate(-50%, 0) scale(1);
+  }
+  80% {
+    opacity: 1;
+    transform: translate(-50%, -12px) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -26px) scale(1);
+  }
+}
+
+@keyframes emote-fade {
+  0% {
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* ── Reaction picker (floating, bottom-right; mirror of the reclaim button) ── */
+.emotebar {
+  position: fixed;
+  right: calc(var(--safe-right) + var(--space-3));
+  bottom: calc(var(--safe-bottom) + var(--space-3));
+  z-index: 45;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
+.emotebar__toggle {
+  width: 48px;
+  height: 48px;
+  min-height: 48px;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface-strong);
+  font-size: 1.4rem;
+  line-height: 1;
+  box-shadow: 0 4px 14px -3px rgba(0, 0, 0, 0.5);
+}
+
+.emotebar__palette {
+  width: min(78vw, 320px);
+  max-height: 46vh;
+  overflow-y: auto;
+  padding: var(--space-2);
+  border-radius: var(--radius-2);
+  border: 1px solid var(--line);
+  background: var(--felt-800);
+  box-shadow: 0 8px 26px -6px rgba(0, 0, 0, 0.6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  animation: sheet-up 180ms ease-out;
+}
+
+.emotebar__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.emotebar__grouplabel {
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.emotebar__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.emotebar__opt {
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
+  padding: 0;
+  border-radius: var(--radius-2);
+  border: 1px solid transparent;
+  background: var(--surface);
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.emotebar__opt:hover {
+  background: var(--surface-strong);
+}
+
+.emotebar__opt:disabled {
+  opacity: 0.5;
+}
+
+/* ── Läpäri (clean sweep) banner on the deal-scored overlay ── */
+.laapari {
+  position: relative;
+  text-align: center;
+  padding: var(--space-1) 0 var(--space-2);
+}
+
+.laapari__word {
+  display: block;
+  font-family: var(--font-display);
+  font-size: var(--fs-xl);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: var(--gold);
+  text-shadow: 0 0 14px rgba(212, 175, 55, 0.7);
+  animation: laapari-pop 420ms cubic-bezier(0.2, 1.5, 0.4, 1) both;
+}
+
+.laapari__by {
+  display: block;
+  font-size: var(--fs-sm);
+}
+
+@keyframes laapari-pop {
+  0% {
+    transform: scale(0.5);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.12);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* ── Confetti burst (win + läpäri) ──
+   A fixed, full-screen decorative rain above the overlay. `position: fixed`
+   keeps it out of the panel's scroll flow; pointer-events: none lets taps
+   through. Colours/geometry come from the component's inline styles. */
+.confetti {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: var(--z-toast);
+}
+
+.confetti__pc {
+  position: absolute;
+  top: -16px;
+  width: 8px;
+  height: 13px;
+  border-radius: 1px;
+  opacity: 0.95;
+  animation-name: confetti-fall;
+  animation-timing-function: ease-in;
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards;
+}
+
+@keyframes confetti-fall {
+  0% {
+    transform: translateY(0) translateX(0) rotate(var(--rot));
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(104vh) translateX(var(--drift)) rotate(calc(var(--rot) + 540deg));
+    opacity: 0.85;
+  }
+}
+
+/* Reduced motion: reactions just fade (no drift/scale); no confetti; the läpäri
+   word appears without the springy pop. */
+@media (prefers-reduced-motion: reduce) {
+  .emote {
+    animation-name: emote-fade;
+  }
+
+  .confetti {
+    display: none;
+  }
+
+  .laapari__word {
+    animation: none;
+  }
+}
+
+/* ── Learning-mode guidance banner ──
+   Sits between the top bar and the felt (a normal flex child, never overlapping)
+   with the scenario goal + a big, phase-specific instruction. Gold-accented, and
+   brighter (--act) when it's the human's turn to do something. */
+.learn-guide {
+  position: relative;
+  margin: var(--space-1) var(--space-2) 0;
+  padding: var(--space-2) var(--space-3);
+  padding-right: var(--space-5);
+  border: 1px solid var(--gold-soft);
+  border-radius: var(--radius-2);
+  background: rgba(212, 175, 55, 0.1);
+}
+
+.learn-guide--act {
+  border-color: var(--gold);
+  box-shadow: 0 0 12px rgba(212, 175, 55, 0.28);
+}
+
+.learn-guide__goal {
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--gold);
+  font-weight: 700;
+}
+
+.learn-guide__body {
+  margin-top: 2px;
+  font-size: var(--fs-md);
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.learn-guide__exit {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 30px;
+  height: 30px;
+  min-height: 30px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 1rem;
+  line-height: 1;
 }

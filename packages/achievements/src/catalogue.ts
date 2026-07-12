@@ -15,7 +15,14 @@
  */
 import { tricksPerDeal } from '@hp/engine';
 import { eventsByDeal, seatTrumpSetCount } from './context.js';
-import { counter, declarerSideOf, flag, maxOtherScore, someDeal } from './predicates.js';
+import {
+  counter,
+  declarerSideOf,
+  flag,
+  keptWholeTalonAndWon,
+  maxOtherScore,
+  someDeal,
+} from './predicates.js';
 import type { AchievementDef } from './types.js';
 
 export const ACHIEVEMENTS: readonly AchievementDef[] = [
@@ -57,8 +64,8 @@ export const ACHIEVEMENTS: readonly AchievementDef[] = [
     predicate: (ctx) => counter(ctx.stats.totalGames, 25),
   },
   {
-    id: 'kalkkis',
-    i18nKey: 'achievements.kalkkis',
+    id: 'pussikonkari',
+    i18nKey: 'achievements.pussikonkari',
     kind: 'counter',
     rarity: 'uncommon',
     icon: 'clock',
@@ -75,13 +82,31 @@ export const ACHIEVEMENTS: readonly AchievementDef[] = [
     predicate: (ctx) => counter(ctx.stats.totalWins, 25),
   },
   {
+    id: 'voittokone',
+    i18nKey: 'achievements.voittokone',
+    kind: 'counter',
+    rarity: 'rare',
+    icon: 'rocket',
+    target: 100,
+    predicate: (ctx) => counter(ctx.stats.totalWins, 100),
+  },
+  {
+    id: 'korttikuningas',
+    i18nKey: 'achievements.korttikuningas',
+    kind: 'counter',
+    rarity: 'legendary',
+    icon: 'king',
+    target: 500,
+    predicate: (ctx) => counter(ctx.stats.totalWins, 500),
+  },
+  {
     id: 'legenda',
     i18nKey: 'achievements.legenda',
     kind: 'counter',
-    rarity: 'rare',
+    rarity: 'legendary',
     icon: 'medal',
-    target: 100,
-    predicate: (ctx) => counter(ctx.stats.totalWins, 100),
+    target: 1000,
+    predicate: (ctx) => counter(ctx.stats.totalWins, 1000),
   },
 
   // ── Putkessa (win streaks) ─────────────────────────────────────────────────
@@ -181,9 +206,9 @@ export const ACHIEVEMENTS: readonly AchievementDef[] = [
     id: 'kuninkaalliset-haat',
     i18nKey: 'achievements.kuninkaalliset-haat',
     kind: 'deal',
-    rarity: 'uncommon',
+    rarity: 'rare',
     icon: 'heart',
-    predicate: (ctx) => flag(someDeal(ctx, (d) => (d.sides[ctx.side]?.marriagePoints ?? 0) >= 100)),
+    predicate: (ctx) => flag(someDeal(ctx, (d) => (d.sides[ctx.side]?.marriagePoints ?? 0) >= 200)),
   },
   {
     id: 'uhkarohkea',
@@ -197,7 +222,7 @@ export const ACHIEVEMENTS: readonly AchievementDef[] = [
           ctx,
           (d) =>
             d.made === true &&
-            (d.contract ?? 0) >= 200 &&
+            (d.contract ?? 0) >= 240 &&
             declarerSideOf(d, ctx.config.players) === ctx.side,
         ),
       ),
@@ -360,18 +385,21 @@ export const ACHIEVEMENTS: readonly AchievementDef[] = [
 
   // ── Peliaikaiset kikat (seat-level, going-forward) ─────────────────────────
   {
-    id: 'hertta-huulilla',
-    i18nKey: 'achievements.hertta-huulilla',
+    id: 'punaiset-haat',
+    i18nKey: 'achievements.punaiset-haat',
     kind: 'seat',
-    rarity: 'uncommon',
+    rarity: 'rare',
     icon: 'heart',
     predicate: (ctx) => {
       if (!ctx.events) return flag(false);
-      return flag(
-        ctx.events.some(
-          (e) => e.type === 'trumpSet' && e.seat === ctx.seat && e.suit === 'H' && e.points >= 100,
-        ),
+      // Both RED-suit marriages (hearts + diamonds) declared by this seat in the
+      // same match.
+      const suits = new Set(
+        ctx.events
+          .filter((e) => e.type === 'trumpSet' && e.seat === ctx.seat)
+          .map((e) => (e.type === 'trumpSet' ? e.suit : null)),
       );
+      return flag(suits.has('H') && suits.has('D'));
     },
   },
   {
@@ -382,16 +410,21 @@ export const ACHIEVEMENTS: readonly AchievementDef[] = [
     icon: 'crown',
     predicate: (ctx) => {
       if (!ctx.events) return flag(false);
-      return flag(eventsByDeal(ctx.events).some((seg) => seatTrumpSetCount(seg, ctx.seat) >= 2));
+      // Change the trump twice in one deal = three trump declarations by the seat.
+      return flag(eventsByDeal(ctx.events).some((seg) => seatTrumpSetCount(seg, ctx.seat) >= 3));
     },
   },
   {
     id: 'koinikuningas',
     i18nKey: 'achievements.koinikuningas',
-    kind: 'deal',
-    rarity: 'uncommon',
+    kind: 'seat',
+    rarity: 'rare',
     icon: 'king',
-    predicate: (ctx) => flag(someDeal(ctx, (d) => (d.sides[ctx.side]?.discardPoints ?? 0) > 0)),
+    predicate: (ctx) => {
+      if (!ctx.events) return flag(false);
+      // Take the whole koinipakka into hand (discard none of it) and still make it.
+      return flag(keptWholeTalonAndWon(ctx.events, ctx.seat, ctx.config.talonSize));
+    },
   },
 ] as const;
 

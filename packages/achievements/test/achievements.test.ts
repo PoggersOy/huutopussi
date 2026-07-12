@@ -1,4 +1,4 @@
-import type { DealResult, GameEvent, SideBreakdown } from '@hp/engine';
+import type { Card, DealResult, GameEvent, SideBreakdown } from '@hp/engine';
 import { describe, expect, it } from 'vitest';
 import {
   type AchievementContext,
@@ -120,11 +120,11 @@ describe('per-deal feats', () => {
     expect(unlocked(notSlam).has('lapari')).toBe(false);
   });
 
-  it('uhkarohkea needs a made 200+ contract by the viewer side', () => {
+  it('uhkarohkea needs a made 240+ contract by the viewer side', () => {
     const d = deal({
       declarer: 0,
-      contract: 220,
-      bid: 200,
+      contract: 260,
+      bid: 240,
       made: true,
       sides: [side(), side()],
     });
@@ -202,27 +202,70 @@ describe('match-derived feats', () => {
 // ── seat feats + backfill no-op ─────────────────────────────────────────────
 
 describe('seat feats', () => {
-  const heartsMarriage: GameEvent[] = [
+  const redMarriages: GameEvent[] = [
     { type: 'dealStarted', dealIndex: 0, dealer: 0, deck: [] },
     { type: 'trumpSet', suit: 'H', seat: 0, side: 0, how: 'own', points: 100 },
+    { type: 'dealStarted', dealIndex: 1, dealer: 1, deck: [] },
+    { type: 'trumpSet', suit: 'D', seat: 0, side: 0, how: 'own', points: 80 },
   ];
 
-  it('hertta-huulilla fires from a hearts trumpSet by the seat', () => {
-    expect(unlocked(ctx({ seat: 0, events: heartsMarriage })).has('hertta-huulilla')).toBe(true);
-    expect(unlocked(ctx({ seat: 1, events: heartsMarriage })).has('hertta-huulilla')).toBe(false);
+  it('punaiset-haat needs BOTH hearts and diamonds marriages by the seat', () => {
+    expect(unlocked(ctx({ seat: 0, events: redMarriages })).has('punaiset-haat')).toBe(true);
+    // Only hearts → not yet.
+    const heartsOnly = redMarriages.slice(0, 2);
+    expect(unlocked(ctx({ seat: 0, events: heartsOnly })).has('punaiset-haat')).toBe(false);
+    // Both suits, but declared by another seat → not this seat's.
+    expect(unlocked(ctx({ seat: 1, events: redMarriages })).has('punaiset-haat')).toBe(false);
   });
 
   it('seat feats are a no-op during backfill (events=null)', () => {
-    expect(unlocked(ctx({ seat: 0, events: null })).has('hertta-huulilla')).toBe(false);
+    expect(unlocked(ctx({ seat: 0, events: null })).has('punaiset-haat')).toBe(false);
   });
 
-  it('valtinvaihtaja needs 2 trumpSets in one deal', () => {
-    const two: GameEvent[] = [
+  it('valtinvaihtaja needs THREE trumpSets in one deal (two changes)', () => {
+    const base: GameEvent[] = [
       { type: 'dealStarted', dealIndex: 0, dealer: 0, deck: [] },
       { type: 'trumpSet', suit: 'H', seat: 0, side: 0, how: 'own', points: 100 },
+      { type: 'trumpSet', suit: 'D', seat: 0, side: 0, how: 'own', points: 80 },
+    ];
+    expect(unlocked(ctx({ seat: 0, events: base })).has('valtinvaihtaja')).toBe(false);
+    const three: GameEvent[] = [
+      ...base,
       { type: 'trumpSet', suit: 'S', seat: 0, side: 0, how: 'own', points: 40 },
     ];
-    expect(unlocked(ctx({ seat: 0, events: two })).has('valtinvaihtaja')).toBe(true);
+    expect(unlocked(ctx({ seat: 0, events: three })).has('valtinvaihtaja')).toBe(true);
+  });
+
+  it('koinikuningas needs keeping the whole talon and making the contract', () => {
+    // talonSize 3 → talon = last 3 cards of the deck.
+    const deck: Card[] = ['HA', 'H10', 'HK', 'C6', 'C7', 'C8'];
+    const made = (discard: Card[], contractMade: boolean): GameEvent[] => [
+      { type: 'dealStarted', dealIndex: 0, dealer: 0, deck: [...deck] },
+      { type: 'talonTaken', seat: 0 },
+      { type: 'cardsDiscarded', seat: 0, cards: discard },
+      {
+        type: 'dealScored',
+        result: deal({
+          declarer: 0,
+          contract: 100,
+          bid: 100,
+          made: contractMade,
+          sides: [side(), side()],
+        }),
+      },
+    ];
+    // Discarded only own-hand cards (none of the talon C6/C7/C8) and made it.
+    expect(
+      unlocked(ctx({ seat: 0, events: made(['HA', 'H10', 'HK'], true) })).has('koinikuningas'),
+    ).toBe(true);
+    // Discarded a talon card → didn't keep the whole talon.
+    expect(
+      unlocked(ctx({ seat: 0, events: made(['HA', 'H10', 'C6'], true) })).has('koinikuningas'),
+    ).toBe(false);
+    // Kept the whole talon but went down → no.
+    expect(
+      unlocked(ctx({ seat: 0, events: made(['HA', 'H10', 'HK'], false) })).has('koinikuningas'),
+    ).toBe(false);
   });
 });
 

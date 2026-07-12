@@ -4,9 +4,16 @@
  * using only server-sent hints for legality.
  */
 import type { Seat } from '@hp/engine';
+import { DEFAULT_RULES } from '@hp/engine';
 import { afterAll, beforeAll, expect, test } from 'vitest';
 import { createServer, type HpServer } from '../src/index.js';
-import { attachDriver, seatFourHumans, TestClient, waitForDealScored } from './helpers.js';
+import {
+  attachDriver,
+  fullConfigPatch,
+  seatFourHumans,
+  TestClient,
+  waitForDealScored,
+} from './helpers.js';
 
 let server: HpServer;
 let port: number;
@@ -39,7 +46,7 @@ test('GET /api/rooms reports live rooms and omits unknown/invalid codes', async 
   // A live room in the lobby: creating it auto-seats the host at seat 0, so it
   // has one occupant of four.
   const host = await TestClient.connect(port);
-  await host.hello({ nickname: 'Ann', config: { preset: 'paamuoto' } });
+  await host.hello({ nickname: 'Ann', config: fullConfigPatch(DEFAULT_RULES) });
   const code = host.roomCode;
 
   // Probe the live code, an unknown-but-valid code, and a malformed one.

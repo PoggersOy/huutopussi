@@ -45,7 +45,7 @@ function makeUser(name: string): { id: string; token: string } {
   return { id: user.id, token };
 }
 
-const RATED_2P = { preset: 'illisoft', players: 2, winTarget: 100 } as const;
+const RATED_2P = { players: 2, winTarget: 100 } as const;
 
 test('auth-config reports no client id in guest mode', async () => {
   const res = await fetch(`http://127.0.0.1:${port}/api/auth-config`);

@@ -36,6 +36,8 @@ export interface Session {
   reclaimPending: boolean;
   /** actionId -> serialized direct response (idempotent replay), LRU-capped. */
   responses: Map<string, string>;
+  /** Epoch ms of this session's last accepted emote (0 = none); anti-spam gate. */
+  lastEmoteAt: number;
   /** Lazily created bot actor (bot seats and botControlled human seats). */
   bot?: Actor;
 }
@@ -66,6 +68,7 @@ export function createSession(init: {
     botControlled: false,
     reclaimPending: false,
     responses: new Map(),
+    lastEmoteAt: 0,
   };
 }
 

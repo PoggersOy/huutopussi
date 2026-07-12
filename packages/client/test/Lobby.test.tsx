@@ -32,6 +32,7 @@ function welcome(seats: RoomStatePublic['seats'], mySeat: 0 | 1 | 2 | 3 | null):
       seats,
       hostSeat: 0,
       config: DEFAULT_RULES,
+      configName: null,
       tableSettings: { autoplay: true, turnTimeoutSec: 90 },
       status: 'lobby',
     },
@@ -105,22 +106,52 @@ describe('Lobby as host', () => {
     expect(sendLobby).toHaveBeenCalledWith({ type: 'startMatch' });
   });
 
-  it('edits the rule config through setConfig patches', () => {
+  it('changes the player count with a resolved setConfig patch', () => {
     welcome(partialSeats, 0);
     renderLobby();
 
-    fireEvent.change(screen.getByRole('combobox', { name: 'Point system' }), {
-      target: { value: 'B' },
+    fireEvent.change(screen.getByRole('combobox', { name: 'Players' }), {
+      target: { value: '3' },
     });
-    expect(sendLobby).toHaveBeenCalledWith({ type: 'setConfig', patch: { cardPoints: 'B' } });
+    // The default config, resolved for 3 players: exchangeCount (a 4p field) is
+    // stripped and players is overridden; configName stays the default (null).
+    expect(sendLobby).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'setConfig',
+        configName: null,
+        patch: expect.objectContaining({ players: 3 }),
+      }),
+    );
+    const [call] = (sendLobby as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+    expect((call?.[0] as { patch: Record<string, unknown> }).patch).not.toHaveProperty(
+      'exchangeCount',
+    );
+  });
 
-    fireEvent.change(screen.getByRole('combobox', { name: 'Minimum bid' }), {
-      target: { value: '75' },
-    });
-    expect(sendLobby).toHaveBeenCalledWith({ type: 'setConfig', patch: { minBid: 75 } });
+  it('lists saved configs in the ruleset dropdown and applies the chosen one', () => {
+    welcome(partialSeats, 0);
+    useStore.setState((s) => ({
+      auth: {
+        ...s.auth,
+        ruleConfigs: [
+          { id: 'x1', name: 'House rules', config: { ...DEFAULT_RULES, winTarget: 300 } },
+        ],
+      },
+    }));
+    renderLobby();
 
-    fireEvent.click(screen.getByLabelText('Show the last trick'));
-    expect(sendLobby).toHaveBeenCalledWith({ type: 'setConfig', patch: { showLastTrick: false } });
+    const ruleset = screen.getByRole('combobox', { name: 'Ruleset' });
+    expect(within(ruleset).getByText('Default')).toBeTruthy();
+    expect(within(ruleset).getByText('House rules')).toBeTruthy();
+
+    fireEvent.change(ruleset, { target: { value: 'x1' } });
+    expect(sendLobby).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'setConfig',
+        configName: 'House rules',
+        patch: expect.objectContaining({ winTarget: 300, players: 4 }),
+      }),
+    );
   });
 });
 
@@ -136,8 +167,8 @@ describe('View all rules overlay', () => {
     const dialog = within(screen.getByRole('dialog'));
 
     expect(dialog.getByText('Rules in play')).toBeTruthy();
-    // DEFAULT_RULES is the päämuoto preset — shown as the subtitle.
-    expect(dialog.getByText('Main variant (päämuoto)')).toBeTruthy();
+    // The room uses the built-in default config (configName null) → "Default".
+    expect(dialog.getByText('Default')).toBeTruthy();
     // Fields the editable panel never exposes:
     expect(dialog.getByText('Bid increment')).toBeTruthy();
     expect(dialog.getByText('Maximum bid')).toBeTruthy();
@@ -205,8 +236,11 @@ describe('Lobby as guest', () => {
     expect(screen.queryByRole('button', { name: 'Sit here' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Stand up' })).toBeNull();
     expect(screen.getByText('Only the host can change the rules')).toBeTruthy();
-    const pointSystem = screen.getByRole('combobox', { name: 'Point system' });
-    expect((pointSystem as HTMLSelectElement).disabled).toBe(true);
+    // The player-count select is disabled, and the ruleset shows as plain text
+    // (not an editable dropdown) for a guest.
+    const players = screen.getByRole('combobox', { name: 'Players' });
+    expect((players as HTMLSelectElement).disabled).toBe(true);
+    expect(screen.queryByRole('combobox', { name: 'Ruleset' })).toBeNull();
   });
 
   it('offers a Back-to-menu escape so a guest is never trapped waiting on the host', () => {

@@ -26,7 +26,6 @@ import {
   allowedActions,
   applyEvent,
   type Card,
-  DEFAULT_RULES,
   expectedActor,
   type GameEvent,
   ILLISOFT_RULES,
@@ -49,6 +48,8 @@ import {
   type ClientMsg,
   type ConfigPatch,
   clientMsgSchema,
+  configPatchSchema,
+  type Emote,
   type LobbyCmd,
   type MatchRatingResult,
   PROTOCOL_VERSION,
@@ -60,7 +61,7 @@ import { type WebSocket, WebSocketServer } from 'ws';
 import { backfillAchievementsOnce, evaluateMatchAchievements } from './achievements.js';
 import { AUTH_TOKEN_TTL_MS, createGoogleVerifier, hashToken, mintToken } from './auth.js';
 import { computeBotAction, getBot, getFallbackBot } from './botRunner.js';
-import { Db, EVENT_RETENTION_MS, type RatingUpdate, type UserRow } from './db.js';
+import { Db, EVENT_RETENTION_MS, MAX_RULE_CONFIGS, type RatingUpdate, type UserRow } from './db.js';
 import { computeRatingChanges, PROVISIONAL_GAMES, type SideInput } from './elo.js';
 import {
   allSeatsFilled,
@@ -163,39 +164,34 @@ export function cryptoShuffle<T>(items: readonly T[]): T[] {
   return out;
 }
 
-/** Lobby preset names -> base rulesets (protocol configPatchSchema.preset). */
-const PRESET_RULES: Record<'paamuoto' | 'illisoft', RuleConfig> = {
-  paamuoto: DEFAULT_RULES,
-  illisoft: ILLISOFT_RULES,
-};
-
 type ConfigPatchResult =
   | { ok: true; config: RuleConfig }
   | { ok: false; code: string; params: Record<string, string | number> };
 
 /**
- * Applies a host config patch: `preset` first (resets to the named base
- * ruleset), then the remaining fields on top. Cross-field validity that the
- * per-field zod schema cannot see is enforced on the RESULT; an invalid patch
- * is rejected wholesale (the room config is left untouched).
+ * Applies a host config patch on top of `current`. The client always sends a
+ * COMPLETE config (there is no named base ruleset on the wire), but individual
+ * fields are still merged so partial patches (e.g. a lone `players` change)
+ * work. Cross-field validity that the per-field zod schema cannot see is
+ * enforced on the RESULT; an invalid patch is rejected wholesale (the room
+ * config is left untouched).
  */
 export function applyConfigPatch(current: RuleConfig, patch: ConfigPatch): ConfigPatchResult {
-  const { preset, ...fields } = patch;
   const bad = (field: string): ConfigPatchResult => ({
     ok: false,
     code: 'error.badConfig',
     params: { field },
   });
-  const next: RuleConfig = { ...(preset !== undefined ? PRESET_RULES[preset] : current) };
+  const next: RuleConfig = { ...current };
   const nextMut = next as unknown as Record<string, unknown>;
-  for (const [key, value] of Object.entries(fields)) {
+  for (const [key, value] of Object.entries(patch)) {
     if (value !== undefined) nextMut[key] = value;
   }
   // Koinipakka options exist only in the 2-3p modes...
   if (next.players === 4) {
-    if (fields.talonSize !== undefined) return bad('talonSize');
-    if (fields.openTalon !== undefined) return bad('openTalon');
-  } else if (fields.exchangeCount !== undefined) {
+    if (patch.talonSize !== undefined) return bad('talonSize');
+    if (patch.openTalon !== undefined) return bad('openTalon');
+  } else if (patch.exchangeCount !== undefined) {
     // ...and the partner exchange only in 4p.
     return bad('exchangeCount');
   }
@@ -329,6 +325,21 @@ export function createServer(opts: ServerOpts = {}): HpServer {
     const json = JSON.stringify(msg);
     for (const s of room.sessions.values()) {
       if (origin && s.token === origin.token) rememberResponse(s, origin.actionId, json);
+      if (isConnected(s) && s.socket) s.socket.send(json);
+    }
+  }
+
+  /** Min gap between a seat's reactions; extra ones are dropped (anti-spam). */
+  const EMOTE_COOLDOWN_MS = 1_500;
+
+  /**
+   * A player's reaction, echoed to everyone in the room (sender included). No
+   * seq bump, no redaction, no idempotency: an emote is ephemeral table flair,
+   * not game state — a dropped one is simply not shown.
+   */
+  function broadcastEmote(room: Room, seat: Seat, emote: Emote): void {
+    const json = JSON.stringify({ t: 'emote', seat, emote } satisfies ServerMsg);
+    for (const s of room.sessions.values()) {
       if (isConnected(s) && s.socket) s.socket.send(json);
     }
   }
@@ -982,6 +993,7 @@ export function createServer(opts: ServerOpts = {}): HpServer {
         const applied = applyConfigPatch(room.config, cmd.patch);
         if (!applied.ok) return fail(applied.code, applied.params);
         room.config = applied.config;
+        if (cmd.configName !== undefined) room.configName = cmd.configName;
         evictInactiveSeats(room);
         db.setRoomConfig(room.id, room.config);
         broadcastRoom(room, { token: session.token, actionId });
@@ -1445,6 +1457,7 @@ export function createServer(opts: ServerOpts = {}): HpServer {
       code,
       hostToken: session.token,
       config,
+      configName: msg.configName ?? null,
       tableSettings: defaultTableSettings(),
     });
     room.sessions.set(session.token, session);
@@ -1467,9 +1480,8 @@ export function createServer(opts: ServerOpts = {}): HpServer {
   }
 
   function defaultConfig(): RuleConfig {
-    // The product plays illisoft rules by default (spec §11); päämuoto stays
-    // selectable via the lobby preset. Fresh object so per-room patches never
-    // share state.
+    // The built-in "Oletus" configuration. Fresh object so per-room patches
+    // never share state.
     return { ...ILLISOFT_RULES };
   }
 
@@ -1627,6 +1639,18 @@ export function createServer(opts: ServerOpts = {}): HpServer {
       case 'resync':
         handleResync(session);
         return;
+      case 'emote': {
+        // Seated players only, rate-limited, no state change. Silently dropped
+        // when spectating or too soon — reactions are best-effort table flair.
+        if (session.seat === null) return;
+        const room = roomsById.get(session.roomId);
+        if (!room || room.closed) return;
+        const now = Date.now();
+        if (now - session.lastEmoteAt < EMOTE_COOLDOWN_MS) return;
+        session.lastEmoteAt = now;
+        broadcastEmote(room, session.seat, msg.emote);
+        return;
+      }
       case 'ping':
         sendJson(sock, { t: 'pong' });
         return;
@@ -1718,6 +1742,39 @@ export function createServer(opts: ServerOpts = {}): HpServer {
       });
       req.on('error', reject);
     });
+  }
+
+  /**
+   * Validates a saved-rule-config request body `{ name, config }`. `name` is a
+   * trimmed 1-40 char label; `config` is validated per-field via the wire schema
+   * and completed onto the "Oletus" base into a full RuleConfig. Player-count
+   * mode gating is intentionally skipped — a saved config is player-count-
+   * agnostic; the lobby strips the incompatible fields when a room is created.
+   * Also enforces the bid-bound relationships the per-field schema can't see.
+   * Returns null on any validation failure.
+   */
+  async function parseRuleConfigBody(
+    req: http.IncomingMessage,
+  ): Promise<{ name: string; config: RuleConfig } | null> {
+    let body: unknown;
+    try {
+      body = await readJsonBody(req, 8 * 1024);
+    } catch {
+      return null;
+    }
+    if (typeof body !== 'object' || body === null) return null;
+    const rawName = (body as { name?: unknown }).name;
+    const name = typeof rawName === 'string' ? rawName.trim() : '';
+    if (name.length < 1 || name.length > 40) return null;
+    const parsed = configPatchSchema.safeParse((body as { config?: unknown }).config);
+    if (!parsed.success) return null;
+    const config: RuleConfig = { ...ILLISOFT_RULES };
+    const mut = config as unknown as Record<string, unknown>;
+    for (const [k, v] of Object.entries(parsed.data)) if (v !== undefined) mut[k] = v;
+    if (config.maxBid !== null && config.minBid > config.maxBid) return null;
+    if (config.minBid % config.bidStep !== 0) return null;
+    if (config.maxBid !== null && config.maxBid % config.bidStep !== 0) return null;
+    return { name, config };
   }
 
   /** Best-effort client IP (behind Fly's proxy). Used only for rate-limiting. */
@@ -1932,6 +1989,71 @@ export function createServer(opts: ServerOpts = {}): HpServer {
       return;
     }
 
+    // Saved rule configurations (the lobby "Sääntömuoto" dropdown beyond the
+    // built-in "Oletus"). Per-account, capped at MAX_RULE_CONFIGS.
+    if (path === '/api/profile/configs' && req.method === 'GET') {
+      const user = resolveAuth(bearerToken(req) ?? undefined);
+      if (!user) {
+        sendHttpJson(res, 401, { error: 'unauthorized' });
+        return;
+      }
+      sendHttpJson(res, 200, { configs: db.listRuleConfigs(user.id) });
+      return;
+    }
+
+    if (path === '/api/profile/configs' && req.method === 'POST') {
+      const user = resolveAuth(bearerToken(req) ?? undefined);
+      if (!user) {
+        sendHttpJson(res, 401, { error: 'unauthorized' });
+        return;
+      }
+      const parsed = await parseRuleConfigBody(req);
+      if (!parsed) {
+        sendHttpJson(res, 400, { error: 'bad_request' });
+        return;
+      }
+      const created = db.createRuleConfig(user.id, randomUUID(), parsed.name, parsed.config, now);
+      if (!created) {
+        sendHttpJson(res, 409, { error: 'limit_reached', limit: MAX_RULE_CONFIGS });
+        return;
+      }
+      sendHttpJson(res, 200, { config: created });
+      return;
+    }
+
+    if (path.startsWith('/api/profile/configs/')) {
+      const user = resolveAuth(bearerToken(req) ?? undefined);
+      if (!user) {
+        sendHttpJson(res, 401, { error: 'unauthorized' });
+        return;
+      }
+      const id = decodeURIComponent(path.slice('/api/profile/configs/'.length));
+      if (req.method === 'DELETE') {
+        if (!db.deleteRuleConfig(user.id, id)) {
+          sendHttpJson(res, 404, { error: 'not_found' });
+          return;
+        }
+        res.writeHead(204);
+        res.end();
+        return;
+      }
+      if (req.method === 'PUT') {
+        const parsed = await parseRuleConfigBody(req);
+        if (!parsed) {
+          sendHttpJson(res, 400, { error: 'bad_request' });
+          return;
+        }
+        if (!db.updateRuleConfig(user.id, id, parsed.name, parsed.config, now)) {
+          sendHttpJson(res, 404, { error: 'not_found' });
+          return;
+        }
+        sendHttpJson(res, 200, { config: { id, name: parsed.name, config: parsed.config } });
+        return;
+      }
+      sendHttpJson(res, 404, { error: 'not_found' });
+      return;
+    }
+
     // GDPR art. 20 (portability): the signed-in user downloads everything we
     // hold about them as JSON. Reuses the same shapes the profile screen sees.
     if (path === '/api/account/export' && req.method === 'GET') {
@@ -1945,6 +2067,7 @@ export function createServer(opts: ServerOpts = {}): HpServer {
         account: publicUser(user),
         ratingEvents: db.getRatingEventsForUser(user.id, 1000),
         achievements: db.getUserAchievements(user.id),
+        ruleConfigs: db.listRuleConfigs(user.id),
       });
       return;
     }
@@ -1980,6 +2103,7 @@ export function createServer(opts: ServerOpts = {}): HpServer {
       url.pathname === '/api/auth-config' ||
       url.pathname === '/api/profile' ||
       url.pathname === '/api/profile/title' ||
+      url.pathname.startsWith('/api/profile/configs') ||
       url.pathname === '/api/account/export' ||
       url.pathname.startsWith('/auth/')
     ) {

@@ -26,8 +26,11 @@ import { type ReactElement, useEffect, useRef, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { CardBack, CardFace, CardStack } from '../components/CardFace';
+import { EmoteBar } from '../components/EmoteBar';
+import { LearnGuide } from '../components/LearnGuide';
+import { emoteById } from '../emotes';
 import { disconnect, sendAction, sendLobby } from '../socket';
-import { type CompletedTrick, type SpeechBubble, useStore } from '../store';
+import { type CompletedTrick, type EmoteBubble, type SpeechBubble, useStore } from '../store';
 import {
   DealScoredOverlay,
   MatchEndedOverlay,
@@ -46,6 +49,8 @@ import {
 import { actorOf, feltSlot, SUIT_GLYPH, useNameOf } from './table/tableUtils';
 
 const BUBBLE_MS = 5_000;
+/** How long a reaction floats by its seat before fading out. */
+const EMOTE_MS = 2_800;
 const TRICK_LINGER_MS = 1_300;
 /**
  * After the FINAL trick of a deal, the score card is held back this long so the
@@ -71,6 +76,15 @@ function BubbleText({ bubble }: { bubble: SpeechBubble }): ReactElement {
     );
   }
   return <>{t(bubble.code, bubble.params ?? {})}</>;
+}
+
+/** A reaction floating by a seat (opponent panel or, with `me`, the felt foot). */
+function EmoteFloat({ emote, me }: { emote: EmoteBubble; me?: boolean }): ReactElement {
+  return (
+    <div className={`emote${me === true ? ' emote--me' : ''}`} aria-hidden="true">
+      <span className="emote__emoji">{emoteById[emote.emote].emoji}</span>
+    </div>
+  );
 }
 
 /** Countdown appears only once this few seconds remain (a late "act soon" nudge). */
@@ -121,6 +135,8 @@ export function Table() {
   const turn = useStore((s) => s.server.turn);
   const bubbles = useStore((s) => s.ui.bubbles);
   const dismissBubble = useStore((s) => s.dismissBubble);
+  const emotes = useStore((s) => s.ui.emotes);
+  const dismissEmote = useStore((s) => s.dismissEmote);
   const completedTrick = useStore((s) => s.ui.completedTrick);
   const clearCompletedTrick = useStore((s) => s.clearCompletedTrick);
   const raisedCard = useStore((s) => s.ui.raisedCard);
@@ -128,6 +144,7 @@ export function Table() {
   const pending = useStore((s) => s.ui.pendingActionId) !== null;
   const redeal = useStore((s) => s.ui.redeal);
   const matchRating = useStore((s) => s.ui.matchRating);
+  const learn = useStore((s) => s.ui.learn);
   const nameOf = useNameOf();
 
   // Primitives the reveal/linger effects key off (computed before the early
@@ -168,6 +185,37 @@ export function Table() {
     () => () => {
       for (const timer of bubbleTimers.current.values()) clearTimeout(timer);
       bubbleTimers.current.clear();
+    },
+    [],
+  );
+
+  // Reactions auto-expire EMOTE_MS after each first appears (same per-id-timer
+  // approach as bubbles, so a fresh emote elsewhere never resets a live one).
+  const emoteTimers = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
+  useEffect(() => {
+    const timers = emoteTimers.current;
+    const live = new Set(emotes.map((e) => e.id));
+    for (const e of emotes) {
+      if (timers.has(e.id)) continue;
+      timers.set(
+        e.id,
+        setTimeout(() => {
+          timers.delete(e.id);
+          dismissEmote(e.id);
+        }, EMOTE_MS),
+      );
+    }
+    for (const [id, timer] of timers) {
+      if (!live.has(id)) {
+        clearTimeout(timer);
+        timers.delete(id);
+      }
+    }
+  }, [emotes, dismissEmote]);
+  useEffect(
+    () => () => {
+      for (const timer of emoteTimers.current.values()) clearTimeout(timer);
+      emoteTimers.current.clear();
     },
     [],
   );
@@ -328,6 +376,7 @@ export function Table() {
   }
 
   const myBubble = seat !== null ? (bubbles.find((b) => b.seat === seat) ?? null) : null;
+  const myEmote = seat !== null ? (emotes.find((e) => e.seat === seat) ?? null) : null;
 
   function onFeltTap(): void {
     if (raisedCard !== null && !pending) raiseCard(null);
@@ -339,7 +388,7 @@ export function Table() {
           (the grid template has exactly four rows: header / felt / sheet / hand). */}
       <div className="ttop-wrap">
         <TopBar view={view} me={me} mySide={mySide} actor={actor} myTurn={myTurn} nameOf={nameOf} />
-        {view.winnerSide === null && (
+        {view.winnerSide === null && learn === null && (
           <div className="thostbar">
             {/* Left: on-demand full standings (the header now shows only YOUR
                 score). Right: the host stops the game for everyone; anyone else
@@ -362,6 +411,8 @@ export function Table() {
           </div>
         )}
       </div>
+
+      {learn !== null && <LearnGuide />}
 
       {/* biome-ignore lint/a11y/useKeyWithClickEvents: tap-anywhere-to-lower is a touch affordance; keyboard users act via the card buttons */}
       <main className="felt" onClick={onFeltTap}>
@@ -386,6 +437,7 @@ export function Table() {
                     isDealer={view.dealer === other}
                     isDeclarer={deal.declarer === other}
                     bubble={bubbles.find((b) => b.seat === other) ?? null}
+                    emote={emotes.find((e) => e.seat === other) ?? null}
                   />
                 );
               })}
@@ -409,6 +461,7 @@ export function Table() {
                 <BubbleText bubble={myBubble} />
               </div>
             )}
+            {myEmote !== null && <EmoteFloat emote={myEmote} me />}
           </>
         )}
       </main>
@@ -426,6 +479,8 @@ export function Table() {
           selectLegal={selectLegal}
         />
       </footer>
+
+      {deal !== null && !showMatchOverlay && learn === null && <EmoteBar />}
 
       {iAmAway && !showMatchOverlay && (
         <button
@@ -445,7 +500,7 @@ export function Table() {
           nameOf={nameOf}
         />
       )}
-      {showScoredOverlay && scoredResult !== null && (
+      {showScoredOverlay && scoredResult !== null && learn === null && (
         <DealScoredOverlay
           result={scoredResult}
           scores={view.scores}
@@ -616,6 +671,7 @@ function OpponentPanel({
   isDealer,
   isDeclarer,
   bubble,
+  emote,
 }: {
   pos: 'left' | 'top' | 'right';
   info: SeatInfo;
@@ -625,6 +681,7 @@ function OpponentPanel({
   isDealer: boolean;
   isDeclarer: boolean;
   bubble: SpeechBubble | null;
+  emote: EmoteBubble | null;
 }) {
   const { t } = useTranslation();
   const offline = info.kind === 'human' && !info.connected;
@@ -658,6 +715,7 @@ function OpponentPanel({
           <BubbleText bubble={bubble} />
         </div>
       )}
+      {emote !== null && <EmoteFloat emote={emote} />}
     </div>
   );
 }
