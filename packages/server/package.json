@@ -9,10 +9,12 @@
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",
+    "backfill": "tsx src/scripts/backfillAchievements.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@hp/achievements": "workspace:*",
     "@hp/bots": "workspace:*",
     "@hp/engine": "workspace:*",
     "@hp/protocol": "workspace:*",

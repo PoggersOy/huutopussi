@@ -1430,3 +1430,147 @@ input::placeholder {
   margin-top: var(--space-2);
   padding-inline: var(--space-6);
 }
+
+/* ── Titles + achievements ─────────────────────────────────────────── */
+.title-badge {
+  display: inline-block;
+  margin-left: var(--space-1);
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-1);
+  border: 1px solid var(--line);
+  color: var(--text-dim);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  vertical-align: middle;
+}
+
+.profile__title-tag {
+  align-self: center;
+  padding: 2px var(--space-3);
+  border: 1px solid var(--gold-soft);
+  border-radius: 999px;
+  color: var(--gold);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.title-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.title-chip {
+  padding: var(--space-1) var(--space-3);
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.title-chip--active {
+  border-color: var(--gold);
+  color: var(--gold);
+  background: rgba(212, 175, 55, 0.12);
+}
+
+.ach-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-2);
+}
+
+@media (min-width: 440px) {
+  .ach-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.ach {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border-radius: var(--radius-2);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left-width: 3px;
+}
+
+.ach__icon {
+  font-size: 1.6rem;
+  line-height: 1;
+  flex: 0 0 auto;
+}
+
+.ach__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ach__name {
+  font-weight: 700;
+  font-size: var(--fs-sm);
+}
+
+.ach__desc {
+  font-size: var(--fs-xs);
+}
+
+/* Locked badges are muted with a filter (never opacity — consistent with the
+   card-greying rule), so their text still reads. */
+.ach--locked {
+  filter: grayscale(1) brightness(0.72);
+}
+
+.ach--locked .ach__name {
+  color: var(--text-dim);
+}
+
+.ach--unlocked.ach--uncommon {
+  border-left-color: #4a90d9;
+}
+.ach--unlocked.ach--rare {
+  border-left-color: #a970ff;
+}
+.ach--unlocked.ach--legendary {
+  border-left-color: var(--gold);
+}
+
+.ach__progress {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: 4px;
+}
+
+.ach__bar {
+  flex: 1 1 auto;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-strong);
+  overflow: hidden;
+}
+
+.ach__bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--gold-soft);
+}
+
+.ach__progress-num {
+  font-size: var(--fs-xs);
+  flex: 0 0 auto;
+}
+
+.toast--achievement {
+  border-color: var(--gold);
+}

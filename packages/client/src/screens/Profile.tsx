@@ -9,8 +9,34 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { deleteAccount, getAuthToken, signOut } from '../auth';
+import { type AchievementProgress, AchievementsPanel } from '../components/AchievementsPanel';
 import { ProfileScorecard } from '../components/ProfileScorecard';
+import { TitleSelector } from '../components/TitleSelector';
 import { type AuthUser, useStore } from '../store';
+
+/** One unlocked achievement, as sent by /api/profile. */
+interface AchievementUnlock {
+  achievementId: string;
+  unlockedAt: number;
+  matchId: string | null;
+}
+
+interface ProfileAchievements {
+  unlocked: AchievementUnlock[];
+  progress: Record<string, AchievementProgress>;
+}
+
+interface ProfileTitle {
+  selectedId: string | null;
+  effectiveId: string;
+}
+
+interface ProfileResponse {
+  user: AuthUser;
+  ratingEvents: RatingEvent[];
+  achievements: ProfileAchievements;
+  title: ProfileTitle;
+}
 
 /** Compact finished-match scorecard the server embeds in each rating event. */
 export interface RatingMatchInfo {
@@ -70,8 +96,34 @@ export function Profile() {
   const storeUser = useStore((s) => s.auth.user);
   const [user, setUser] = useState<AuthUser | null>(storeUser);
   const [events, setEvents] = useState<RatingEvent[]>([]);
+  const [achievements, setAchievements] = useState<ProfileAchievements>({
+    unlocked: [],
+    progress: {},
+  });
+  const [title, setTitle] = useState<ProfileTitle>({
+    selectedId: null,
+    effectiveId: 'aloittelija',
+  });
   const [selected, setSelected] = useState<RatingEvent | null>(null);
   const [error, setError] = useState(false);
+
+  /** Persist the player's chosen display title. */
+  async function selectTitle(titleId: string): Promise<void> {
+    const token = getAuthToken();
+    if (token === null) return;
+    try {
+      const res = await fetch('/api/profile/title', {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ titleId }),
+      });
+      if (!res.ok) return;
+      const body = (await res.json()) as { title: ProfileTitle };
+      setTitle(body.title);
+    } catch {
+      // best-effort; a failed title change leaves the current one in place
+    }
+  }
   /** Account-management (data export / erasure) local UI state. */
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -121,12 +173,14 @@ export function Profile() {
     void fetch('/api/profile', { headers: { authorization: `Bearer ${token}` } })
       .then(async (res) => {
         if (!res.ok) throw new Error('unauthorized');
-        return (await res.json()) as { user: AuthUser; ratingEvents: RatingEvent[] };
+        return (await res.json()) as ProfileResponse;
       })
       .then((body) => {
         if (cancelled) return;
         setUser(body.user);
         setEvents(body.ratingEvents);
+        setAchievements(body.achievements);
+        setTitle(body.title);
       })
       .catch(() => {
         if (!cancelled) setError(true);
@@ -179,6 +233,8 @@ export function Profile() {
                 <strong className="profile__name">{user.name ?? t('auth.signedIn')}</strong>
               </div>
 
+              <span className="profile__title-tag">{t(`titles.${title.effectiveId}`)}</span>
+
               <div className="profile__rating">
                 <span className="profile__crown" aria-hidden="true">
                   <CrownIcon />
@@ -226,6 +282,19 @@ export function Profile() {
               <Stat label={t('profile.losses')} value={user.losses} />
               <Stat label={t('profile.winStreak')} value={user.winStreak} />
             </div>
+
+            <TitleSelector
+              rating={user.rating}
+              provisional={user.provisional}
+              unlocked={new Set(achievements.unlocked.map((u) => u.achievementId))}
+              activeId={title.effectiveId}
+              onSelect={(id) => void selectTitle(id)}
+            />
+
+            <AchievementsPanel
+              unlocked={new Set(achievements.unlocked.map((u) => u.achievementId))}
+              progress={achievements.progress}
+            />
 
             <div className="panel stack">
               <h2>{t('profile.recent')}</h2>

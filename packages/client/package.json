@@ -13,6 +13,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@hp/achievements": "workspace:*",
     "@hp/engine": "workspace:*",
     "@hp/protocol": "workspace:*",
     "i18next": "^25.3.2",

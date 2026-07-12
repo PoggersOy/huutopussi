@@ -3,9 +3,10 @@
  * from the front page and the profile. Kept deliberately plain and specific to
  * what this game actually does — the same facts the code enforces: we store a
  * Google account id + reduced name ("First L.") + avatar, a guest nickname, and
- * Elo/match history; no email, no tracking, and no cookies of our own. All copy
- * is i18n (fi fallback); the controller/contact details are interpolated so
- * they live in one place.
+ * Elo/match history; no email, no cookies of our own, and only privacy-first
+ * cookieless visitor analytics (Cloudflare Web Analytics, aggregate counts, no
+ * identification). All copy is i18n (fi fallback); the controller/contact
+ * details are interpolated so they live in one place.
  */
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -77,6 +78,10 @@ export function PrivacyPolicy() {
           <p className="dim">{t('privacy.cookiesB')}</p>
         </Section>
 
+        <Section heading={t('privacy.analyticsH')}>
+          <p className="dim">{t('privacy.analyticsB', p)}</p>
+        </Section>
+
         <Section heading={t('privacy.retentionH')}>
           <p className="dim">{t('privacy.retentionB')}</p>
         </Section>
@@ -94,9 +99,6 @@ export function PrivacyPolicy() {
 
         <Section heading={t('privacy.deletionH')}>
           <p className="dim">{t('privacy.deletionB')}</p>
-          <button type="button" className="btn--ghost" onClick={() => navigate('/profile')}>
-            {t('privacy.deletionCta')}
-          </button>
         </Section>
 
         <Section heading={t('privacy.ageH')}>

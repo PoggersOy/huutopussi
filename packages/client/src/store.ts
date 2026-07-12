@@ -28,6 +28,17 @@ import type {
   TurnInfo,
 } from '@hp/protocol';
 import { create } from 'zustand';
+import i18n from './i18n';
+
+/** App-token localStorage key (mirrors auth.ts; read directly to avoid a cycle). */
+const AUTH_TOKEN_KEY = 'hp:auth';
+function readAuthToken(): string | null {
+  try {
+    return localStorage.getItem(AUTH_TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -51,6 +62,14 @@ export interface AuthUser {
 }
 
 export type AuthStatus = 'loading' | 'anon' | 'authing' | 'signed-in';
+
+/** Cache of the signed-in player's unlocked achievement ids, for match-end
+ *  toasts (diffed against a fresh /api/profile fetch). */
+export interface AchievementsSlice {
+  unlocked: string[];
+  /** True once a baseline has been fetched — toasts only fire after that. */
+  loaded: boolean;
+}
 
 export interface AuthSlice {
   status: AuthStatus;
@@ -79,7 +98,7 @@ export interface ServerSlice {
   fatal: string | null;
 }
 
-export type ToastKind = 'error' | 'info' | 'update';
+export type ToastKind = 'error' | 'info' | 'update' | 'achievement';
 
 export interface Toast {
   id: number;
@@ -145,6 +164,7 @@ interface Store {
   server: ServerSlice;
   ui: UiSlice;
   auth: AuthSlice;
+  achievements: AchievementsSlice;
   // ui actions (safe to call from components)
   selectCard(card: Card | null): void;
   toggleSelectedCard(card: Card, max: number): void;
@@ -191,6 +211,8 @@ const initialAuth: AuthSlice = {
   loginReady: false,
 };
 
+const initialAchievements: AchievementsSlice = { unlocked: [], loaded: false };
+
 /**
  * Redeal countdown length shown after a redeal demand — mirror of the server's
  * `redealDelayMs` (packages/server/src/timers.ts). The overlay is dismissed for
@@ -207,6 +229,7 @@ export const useStore = create<Store>()((set) => ({
   server: initialServer,
   ui: initialUi,
   auth: initialAuth,
+  achievements: initialAchievements,
 
   selectCard: (card) => set((s) => ({ ui: { ...s.ui, selectedCard: card } })),
   toggleSelectedCard: (card, max) =>
@@ -357,6 +380,48 @@ function deriveCompletedTrick(
   return plays === null ? null : { winner, plays };
 }
 
+/**
+ * Refresh the signed-in player's unlocked achievements from /api/profile and,
+ * when `toastNew` is set (a match just ended) and a baseline already exists,
+ * toast each newly-unlocked one. First call establishes the baseline silently.
+ */
+export async function syncAchievements(toastNew: boolean): Promise<void> {
+  const token = readAuthToken();
+  if (token === null) return;
+  try {
+    const res = await fetch('/api/profile', { headers: { authorization: `Bearer ${token}` } });
+    if (!res.ok) return;
+    const body = (await res.json()) as {
+      achievements?: { unlocked?: Array<{ achievementId: string }> };
+    };
+    const ids = (body.achievements?.unlocked ?? []).map((u) => u.achievementId);
+    const prev = useStore.getState().achievements;
+    if (toastNew && prev.loaded) {
+      const known = new Set(prev.unlocked);
+      const fresh = ids.filter((id) => !known.has(id));
+      if (fresh.length > 0) {
+        useStore.setState((s) => ({
+          ui: {
+            ...s.ui,
+            toasts: [
+              ...s.ui.toasts,
+              ...fresh.map((id) => ({
+                id: ++toastSeq,
+                kind: 'achievement' as const,
+                code: 'achievements.unlocked',
+                params: { name: i18n.t(`achievements.${id}.name`) },
+              })),
+            ].slice(-TOAST_LIMIT),
+          },
+        }));
+      }
+    }
+    useStore.setState({ achievements: { unlocked: ids, loaded: true } });
+  } catch {
+    // best-effort; a failed sync just leaves the cached set as-is
+  }
+}
+
 export const serverApply = {
   /** Socket opened but no welcome yet / socket lost. Keeps the stale view so
    *  the table stays visible under a "reconnecting" banner. */
@@ -476,6 +541,8 @@ export const serverApply = {
         },
       };
     });
+    // A finished match may have unlocked achievements — refresh + toast them.
+    if (msg.event?.type === 'matchEnded') void syncAchievements(true);
   },
 
   error(msg: Extract<ServerMsg, { t: 'error' }>): void {
@@ -545,5 +612,8 @@ export const authApply = {
     useStore.setState((s) => ({
       auth: { ...s.auth, user, status: user ? 'signed-in' : 'anon' },
     }));
+    // Establish (or clear) the achievements baseline for match-end toasts.
+    if (user) void syncAchievements(false);
+    else useStore.setState({ achievements: initialAchievements });
   },
 };

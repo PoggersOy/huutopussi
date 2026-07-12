@@ -239,6 +239,31 @@ Plan: `docs/plan.md`. Rules: `docs/huutopussin-saannot.md`.
   login, waiting counts, reaper); `pnpm typecheck`/`lint`/`test` green (484 unit),
   500-game sim clean, client+server build; auto-start verified in two live browsers.
 
+## Achievements + titles (engagement)
+
+- **New `@hp/achievements` package** (pure, zero-I/O, depends only on `@hp/engine`
+  helpers): the catalogue of ~33 achievements as metadata + pure predicates over an
+  `AchievementContext`, plus rating-derived titles (`titleForRating`) and prestige
+  titles (`earnedTitles`/`effectiveTitleId`). One source of truth shared by the
+  server (live eval + backfill) and client (rendering). 19 package tests.
+- **Server**: new tables `user_achievements` (idempotent `INSERT OR IGNORE`),
+  `match_participants` (durable user↔match link so **casual/bot games also count**),
+  `meta` (backfill marker); `users.selected_title` column. `evaluateMatchAchievements`
+  runs inside the match-end txn (all match types) after finishMatch+ratings;
+  `backfillAchievements` one-time sweep of rated history (seat feats skipped,
+  `events:null`), guarded by a meta marker + `pnpm --filter @hp/server backfill`.
+  REST: `/api/profile` extended with `{achievements,title}`, new `POST /api/profile/title`,
+  export includes achievements, GDPR erase clears both new tables. **No WS/protocol
+  change** (frozen contract untouched). 7 server tests.
+- **Client**: `AchievementsPanel` + `TitleSelector` on the profile, rating-derived
+  `TitleBadge` next to names in the lobby, match-end "unlocked!" toasts (REST-diff),
+  `titles`/`achievements` i18n namespaces (fi+en). i18n completeness test extended
+  for the dynamic key families.
+- Decisions (with user): casual+bots count · a few "häpeäpaita" badges · titles
+  visible at table+profile · backfill on. Engine untouched → 500-game sim clean.
+  Verified: 543 unit tests green, lint clean, client+server build, legacy-DB migration
+  + boot backfill + route smoke.
+
 ## Backlog (post-MVP)
 
 - **illisoft ruleset preset**: the user's old Huutopussi.exe (2002) help file

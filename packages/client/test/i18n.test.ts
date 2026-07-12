@@ -14,6 +14,7 @@
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { ACHIEVEMENTS, PRESTIGE_TITLES, RATING_TITLES, TULOKAS } from '@hp/achievements';
 import { describe, expect, it } from 'vitest';
 import en from '../src/i18n/en.json';
 import fi from '../src/i18n/fi.json';
@@ -88,6 +89,15 @@ function collectUsedKeys(): Set<string> {
 
   // 3b. Dynamic `home.bots.level.${difficulty}` labels (Pikapeli level picker).
   for (const level of ['easy', 'medium', 'hard']) used.add(`home.bots.level.${level}`);
+
+  // 3c. Dynamic title + achievement labels, resolved via the @hp/achievements
+  //     catalogue (t(tier.i18nKey), t(`${a.i18nKey}.name|.desc`)).
+  for (const tier of [...RATING_TITLES, TULOKAS]) used.add(tier.i18nKey);
+  for (const prestige of PRESTIGE_TITLES) used.add(prestige.i18nKey);
+  for (const a of ACHIEVEMENTS) {
+    used.add(`${a.i18nKey}.name`);
+    used.add(`${a.i18nKey}.desc`);
+  }
 
   // 4. Engine rule-error codes: the server relays them verbatim as toasts.
   const engineCodes = [...readFileSync(ENGINE_VALIDATE, 'utf8').matchAll(/err\('([^']+)'/g)].map(

@@ -62,7 +62,7 @@
   },
   "privacy": {
     "title": "Tietosuojaseloste",
-    "intro": "Näin Huutopussi ({{site}}) käsittelee henkilötietojasi. Palvelu kerää tarkoituksella mahdollisimman vähän tietoa: se ei seuraa sinua eikä käytä evästeitä.",
+    "intro": "Näin Huutopussi ({{site}}) käsittelee henkilötietojasi. Palvelu kerää tarkoituksella mahdollisimman vähän tietoa: se ei käytä evästeitä eikä seuraa sinua sivustojen välillä.",
     "updated": "Päivitetty 12.7.2026",
     "controllerH": "Rekisterinpitäjä",
     "controllerB": "Rekisterinpitäjä on {{org}} ({{site}}). Tietosuoja-asioissa voit olla yhteydessä osoitteeseen {{email}}.",
@@ -72,16 +72,18 @@
     "dataNickname": "Itse valitsemasi nimimerkin (vieraana pelatessa).",
     "dataElo": "Taitotasosi (Elo) ja pelaamiesi otteluiden tulokset.",
     "dataToken": "Kirjautumisistunnon teknisen tunnisteen (vain sen tiivisteen, ei itse tunnistetta).",
-    "dataNone": "Emme tallenna sähköpostiosoitettasi emmekä IP-osoitettasi, emmekä käytä mitään analytiikkaa tai seurantaa.",
+    "dataNone": "Emme tallenna sähköpostiosoitettasi emmekä IP-osoitettasi, emmekä muodosta sinusta profiilia tai seuraa sinua sivustojen välillä. Kävijämäärän laskentaan käytämme evästeetöntä analytiikkaa, joka ei tunnista sinua (ks. Kävijäanalytiikka).",
     "purposeH": "Käyttötarkoitus ja oikeusperuste",
-    "purposeB": "Käsittelemme tietoja pelin toimintaa varten: pelitilin ylläpitoon sekä taitotason ja pelihistorian näyttämiseen. Oikeusperusteena on palvelun tuottaminen (sopimus). Kirjautuminen on vapaaehtoista — voit pelata myös vieraana ilman tiliä.",
+    "purposeB": "Käsittelemme tietoja pelin toimintaa varten: pelitilin ylläpitoon sekä taitotason ja pelihistorian näyttämiseen. Oikeusperusteena on palvelun tuottaminen (sopimus). Kävijämäärän seurannassa oikeusperusteena on oikeutettu etu (ks. Kävijäanalytiikka). Kirjautuminen on vapaaehtoista — voit pelata myös vieraana ilman tiliä.",
     "thirdH": "Kolmannet osapuolet",
     "thirdIntro": "Käytämme seuraavia palveluntarjoajia:",
     "thirdGoogle": "Google — Google-kirjautuminen ja profiilikuvan näyttäminen. Kirjautuessasi tietojasi käsittelee myös Google omien ehtojensa mukaisesti.",
     "thirdFly": "Fly.io — palvelininfrastruktuuri (konesali Tukholmassa, EU-alueella).",
-    "thirdCloudflare": "Cloudflare — liikenteen välitys ja suojaus.",
+    "thirdCloudflare": "Cloudflare — liikenteen välitys, suojaus ja evästeetön kävijäanalytiikka.",
     "cookiesH": "Evästeet ja selaimen muisti",
-    "cookiesB": "Palvelu ei aseta evästeitä eikä käytä seurantaevästeitä, joten erillistä evästeilmoitusta ei tarvita. Selaimesi paikalliseen muistiin (localStorage) tallennetaan vain toiminnan kannalta välttämättömiä tietoja, kuten kirjautumistunniste, nimimerkki ja kielivalinta. Google-kirjautumisen skripti — ja mahdolliset Googlen evästeet — ladataan vasta kun aloitat kirjautumisen.",
+    "cookiesB": "Palvelu ei aseta evästeitä eikä käytä seurantaevästeitä — myös kävijäanalytiikkamme toimii ilman evästeitä — joten erillistä evästeilmoitusta ei tarvita. Selaimesi paikalliseen muistiin (localStorage) tallennetaan vain toiminnan kannalta välttämättömiä tietoja, kuten kirjautumistunniste, nimimerkki ja kielivalinta. Google-kirjautumisen skripti — ja mahdolliset Googlen evästeet — ladataan vasta kun aloitat kirjautumisen.",
+    "analyticsH": "Kävijäanalytiikka",
+    "analyticsB": "Nähdäksemme, kuinka monta kävijää sivustolla käy, käytämme Cloudflare Web Analytics -palvelua. Se on evästeetön: se ei tallenna mitään selaimesi muistiin, ei tunnista sinua, ei muodosta sinusta profiilia eikä seuraa sinua muille sivustoille. Meille kävijämäärät näkyvät vain koottuna tilastona. Cloudflare käsittelee pyyntösi yhteydessä hetkellisesti mm. IP-osoitteesi laskentaa varten, mutta ei tallenna sitä meille tunnistettavassa muodossa, ja voi käsitellä tietoja myös EU:n ulkopuolella asianmukaisin suojatoimin (EU:n vakiolausekkeet). Oikeusperusteena on oikeutettu etu: kävijämäärän seuranta ja palvelun laadun parantaminen. Voit vastustaa tätä käsittelyä ottamalla yhteyttä osoitteeseen {{email}}. Koska analytiikka on evästeetön, erillistä suostumusta ei tarvita.",
     "retentionH": "Säilytysaika",
     "retentionB": "Pelitilin tiedot säilyvät, kunnes poistat tilisi. Kirjautumistunniste vanhenee 90 päivässä, ja pelien tapahtumaloki poistetaan 30 päivän kuluttua ottelun päättymisestä.",
     "rightsH": "Oikeutesi",
@@ -93,7 +95,6 @@
     "rightsComplaint": "tehdä valitus tietosuojavaltuutetun toimistolle (tietosuoja.fi).",
     "deletionH": "Tilin poistaminen",
     "deletionB": "Voit poistaa koko pelitilisi milloin tahansa profiilisivulta. Poisto poistaa pysyvästi tilisi, taitotasosi ja pelihistoriasi, ja nimesi poistetaan aiemmista otteluista. Muiden pelaajien tietoihin tämä ei vaikuta.",
-    "deletionCta": "Siirry profiiliin",
     "ageH": "Ikäsuositus",
     "ageB": "Palvelua ei ole suunnattu alle {{age}}-vuotiaille. Suosittelemme vähintään {{age}} vuoden ikää, mikä vastaa myös Suomen tietosuojalain ikärajaa suostumukselle.",
     "contactH": "Yhteydenotot ja muutokset",
@@ -520,5 +521,158 @@
     "suitAlreadyDeclared": "Tämän maan avioliitto on jo julistettu tässä jaossa",
     "wrongCardCount": "Valitse tasan {{expected}} korttia",
     "notConnected": "Ei yhteyttä palvelimeen"
+  },
+  "titles": {
+    "heading": "Arvonimi",
+    "derivedHint": "Perustuu ratingiisi. Ansaitse lisää arvonimiä saavutuksilla.",
+    "tulokas": "Tulokas",
+    "aloittelija": "Aloittelija",
+    "harrastelija": "Harrastelija",
+    "vakiokavija": "Vakiokävijä",
+    "konkari": "Konkari",
+    "kortiniekka": "Kortiniekka",
+    "pussimestari": "Pussimestari",
+    "suurmestari": "Suurmestari",
+    "huutopussikuningas": "Huutopussikuningas",
+    "voittamaton": "Voittamaton",
+    "laparimestari": "Läpärimestari",
+    "porvoonVakiokavija": "Porvoon vakiokävijä"
+  },
+  "achievements": {
+    "heading": "Saavutukset",
+    "unlocked": "Avasit saavutuksen: {{name}}",
+    "progress": "{{current}} / {{target}}",
+    "tervetuloa": {
+      "name": "Tervetuloa pussiin",
+      "desc": "Pelaa ensimmäinen pelisi."
+    },
+    "ensivoitto": {
+      "name": "Ensimmäinen kerta",
+      "desc": "Voita ensimmäinen pelisi."
+    },
+    "poydan-kiertaja": {
+      "name": "Pöydän kiertäjä",
+      "desc": "Pelaa peli 2, 3 ja 4 pelaajalla."
+    },
+    "vakiokasvo": {
+      "name": "Vakiokasvo",
+      "desc": "Pelaa 25 peliä."
+    },
+    "kalkkis": {
+      "name": "Kalkkis",
+      "desc": "Pelaa 100 peliä."
+    },
+    "voittajatyyppi": {
+      "name": "Voittajatyyppi",
+      "desc": "Voita 25 peliä."
+    },
+    "legenda": {
+      "name": "Legenda",
+      "desc": "Voita 100 peliä."
+    },
+    "putki-3": {
+      "name": "Putki päällä",
+      "desc": "Voita 3 peliä putkeen."
+    },
+    "tulikuuma": {
+      "name": "Tulikuuma",
+      "desc": "Voita 5 peliä putkeen."
+    },
+    "voittamaton": {
+      "name": "Voittamaton",
+      "desc": "Voita 10 peliä putkeen."
+    },
+    "vakiinnutettu": {
+      "name": "Vakiinnutettu",
+      "desc": "Pelaa 10 rankattua peliä."
+    },
+    "nousukiito": {
+      "name": "Nousukiito",
+      "desc": "Saavuta 1400 rating."
+    },
+    "eliittikerho": {
+      "name": "Eliittikerho",
+      "desc": "Saavuta 1750 rating."
+    },
+    "kruunattu": {
+      "name": "Kruunattu",
+      "desc": "Saavuta 2100 rating."
+    },
+    "jattilaisen-kaataja": {
+      "name": "Jättiläisen kaataja",
+      "desc": "Voita peli, jossa vastustaja oli 200+ ratingia edellä."
+    },
+    "lapari": {
+      "name": "Läpäri!",
+      "desc": "Vie kaikki tikit yhdessä jaossa."
+    },
+    "kuninkaalliset-haat": {
+      "name": "Kuninkaalliset häät",
+      "desc": "Julista avioliittoja 100+ pisteen edestä yhdessä jaossa."
+    },
+    "uhkarohkea": {
+      "name": "Uhkarohkea",
+      "desc": "Huuda ja tee vähintään 200 pisteen sopimus."
+    },
+    "tayslaidallinen": {
+      "name": "Täyslaidallinen",
+      "desc": "Voita huutokauppa 400 pisteellä tai enemmän."
+    },
+    "silakkakauppias": {
+      "name": "Silakkakauppias",
+      "desc": "Lähetä vastustaja Porvooseen."
+    },
+    "viimeisen-tikin-sankari": {
+      "name": "Viimeisen tikin sankari",
+      "desc": "Nappaa sopimus kotiin viimeisellä tikillä."
+    },
+    "takaa-ajaja": {
+      "name": "Takaa-ajaja",
+      "desc": "Voita ottelu oltuasi 200 pistettä takana."
+    },
+    "murskavoitto": {
+      "name": "Murskavoitto",
+      "desc": "Voita ottelu 300 pisteen erolla."
+    },
+    "maratoonari": {
+      "name": "Maratoonari",
+      "desc": "Voita vähintään 15 jaon ottelu."
+    },
+    "salamasota": {
+      "name": "Salamasota",
+      "desc": "Voita ottelu enintään 5 jaossa."
+    },
+    "kirsikka": {
+      "name": "Kirsikka kakun päälle",
+      "desc": "Voita huutajana, kun vastustajakin ylitti 500."
+    },
+    "porvoon-pikajuna": {
+      "name": "Porvoon pikajuna",
+      "desc": "Mene itse Porvooseen huutajana."
+    },
+    "alamaki": {
+      "name": "Alamäki",
+      "desc": "Häviä 5 peliä putkeen."
+    },
+    "yopollo": {
+      "name": "Yöpöllö",
+      "desc": "Pelaa peli loppuun klo 02–05."
+    },
+    "kurja-kasi": {
+      "name": "Kurja käsi",
+      "desc": "Vaadi uusjako."
+    },
+    "hertta-huulilla": {
+      "name": "Hertta huulilla",
+      "desc": "Julista hertta-avioliitto (♥100)."
+    },
+    "valtinvaihtaja": {
+      "name": "Valtinvaihtaja",
+      "desc": "Vaihda valtti kesken jaon."
+    },
+    "koinikuningas": {
+      "name": "Koinikuningas",
+      "desc": "Ota koini ja voita silti jako."
+    }
   }
 }

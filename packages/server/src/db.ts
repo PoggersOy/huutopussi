@@ -90,6 +90,7 @@ CREATE TABLE IF NOT EXISTS users (
   losses       INTEGER NOT NULL DEFAULT 0,
   win_streak   INTEGER NOT NULL DEFAULT 0,
   best_streak  INTEGER NOT NULL DEFAULT 0,
+  selected_title TEXT,               -- chosen display title id (null = derived from rating)
   created_at   INTEGER NOT NULL,
   updated_at   INTEGER NOT NULL
 );
@@ -116,6 +117,35 @@ CREATE TABLE IF NOT EXISTS rating_events (
   PRIMARY KEY (match_id, user_id)
 );
 CREATE INDEX IF NOT EXISTS idx_rating_events_user ON rating_events(user_id, created_at);
+-- Achievements a user has unlocked. INSERT OR IGNORE on the PK makes awarding
+-- idempotent, so the historical backfill is always safe to re-run. match_id is
+-- the match that earned it (null for counters / backfilled aggregates).
+CREATE TABLE IF NOT EXISTS user_achievements (
+  user_id        TEXT NOT NULL,
+  achievement_id TEXT NOT NULL,
+  unlocked_at    INTEGER NOT NULL,
+  match_id       TEXT,
+  PRIMARY KEY (user_id, achievement_id)
+);
+CREATE INDEX IF NOT EXISTS idx_user_achievements_user ON user_achievements(user_id);
+-- One row per signed-in human per FINISHED match (any type: rated, casual, or
+-- vs-bots). This is the durable user↔match link that lets casual/bot games
+-- count toward achievements (rating_events only covers rated matches). The won
+-- and players columns are denormalized so per-user counters are plain aggregates.
+CREATE TABLE IF NOT EXISTS match_participants (
+  match_id TEXT NOT NULL,
+  user_id  TEXT NOT NULL,
+  seat     INTEGER NOT NULL,
+  players  INTEGER NOT NULL,
+  won      INTEGER NOT NULL,
+  PRIMARY KEY (match_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_match_participants_user ON match_participants(user_id);
+-- Small key/value store (e.g. the one-time backfill marker).
+CREATE TABLE IF NOT EXISTS meta (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
 `;
 
 export interface SessionRow {
@@ -140,6 +170,8 @@ export interface UserRow {
   losses: number;
   winStreak: number;
   bestStreak: number;
+  /** Chosen display title id, or null when derived from rating. */
+  selectedTitle: string | null;
 }
 
 /**
@@ -183,6 +215,43 @@ export interface RatingUpdate {
   newStreak: number;
   isWin: boolean;
   createdAt: number;
+}
+
+/** One achievement a user has unlocked (profile screen). */
+export interface AchievementUnlock {
+  achievementId: string;
+  unlockedAt: number;
+  matchId: string | null;
+}
+
+/** An achievement to award (idempotent INSERT OR IGNORE). */
+export interface AchievementAward {
+  achievementId: string;
+  unlockedAt: number;
+  matchId: string | null;
+}
+
+/** A signed-in participant of a finished match. */
+export interface MatchParticipant {
+  userId: string;
+  seat: Seat;
+  players: number;
+  won: boolean;
+}
+
+/** A rated match joined with its match row, for the achievement backfill. */
+export interface BackfillMatchRow {
+  matchId: string;
+  seat: Seat;
+  ratingBefore: number;
+  ratingAfter: number;
+  streakAfter: number;
+  createdAt: number;
+  winnerSide: Side | null;
+  finalScores: number[] | null;
+  config: RuleConfig | null;
+  deals: number;
+  finishedAt: number | null;
 }
 
 export interface RecoveredMatch {
@@ -237,6 +306,8 @@ export class Db {
         this.addColumnIfMissing('rooms', 'table_settings', 'TEXT');
         // Links a live session to a signed-in account; null = guest.
         this.addColumnIfMissing('sessions', 'user_id', 'TEXT');
+        // Chosen display title id (achievements feature); null = derived from rating.
+        this.addColumnIfMissing('users', 'selected_title', 'TEXT');
         this.rebuildDealsIfDrifted();
         this.minimizeUserPii();
       })();
@@ -673,6 +744,7 @@ export class Db {
       losses: row.losses,
       winStreak: row.win_streak,
       bestStreak: row.best_streak,
+      selectedTitle: row.selected_title ?? null,
     };
   }
 
@@ -739,6 +811,8 @@ export class Db {
         }
       }
       this.raw.prepare('DELETE FROM rating_events WHERE user_id = ?').run(userId);
+      this.raw.prepare('DELETE FROM user_achievements WHERE user_id = ?').run(userId);
+      this.raw.prepare('DELETE FROM match_participants WHERE user_id = ?').run(userId);
       this.raw.prepare('DELETE FROM auth_tokens WHERE user_id = ?').run(userId);
       this.raw.prepare('UPDATE sessions SET user_id = NULL WHERE user_id = ?').run(userId);
       this.raw.prepare('DELETE FROM users WHERE id = ?').run(userId);
@@ -843,6 +917,189 @@ export class Db {
       };
     });
   }
+
+  // ── achievements / titles / participants ─────────────────────────────────────
+
+  /** Ids of achievements this user has already unlocked. */
+  unlockedAchievementIds(userId: string): Set<string> {
+    const rows = this.raw
+      .prepare('SELECT achievement_id FROM user_achievements WHERE user_id = ?')
+      .all(userId) as Array<{ achievement_id: string }>;
+    return new Set(rows.map((r) => r.achievement_id));
+  }
+
+  /** The user's full unlocked list, oldest first (for the profile screen). */
+  getUserAchievements(userId: string): AchievementUnlock[] {
+    const rows = this.raw
+      .prepare(
+        `SELECT achievement_id, unlocked_at, match_id FROM user_achievements
+         WHERE user_id = ? ORDER BY unlocked_at ASC`,
+      )
+      .all(userId) as Array<{
+      achievement_id: string;
+      unlocked_at: number;
+      match_id: string | null;
+    }>;
+    return rows.map((r) => ({
+      achievementId: r.achievement_id,
+      unlockedAt: r.unlocked_at,
+      matchId: r.match_id,
+    }));
+  }
+
+  /**
+   * Award achievements idempotently (INSERT OR IGNORE on the PK). Ids the user
+   * already has are left untouched — this is what makes the backfill safe to
+   * re-run. Returns the ids that were actually newly inserted.
+   */
+  awardAchievements(userId: string, awards: AchievementAward[]): string[] {
+    const stmt = this.raw.prepare(
+      `INSERT OR IGNORE INTO user_achievements (user_id, achievement_id, unlocked_at, match_id)
+       VALUES (?, ?, ?, ?)`,
+    );
+    const newIds: string[] = [];
+    for (const a of awards) {
+      const res = stmt.run(userId, a.achievementId, a.unlockedAt, a.matchId);
+      if (res.changes > 0) newIds.push(a.achievementId);
+    }
+    return newIds;
+  }
+
+  /** Record the signed-in participants of a finished match (idempotent per user). */
+  recordMatchParticipants(matchId: string, entries: MatchParticipant[]): void {
+    const stmt = this.raw.prepare(
+      `INSERT OR IGNORE INTO match_participants (match_id, user_id, seat, players, won)
+       VALUES (?, ?, ?, ?, ?)`,
+    );
+    for (const e of entries) stmt.run(matchId, e.userId, e.seat, e.players, e.won ? 1 : 0);
+  }
+
+  /** Per-user aggregates across ALL finished matches (rated + casual + vs-bots). */
+  userMatchStats(userId: string): {
+    totalGames: number;
+    totalWins: number;
+    playedPlayerCounts: number[];
+  } {
+    const agg = this.raw
+      .prepare(
+        `SELECT COUNT(*) AS games, COALESCE(SUM(won), 0) AS wins
+         FROM match_participants WHERE user_id = ?`,
+      )
+      .get(userId) as { games: number; wins: number };
+    const counts = this.raw
+      .prepare('SELECT DISTINCT players FROM match_participants WHERE user_id = ?')
+      .all(userId) as Array<{ players: number }>;
+    return {
+      totalGames: agg.games,
+      totalWins: agg.wins,
+      playedPlayerCounts: counts.map((c) => c.players),
+    };
+  }
+
+  /**
+   * Current consecutive rated losses: the count of the most-recent rating_events
+   * whose `streak_after` is 0 (a win always leaves it > 0, a non-win leaves 0).
+   */
+  currentLossStreak(userId: string): number {
+    const rows = this.raw
+      .prepare('SELECT streak_after FROM rating_events WHERE user_id = ? ORDER BY created_at DESC')
+      .all(userId) as Array<{ streak_after: number }>;
+    let n = 0;
+    for (const r of rows) {
+      if (r.streak_after === 0) n++;
+      else break;
+    }
+    return n;
+  }
+
+  getMatchDealResults(matchId: string): DealResult[] {
+    const rows = this.raw
+      .prepare('SELECT result FROM deals WHERE match_id = ? ORDER BY deal_index ASC')
+      .all(matchId) as Array<{ result: string }>;
+    return rows.map((r) => JSON.parse(r.result) as DealResult);
+  }
+
+  getMatchEvents(matchId: string): GameEvent[] {
+    const rows = this.raw
+      .prepare('SELECT event FROM deal_events WHERE match_id = ? ORDER BY seq ASC')
+      .all(matchId) as Array<{ event: string }>;
+    return rows.map((r) => JSON.parse(r.event) as GameEvent);
+  }
+
+  setSelectedTitle(userId: string, titleId: string | null): void {
+    this.raw
+      .prepare('UPDATE users SET selected_title = ?, updated_at = ? WHERE id = ?')
+      .run(titleId, Date.now(), userId);
+  }
+
+  /** All account ids (for the one-time backfill sweep). */
+  allUserIds(): string[] {
+    return (this.raw.prepare('SELECT id FROM users').all() as Array<{ id: string }>).map(
+      (r) => r.id,
+    );
+  }
+
+  /** A user's rated matches with the joined match row, oldest first (backfill). */
+  ratedMatchHistory(userId: string): BackfillMatchRow[] {
+    const rows = this.raw
+      .prepare(
+        `SELECT r.match_id, r.seat, r.rating_before, r.rating_after, r.streak_after, r.created_at,
+                m.winner_side AS m_winner, m.final_scores AS m_scores,
+                m.config AS m_config, m.deals AS m_deals, m.finished_at AS m_finished
+         FROM rating_events r JOIN matches m ON m.id = r.match_id
+         WHERE r.user_id = ? AND m.status = 'finished'
+         ORDER BY r.created_at ASC`,
+      )
+      .all(userId) as Array<{
+      match_id: string;
+      seat: number;
+      rating_before: number;
+      rating_after: number;
+      streak_after: number;
+      created_at: number;
+      m_winner: number | null;
+      m_scores: string | null;
+      m_config: string | null;
+      m_deals: number | null;
+      m_finished: number | null;
+    }>;
+    return rows.map((r) => ({
+      matchId: r.match_id,
+      seat: r.seat as Seat,
+      ratingBefore: r.rating_before,
+      ratingAfter: r.rating_after,
+      streakAfter: r.streak_after,
+      createdAt: r.created_at,
+      winnerSide: r.m_winner as Side | null,
+      finalScores: r.m_scores === null ? null : (JSON.parse(r.m_scores) as number[]),
+      config: r.m_config === null ? null : (JSON.parse(r.m_config) as RuleConfig),
+      deals: r.m_deals ?? 0,
+      finishedAt: r.m_finished,
+    }));
+  }
+
+  /** Opposing-side rating_before values for a match (for "beat a stronger foe"). */
+  matchSeatRatingsBefore(matchId: string): Array<{ seat: Seat; ratingBefore: number }> {
+    const rows = this.raw
+      .prepare('SELECT seat, rating_before FROM rating_events WHERE match_id = ?')
+      .all(matchId) as Array<{ seat: number; rating_before: number }>;
+    return rows.map((r) => ({ seat: r.seat as Seat, ratingBefore: r.rating_before }));
+  }
+
+  metaGet(key: string): string | null {
+    const row = this.raw.prepare('SELECT value FROM meta WHERE key = ?').get(key) as
+      | { value: string }
+      | undefined;
+    return row ? row.value : null;
+  }
+
+  metaSet(key: string, value: string): void {
+    this.raw
+      .prepare(
+        'INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+      )
+      .run(key, value);
+  }
 }
 
 /** Raw users-table row shape (snake_case) for internal mapping. */
@@ -857,6 +1114,7 @@ interface UserDbRow {
   losses: number;
   win_streak: number;
   best_streak: number;
+  selected_title: string | null;
   created_at: number;
   updated_at: number;
 }

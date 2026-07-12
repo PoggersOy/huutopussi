@@ -62,7 +62,7 @@
   },
   "privacy": {
     "title": "Privacy policy",
-    "intro": "How Huutopussi ({{site}}) handles your personal data. The service is built to collect as little as possible: it does not track you and uses no cookies.",
+    "intro": "How Huutopussi ({{site}}) handles your personal data. The service is built to collect as little as possible: it uses no cookies and does not track you across sites.",
     "updated": "Last updated 12 July 2026",
     "controllerH": "Data controller",
     "controllerB": "The data controller is {{org}} ({{site}}). For any privacy matter you can contact {{email}}.",
@@ -72,16 +72,18 @@
     "dataNickname": "The nickname you choose yourself (when playing as a guest).",
     "dataElo": "Your skill rating (Elo) and the results of the matches you play.",
     "dataToken": "A technical identifier for your sign-in session (only its hash, never the identifier itself).",
-    "dataNone": "We do not store your email address or your IP address, and we use no analytics or tracking of any kind.",
+    "dataNone": "We do not store your email address or your IP address, and we do not profile you or track you across sites. For counting visitors we use a cookieless analytics that does not identify you (see “Visitor analytics”).",
     "purposeH": "Purpose and legal basis",
-    "purposeB": "We process this data to run the game: to maintain your account and to show your skill level and match history. The legal basis is the provision of the service (contract). Signing in is optional — you can also play as a guest without an account.",
+    "purposeB": "We process this data to run the game: to maintain your account and to show your skill level and match history. The legal basis is the provision of the service (contract). For counting visitors the legal basis is our legitimate interest (see “Visitor analytics”). Signing in is optional — you can also play as a guest without an account.",
     "thirdH": "Third parties",
     "thirdIntro": "We use the following service providers:",
     "thirdGoogle": "Google — Google Sign-In and displaying your profile picture. When you sign in, Google also processes your data under its own terms.",
     "thirdFly": "Fly.io — server infrastructure (data centre in Stockholm, EU).",
-    "thirdCloudflare": "Cloudflare — traffic delivery and protection.",
+    "thirdCloudflare": "Cloudflare — traffic delivery, protection, and cookieless visitor analytics.",
     "cookiesH": "Cookies and browser storage",
-    "cookiesB": "The service sets no cookies and uses no tracking cookies, so no cookie banner is needed. We keep only strictly functional data in your browser's local storage, such as your sign-in token, nickname and language choice. The Google Sign-In script — and any Google cookies — load only once you begin signing in.",
+    "cookiesB": "The service sets no cookies and uses no tracking cookies — our visitor analytics is cookieless too — so no cookie banner is needed. We keep only strictly functional data in your browser's local storage, such as your sign-in token, nickname and language choice. The Google Sign-In script — and any Google cookies — load only once you begin signing in.",
+    "analyticsH": "Visitor analytics",
+    "analyticsB": "To see how many people visit the site, we use Cloudflare Web Analytics. It is cookieless: it stores nothing in your browser, does not identify you, builds no profile of you and does not track you across other sites. We only ever see aggregate visitor counts. Cloudflare briefly processes your request — including your IP address — to count the visit, but does not store it in a form that identifies you to us, and may process data outside the EU under appropriate safeguards (EU Standard Contractual Clauses). The legal basis is our legitimate interest in tracking visitor numbers and improving the service. You can object to this processing by contacting {{email}}. Because the analytics is cookieless, no separate consent is required.",
     "retentionH": "Retention",
     "retentionB": "Your account data is kept until you delete your account. The sign-in token expires after 90 days, and per-match event logs are removed 30 days after a match ends.",
     "rightsH": "Your rights",
@@ -93,7 +95,6 @@
     "rightsComplaint": "lodge a complaint with the data protection authority (tietosuoja.fi).",
     "deletionH": "Deleting your account",
     "deletionB": "You can delete your whole account at any time from your profile page. Deletion permanently removes your account, skill rating and match history, and your name is removed from past matches. It does not affect other players' data.",
-    "deletionCta": "Go to profile",
     "ageH": "Age recommendation",
     "ageB": "The service is not directed at children under {{age}}. We recommend a minimum age of {{age}}, which also matches the Finnish age of consent for data processing.",
     "contactH": "Contact and changes",
@@ -520,5 +521,158 @@
     "suitAlreadyDeclared": "That suit was already declared this deal",
     "wrongCardCount": "Select exactly {{expected}} cards",
     "notConnected": "No connection to the server"
+  },
+  "titles": {
+    "heading": "Title",
+    "derivedHint": "Based on your rating. Earn more titles through achievements.",
+    "tulokas": "Rookie",
+    "aloittelija": "Beginner",
+    "harrastelija": "Hobbyist",
+    "vakiokavija": "Regular",
+    "konkari": "Veteran",
+    "kortiniekka": "Card Sharp",
+    "pussimestari": "Bag Master",
+    "suurmestari": "Grandmaster",
+    "huutopussikuningas": "Huutopussi King",
+    "voittamaton": "Unbeaten",
+    "laparimestari": "Slam Master",
+    "porvoonVakiokavija": "Porvoo Regular"
+  },
+  "achievements": {
+    "heading": "Achievements",
+    "unlocked": "Achievement unlocked: {{name}}",
+    "progress": "{{current}} / {{target}}",
+    "tervetuloa": {
+      "name": "Welcome to the bag",
+      "desc": "Play your first game."
+    },
+    "ensivoitto": {
+      "name": "First time",
+      "desc": "Win your first game."
+    },
+    "poydan-kiertaja": {
+      "name": "Table hopper",
+      "desc": "Play a game with 2, 3 and 4 players."
+    },
+    "vakiokasvo": {
+      "name": "Regular face",
+      "desc": "Play 25 games."
+    },
+    "kalkkis": {
+      "name": "Old-timer",
+      "desc": "Play 100 games."
+    },
+    "voittajatyyppi": {
+      "name": "Winner type",
+      "desc": "Win 25 games."
+    },
+    "legenda": {
+      "name": "Legend",
+      "desc": "Win 100 games."
+    },
+    "putki-3": {
+      "name": "On a roll",
+      "desc": "Win 3 games in a row."
+    },
+    "tulikuuma": {
+      "name": "Red hot",
+      "desc": "Win 5 games in a row."
+    },
+    "voittamaton": {
+      "name": "Unbeaten",
+      "desc": "Win 10 games in a row."
+    },
+    "vakiinnutettu": {
+      "name": "Established",
+      "desc": "Play 10 rated games."
+    },
+    "nousukiito": {
+      "name": "Climbing",
+      "desc": "Reach a 1400 rating."
+    },
+    "eliittikerho": {
+      "name": "Elite club",
+      "desc": "Reach a 1750 rating."
+    },
+    "kruunattu": {
+      "name": "Crowned",
+      "desc": "Reach a 2100 rating."
+    },
+    "jattilaisen-kaataja": {
+      "name": "Giant slayer",
+      "desc": "Beat an opponent rated 200+ above you."
+    },
+    "lapari": {
+      "name": "Slam!",
+      "desc": "Win every trick in a deal."
+    },
+    "kuninkaalliset-haat": {
+      "name": "Royal wedding",
+      "desc": "Declare 100+ points of marriages in one deal."
+    },
+    "uhkarohkea": {
+      "name": "Daredevil",
+      "desc": "Bid and make a contract of 200 or more."
+    },
+    "tayslaidallinen": {
+      "name": "Full broadside",
+      "desc": "Win the auction at 400 or more."
+    },
+    "silakkakauppias": {
+      "name": "Herring trader",
+      "desc": "Send an opponent to Porvoo (shut them out)."
+    },
+    "viimeisen-tikin-sankari": {
+      "name": "Last-trick hero",
+      "desc": "Clinch your contract on the last trick."
+    },
+    "takaa-ajaja": {
+      "name": "Comeback king",
+      "desc": "Win a match after trailing by 200 points."
+    },
+    "murskavoitto": {
+      "name": "Blowout",
+      "desc": "Win a match by 300 points."
+    },
+    "maratoonari": {
+      "name": "Marathoner",
+      "desc": "Win a match lasting 15+ deals."
+    },
+    "salamasota": {
+      "name": "Blitz",
+      "desc": "Win a match in 5 deals or fewer."
+    },
+    "kirsikka": {
+      "name": "Cherry on top",
+      "desc": "Win as declarer when an opponent also crossed 500."
+    },
+    "porvoon-pikajuna": {
+      "name": "Porvoo express",
+      "desc": "Go to Porvoo yourself as the declarer."
+    },
+    "alamaki": {
+      "name": "Downhill",
+      "desc": "Lose 5 games in a row."
+    },
+    "yopollo": {
+      "name": "Night owl",
+      "desc": "Finish a game between 2 and 5 AM."
+    },
+    "kurja-kasi": {
+      "name": "Sorry hand",
+      "desc": "Demand a redeal."
+    },
+    "hertta-huulilla": {
+      "name": "Hearts aflutter",
+      "desc": "Declare the hearts marriage (♥100)."
+    },
+    "valtinvaihtaja": {
+      "name": "Trump switcher",
+      "desc": "Change the trump mid-deal (2+ marriages)."
+    },
+    "koinikuningas": {
+      "name": "Koini king",
+      "desc": "Take the koini and still win the deal."
+    }
   }
 }

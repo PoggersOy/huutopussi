@@ -9,6 +9,7 @@ export default defineConfig({
       '@hp/engine': r('../engine/src/index.ts'),
       '@hp/protocol': r('../protocol/src/index.ts'),
       '@hp/bots': r('../bots/src/index.ts'),
+      '@hp/achievements': r('../achievements/src/index.ts'),
     },
   },
   test: {

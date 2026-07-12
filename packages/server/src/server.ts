@@ -16,6 +16,12 @@ import * as fs from 'node:fs';
 import * as http from 'node:http';
 import { basename, extname, join, normalize, resolve, sep } from 'node:path';
 import {
+  counterProgress,
+  earnedTitles,
+  effectiveTitleId,
+  type StatsContext,
+} from '@hp/achievements';
+import {
   activeSeats,
   allowedActions,
   applyEvent,
@@ -51,6 +57,7 @@ import {
   type TurnInfo,
 } from '@hp/protocol';
 import { type WebSocket, WebSocketServer } from 'ws';
+import { backfillAchievementsOnce, evaluateMatchAchievements } from './achievements.js';
 import { AUTH_TOKEN_TTL_MS, createGoogleVerifier, hashToken, mintToken } from './auth.js';
 import { computeBotAction, getBot, getFallbackBot } from './botRunner.js';
 import { Db, EVENT_RETENTION_MS, type RatingUpdate, type UserRow } from './db.js';
@@ -631,6 +638,16 @@ export function createServer(opts: ServerOpts = {}): HpServer {
     }
   }
 
+  /** Seats held by a distinct signed-in human — the achievement-earning set. */
+  function signedInParticipants(room: Room): Array<{ seat: Seat; userId: string }> {
+    const out: Array<{ seat: Seat; userId: string }> = [];
+    for (const seat of activeSeats(room.config.players)) {
+      const s = sessionAtSeat(room, seat);
+      if (s && s.kind === 'human' && s.userId !== null) out.push({ seat, userId: s.userId });
+    }
+    return out;
+  }
+
   /**
    * Applies an already-validated event chain: persist in ONE transaction,
    * update state, then broadcast exactly one 'update' per recipient.
@@ -651,11 +668,15 @@ export function createServer(opts: ServerOpts = {}): HpServer {
     // Cost the Elo BEFORE the transaction (pure reads + math); persist the
     // rating rows INSIDE it so they commit atomically with finishMatch.
     const matchEnding = events.some((e) => e.type === 'matchEnded');
-    const ratingPlan = matchEnding ? planMatchRating(room, matchId, state, Date.now()) : null;
+    const finishedAtMs = Date.now();
+    const ratingPlan = matchEnding ? planMatchRating(room, matchId, state, finishedAtMs) : null;
     // Seat-indexed roster at match end, for the history deal-browser's labels.
     const finalNames = matchEnding
       ? activeSeats(room.config.players).map((seat) => sessionAtSeat(room, seat)?.nickname ?? null)
       : null;
+    // Signed-in humans at match end — the population that accrues achievements
+    // (any match type, unlike ratings which only cover all-signed-in matches).
+    const participants = matchEnding && state.winnerSide !== null ? signedInParticipants(room) : [];
     db.transaction(() => {
       events.forEach((e, i) => {
         db.appendEvent(matchId, base + i + 1, e);
@@ -667,6 +688,19 @@ export function createServer(opts: ServerOpts = {}): HpServer {
         }
       });
       if (ratingPlan?.result.rated) db.applyRatingResults(ratingPlan.updates);
+      // Achievements: after finishMatch + ratings so the stats it reads include
+      // this match. Records match_participants and awards newly-earned badges.
+      if (matchEnding && state.winnerSide !== null) {
+        evaluateMatchAchievements(db, {
+          matchId,
+          config: state.config,
+          winnerSide: state.winnerSide,
+          finalScores: state.scores,
+          participants,
+          ratingUpdates: ratingPlan?.result.rated ? ratingPlan.updates : null,
+          now: finishedAtMs,
+        });
+      }
     });
     room.eventSeq = base + events.length;
     room.match = state;
@@ -1737,6 +1771,39 @@ export function createServer(opts: ServerOpts = {}): HpServer {
     };
   }
 
+  /** Lifetime aggregates for counter-achievement progress (casual+rated). */
+  function statsContextFor(u: UserRow): StatsContext {
+    const agg = db.userMatchStats(u.id);
+    return {
+      totalGames: agg.totalGames,
+      totalWins: agg.totalWins,
+      ratedGames: u.gamesPlayed,
+      rating: u.rating,
+      bestStreak: u.bestStreak,
+      lossStreak: db.currentLossStreak(u.id),
+      playedPlayerCounts: agg.playedPlayerCounts,
+    };
+  }
+
+  /** The full /api/profile body: account + rating history + achievements + title. */
+  function profilePayload(u: UserRow) {
+    const unlocked = db.getUserAchievements(u.id);
+    const unlockedSet = new Set(unlocked.map((a) => a.achievementId));
+    const provisional = u.gamesPlayed < PROVISIONAL_GAMES;
+    return {
+      user: publicUser(u),
+      ratingEvents: db.getRatingEventsForUser(u.id, 50),
+      achievements: {
+        unlocked,
+        progress: counterProgress(statsContextFor(u)),
+      },
+      title: {
+        selectedId: u.selectedTitle,
+        effectiveId: effectiveTitleId(u.selectedTitle, u.rating, provisional, unlockedSet),
+      },
+    };
+  }
+
   /** Handles /api/auth-config, /auth/*, /api/profile. Always ends the response. */
   async function handleHttpAuth(
     req: http.IncomingMessage,
@@ -1818,9 +1885,49 @@ export function createServer(opts: ServerOpts = {}): HpServer {
         sendHttpJson(res, 401, { error: 'unauthorized' });
         return;
       }
+      sendHttpJson(res, 200, profilePayload(user));
+      return;
+    }
+
+    // Choose which earned title to display (or null to revert to the derived
+    // rating title). Rejects a title the player has not earned.
+    if (path === '/api/profile/title' && req.method === 'POST') {
+      const user = resolveAuth(bearerToken(req) ?? undefined);
+      if (!user) {
+        sendHttpJson(res, 401, { error: 'unauthorized' });
+        return;
+      }
+      let body: unknown;
+      try {
+        body = await readJsonBody(req, 4 * 1024);
+      } catch {
+        sendHttpJson(res, 400, { error: 'bad_request' });
+        return;
+      }
+      const raw =
+        typeof body === 'object' && body !== null && 'titleId' in body
+          ? (body as { titleId: unknown }).titleId
+          : undefined;
+      if (raw !== null && typeof raw !== 'string') {
+        sendHttpJson(res, 400, { error: 'bad_request' });
+        return;
+      }
+      const titleId: string | null = raw;
+      const provisional = user.gamesPlayed < PROVISIONAL_GAMES;
+      const unlocked = db.unlockedAchievementIds(user.id);
+      if (
+        titleId !== null &&
+        !earnedTitles(user.rating, provisional, unlocked).some((t) => t.id === titleId)
+      ) {
+        sendHttpJson(res, 400, { error: 'title_not_earned' });
+        return;
+      }
+      db.setSelectedTitle(user.id, titleId);
       sendHttpJson(res, 200, {
-        user: publicUser(user),
-        ratingEvents: db.getRatingEventsForUser(user.id, 50),
+        title: {
+          selectedId: titleId,
+          effectiveId: effectiveTitleId(titleId, user.rating, provisional, unlocked),
+        },
       });
       return;
     }
@@ -1837,6 +1944,7 @@ export function createServer(opts: ServerOpts = {}): HpServer {
         exportedAt: now,
         account: publicUser(user),
         ratingEvents: db.getRatingEventsForUser(user.id, 1000),
+        achievements: db.getUserAchievements(user.id),
       });
       return;
     }
@@ -1871,6 +1979,7 @@ export function createServer(opts: ServerOpts = {}): HpServer {
     if (
       url.pathname === '/api/auth-config' ||
       url.pathname === '/api/profile' ||
+      url.pathname === '/api/profile/title' ||
       url.pathname === '/api/account/export' ||
       url.pathname.startsWith('/auth/')
     ) {
@@ -2057,13 +2166,25 @@ export function createServer(opts: ServerOpts = {}): HpServer {
         // Crash happened after the final event but before finalize: finish now,
         // including the rating (a crash-during-finalize must not silently drop a
         // rated result). Atomic: finishMatch + ratings commit together.
-        const plan = planMatchRating(room, rec.matchId, state, Date.now());
+        const finishedAtMs = Date.now();
+        const plan = planMatchRating(room, rec.matchId, state, finishedAtMs);
         const finalNames = activeSeats(room.config.players).map(
           (seat) => sessionAtSeat(room, seat)?.nickname ?? null,
         );
+        const winnerSide = state.winnerSide as Side;
+        const participants = signedInParticipants(room);
         db.transaction(() => {
-          db.finishMatch(rec.matchId, state.winnerSide as Side, state.scores, finalNames);
+          db.finishMatch(rec.matchId, winnerSide, state.scores, finalNames);
           if (plan.result.rated) db.applyRatingResults(plan.updates);
+          evaluateMatchAchievements(db, {
+            matchId: rec.matchId,
+            config: state.config,
+            winnerSide,
+            finalScores: state.scores,
+            participants,
+            ratingUpdates: plan.result.rated ? plan.updates : null,
+            now: finishedAtMs,
+          });
         });
         applyRatingCache(plan);
         room.status = 'finished';
@@ -2085,6 +2206,12 @@ export function createServer(opts: ServerOpts = {}): HpServer {
   }
 
   db.pruneOldEvents(Date.now() - EVENT_RETENTION_MS);
+  // One-time achievement backfill from rated history (guarded by a meta marker).
+  try {
+    backfillAchievementsOnce(db);
+  } catch (err) {
+    console.error('[achievements] backfill failed (continuing):', err);
+  }
   recoverActiveMatches();
 
   // ── lifecycle ───────────────────────────────────────────────────────────────

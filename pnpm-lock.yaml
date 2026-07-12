@@ -21,6 +21,19 @@ importers:
         specifier: ^0.25.0
         version: 0.25.12
 
+  packages/achievements:
+    dependencies:
+      '@hp/engine':
+        specifier: workspace:*
+        version: link:../engine
+    devDependencies:
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.7(@types/node@24.13.3)(jsdom@26.1.0)(terser@5.49.0)(tsx@4.23.0)
+
   packages/bots:
     dependencies:
       '@hp/engine':
@@ -42,6 +55,9 @@ importers:
 
   packages/client:
     dependencies:
+      '@hp/achievements':
+        specifier: workspace:*
+        version: link:../achievements
       '@hp/engine':
         specifier: workspace:*
         version: link:../engine
@@ -128,6 +144,9 @@ importers:
 
   packages/server:
     dependencies:
+      '@hp/achievements':
+        specifier: workspace:*
+        version: link:../achievements
       '@hp/bots':
         specifier: workspace:*
         version: link:../bots

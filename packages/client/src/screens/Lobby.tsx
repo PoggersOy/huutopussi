@@ -20,6 +20,7 @@ import { useBotName } from '../botNames';
 import { ConnectionPill } from '../components/ConnectionPill';
 import { MatchList } from '../components/MatchList';
 import { RatingBadge } from '../components/RatingBadge';
+import { TitleBadge } from '../components/TitleBadge';
 import { loadRoomHistory } from '../history';
 import { presetLabelKey, presetOf, RuleSections } from '../rules';
 import { disconnect, sendLobby } from '../socket';
@@ -265,6 +266,9 @@ function SeatCard({
           {name}
           {info.kind === 'human' && (
             <RatingBadge rating={info.rating} provisional={info.provisional} />
+          )}
+          {info.kind === 'human' && (
+            <TitleBadge rating={info.rating} provisional={info.provisional} />
           )}
         </strong>
       )}
