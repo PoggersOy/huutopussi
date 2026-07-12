@@ -441,7 +441,7 @@ export function createServer(opts: ServerOpts = {}): HpServer {
       if (!s) return;
       if (s.kind === 'human' && !s.botControlled) return; // reclaimed meanwhile
       const before = room.eventSeq;
-      s.bot ??= getBot();
+      s.bot ??= getBot(room.botDifficulty);
       const action = await computeBotAction(room.match, seat, s.bot);
       // State may have moved while an async bot was thinking.
       if (room.closed || !room.match || room.eventSeq !== before) return;
@@ -962,11 +962,13 @@ export function createServer(opts: ServerOpts = {}): HpServer {
         return true;
       }
       case 'fillBotsAndStart': {
-        // Matchmaking "Start with bots": fill empty active seats with bots and
-        // start now. Atomic (no client addBot×N + startMatch race). Bots present
-        // → the match is unrated.
+        // Matchmaking "Start with bots" and Pikapeli: fill empty active seats
+        // with bots and start now. Atomic (no client addBot×N + startMatch
+        // race). Bots present → the match is unrated. `difficulty` (Pikapeli's
+        // "Bottien taso") sets every bot's skill for the room; default medium.
         if (!isHost) return fail('error.notHost');
         if (room.status !== 'lobby') return fail('error.matchInProgress');
+        room.botDifficulty = cmd.difficulty ?? 'medium';
         for (const seat of activeSeats(room.config.players)) {
           if (!sessionAtSeat(room, seat)) addBotToSeat(room, seat);
         }

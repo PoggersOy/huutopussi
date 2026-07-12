@@ -183,6 +183,9 @@ export const tableSettingsPatchSchema = z
   })
   .partial();
 
+/** Bot skill level for a Pikapeli game (the lobby "Bottien taso" setting). */
+export const botDifficultySchema = z.enum(['easy', 'medium', 'hard']);
+
 export const lobbyCmdSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('takeSeat'), seat: seatSchema }),
   z.object({ type: z.literal('leaveSeat') }),
@@ -195,8 +198,9 @@ export const lobbyCmdSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('startMatch') }),
   z.object({ type: z.literal('rematch') }),
   // Host-only: fill empty active seats with bots and start now. Used by the
-  // matchmaking waiting view's "Start with bots"; bots make the match unranked.
-  z.object({ type: z.literal('fillBotsAndStart') }),
+  // matchmaking waiting view's "Start with bots" and by Pikapeli; bots make the
+  // match unranked. `difficulty` sets the bots' skill (default medium).
+  z.object({ type: z.literal('fillBotsAndStart'), difficulty: botDifficultySchema.optional() }),
   // Host-only: abort an ongoing match and close the room (all clients dropped).
   z.object({ type: z.literal('stopMatch') }),
   // Advance to the next deal now (any seated player), while the match waits on a
@@ -264,6 +268,7 @@ export const clientMsgSchema = z.discriminatedUnion('t', [
 
 export type ClientMsg = z.infer<typeof clientMsgSchema>;
 export type LobbyCmd = z.infer<typeof lobbyCmdSchema>;
+export type BotDifficulty = z.infer<typeof botDifficultySchema>;
 export type ConfigPatch = z.infer<typeof configPatchSchema>;
 export type TableSettingsPatch = z.infer<typeof tableSettingsPatchSchema>;
 

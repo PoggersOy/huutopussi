@@ -7,6 +7,7 @@
  * A signed-in player's nickname field is pre-filled (editably) with their first
  * name. Rejoinable/past games live on the History screen (link at the bottom).
  */
+import type { BotDifficulty } from '@hp/protocol';
 import { type FormEvent, useEffect, useState, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
@@ -19,6 +20,7 @@ import { connect, findMatch, sendLobby } from '../socket';
 import { useStore } from '../store';
 
 const NICKNAME_KEY = 'hp:nickname';
+const DIFFICULTY_KEY = 'hp:botDifficulty';
 
 export function savedNickname(): string {
   try {
@@ -26,6 +28,19 @@ export function savedNickname(): string {
   } catch {
     return '';
   }
+}
+
+const BOT_LEVELS: readonly BotDifficulty[] = ['easy', 'medium', 'hard'];
+
+/** The persisted Pikapeli bot level; medium if unset/invalid. */
+function savedDifficulty(): BotDifficulty {
+  try {
+    const v = localStorage.getItem(DIFFICULTY_KEY);
+    if (v === 'easy' || v === 'medium' || v === 'hard') return v;
+  } catch {
+    // Private mode — fall through to the default.
+  }
+  return 'medium';
 }
 
 /** Persist a nickname (trimmed) for reuse across sessions; no-op if blank. */
@@ -57,6 +72,8 @@ export function Home() {
   const [pending, setPending] = useState<Pending | null>(null);
   /** Game mode (2/3/4 players) — shared by every start flow. */
   const [players, setPlayers] = useState<2 | 3 | 4>(4);
+  /** Pikapeli bot skill level. */
+  const [difficulty, setDifficulty] = useState<BotDifficulty>(savedDifficulty);
   const [ranked, setRanked] = useState(false);
   const [buckets, setBuckets] = useState<MatchmakingBucket[]>([]);
   const canInstall = useSyncExternalStore(subscribeInstall, installAvailable);
@@ -78,9 +95,9 @@ export function Home() {
   // Quick-vs-bots additionally fills the empty seats and starts before we route.
   useEffect(() => {
     if (pending === null || createdCode === undefined) return;
-    if (pending === 'quick') sendLobby({ type: 'fillBotsAndStart' });
+    if (pending === 'quick') sendLobby({ type: 'fillBotsAndStart', difficulty });
     navigate(`/r/${createdCode}`);
-  }, [pending, createdCode, navigate]);
+  }, [pending, createdCode, difficulty, navigate]);
 
   // Ranked needs a signed-in account; drop the toggle on sign-out.
   useEffect(() => {
@@ -115,6 +132,15 @@ export function Home() {
   function onFindMatch(): void {
     setPending('find');
     findMatch(players, effectiveRanked, persistNickname());
+  }
+
+  function chooseDifficulty(level: BotDifficulty): void {
+    setDifficulty(level);
+    try {
+      localStorage.setItem(DIFFICULTY_KEY, level);
+    } catch {
+      // Private mode — the choice still applies to this session.
+    }
   }
 
   function onQuickBots(): void {
@@ -246,6 +272,22 @@ export function Home() {
               <p className="dim mode-card__desc">{t('home.bots.desc')}</p>
             </div>
           </div>
+          <div className="stack">
+            <span className="dim">{t('home.bots.difficulty')}</span>
+            <div className="seg">
+              {BOT_LEVELS.map((level) => (
+                <button
+                  type="button"
+                  key={level}
+                  className="seg__opt"
+                  aria-pressed={difficulty === level}
+                  onClick={() => chooseDifficulty(level)}
+                >
+                  {t(`home.bots.level.${level}`)}
+                </button>
+              ))}
+            </div>
+          </div>
           <button type="button" onClick={onQuickBots} disabled={busy}>
             {pending === 'quick' ? t('connection.connecting') : t('home.bots.action')}
           </button>
@@ -286,6 +328,10 @@ export function Home() {
 
         <button type="button" className="btn--ghost" onClick={() => navigate('/history')}>
           {t('home.historyLink')}
+        </button>
+
+        <button type="button" className="btn--ghost" onClick={() => navigate('/rules')}>
+          {t('home.rulesLink')}
         </button>
       </main>
 

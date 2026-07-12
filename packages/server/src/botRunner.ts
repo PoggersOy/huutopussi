@@ -9,7 +9,7 @@
  */
 import { randomInt } from 'node:crypto';
 import * as botsPkg from '@hp/bots';
-import { type Actor, mulberry32, RandomLegalBot } from '@hp/bots';
+import { type Actor, type BotDifficulty, mulberry32, RandomLegalBot } from '@hp/bots';
 import type { MatchState, PlayerAction, Seat } from '@hp/engine';
 import { allowedActions, redactViewFor } from '@hp/engine';
 
@@ -17,13 +17,16 @@ function cryptoSeed(): number {
   return randomInt(0, 2 ** 31);
 }
 
-/** Prefer HeuristicBot when @hp/bots exports it; RandomLegalBot otherwise. */
-export function getBot(): Actor {
+/**
+ * Prefer HeuristicBot at the requested skill when @hp/bots exports it;
+ * RandomLegalBot otherwise. `difficulty` defaults to medium (see @hp/bots).
+ */
+export function getBot(difficulty?: BotDifficulty): Actor {
   const candidate = (botsPkg as Record<string, unknown>).HeuristicBot;
   if (typeof candidate === 'function') {
     try {
-      const Ctor = candidate as new (rng: () => number) => Actor;
-      const bot = new Ctor(mulberry32(cryptoSeed()));
+      const Ctor = candidate as new (rng: () => number, difficulty?: BotDifficulty) => Actor;
+      const bot = new Ctor(mulberry32(cryptoSeed()), difficulty);
       if (typeof bot.onTurn === 'function') return bot;
     } catch {
       // Constructor shape mismatch — fall back below.

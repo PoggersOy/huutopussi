@@ -5,7 +5,7 @@
  * host's Start button. Non-hosts see the config read-only. All legality/
  * authority stays server-side — every control just submits a lobby command.
  */
-import { DEFAULT_RULES, ILLISOFT_RULES, type RuleConfig, type Seat } from '@hp/engine';
+import type { RuleConfig, Seat } from '@hp/engine';
 import type {
   ConfigPatch,
   RoomStatePublic,
@@ -21,6 +21,7 @@ import { ConnectionPill } from '../components/ConnectionPill';
 import { MatchList } from '../components/MatchList';
 import { RatingBadge } from '../components/RatingBadge';
 import { loadRoomHistory } from '../history';
+import { presetLabelKey, presetOf, RuleSections } from '../rules';
 import { disconnect, sendLobby } from '../socket';
 import { useStore } from '../store';
 
@@ -351,21 +352,6 @@ function numberOptions(base: readonly number[], current: number): number[] {
   return base.includes(current) ? [...base] : [...base, current].sort((a, b) => a - b);
 }
 
-/** The 2-3p mode fields are orthogonal to the ruleset choice (spec §11). */
-const MODE_FIELDS: ReadonlySet<string> = new Set(['players', 'talonSize', 'openTalon']);
-
-function matchesPreset(config: RuleConfig, preset: RuleConfig): boolean {
-  return (Object.keys(preset) as Array<keyof RuleConfig>).every(
-    (key) => MODE_FIELDS.has(key) || config[key] === preset[key],
-  );
-}
-
-function presetOf(config: RuleConfig): 'illisoft' | 'paamuoto' | 'custom' {
-  if (matchesPreset(config, ILLISOFT_RULES)) return 'illisoft';
-  if (matchesPreset(config, DEFAULT_RULES)) return 'paamuoto';
-  return 'custom';
-}
-
 function ConfigPanel({ config, isHost }: { config: RuleConfig; isHost: boolean }) {
   const { t } = useTranslation();
   const [showAllRules, setShowAllRules] = useState(false);
@@ -538,15 +524,13 @@ function ConfigPanel({ config, isHost }: { config: RuleConfig; isHost: boolean }
 // ── "View all rules" overlay: the full ruleset, read-only ────────────────────
 
 /**
- * Every RuleConfig field rendered human-readably, grouped into sections and
- * derived from the LIVE config — so it stays accurate for presets and for any
- * custom edits alike. The lobby panel only exposes a handful of fields; this is
- * the full, honest picture of what will actually be played.
+ * The full, honest picture of what will actually be played: every RuleConfig
+ * field, grouped and derived from the LIVE config (see ../rules RuleSections —
+ * shared with the standalone Peliohjeet screen). The lobby panel only exposes a
+ * handful of fields; this overlay shows all of them.
  */
 function AllRulesOverlay({ config, onClose }: { config: RuleConfig; onClose: () => void }) {
   const { t } = useTranslation();
-  const yn = (b: boolean): string => t(b ? 'rules.yes' : 'rules.no');
-  const is4p = config.players === 4;
 
   // Dismiss on Escape, mirroring the click-outside affordance below.
   useEffect(() => {
@@ -557,178 +541,7 @@ function AllRulesOverlay({ config, onClose }: { config: RuleConfig; onClose: () 
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const deal: Array<[string, string]> = [
-    [t('config.players'), t('config.playersOpt', { n: config.players })],
-  ];
-  if (!is4p) {
-    deal.push([t('config.talonSize'), t('config.cardsOpt', { n: config.talonSize })]);
-    deal.push([
-      t('config.openTalon'),
-      t(config.openTalon ? 'config.openTalonOpen' : 'config.openTalonSecret'),
-    ]);
-  } else {
-    deal.push([t('rules.exchangeCount'), t('config.cardsOpt', { n: config.exchangeCount })]);
-  }
-  deal.push([
-    t('rules.redealCondition'),
-    t(
-      config.redealCondition === 'fourSixes'
-        ? 'rules.redealConditionFourSixes'
-        : config.redealCondition === 'threeSixesOrNoneAboveJack'
-          ? 'rules.redealConditionThreeSixes'
-          : 'rules.redealConditionOff',
-    ),
-  ]);
-  if (config.redealCondition !== null) {
-    deal.push([
-      t('rules.redealWindow'),
-      t(
-        config.redealWindow === 'bidAndExchange'
-          ? 'rules.redealWindowBidAndExchange'
-          : 'rules.redealWindowFirstBidTurn',
-      ),
-    ]);
-  }
-
-  const cards: Array<[string, string]> = [
-    [
-      t('config.cardPoints'),
-      t(config.cardPoints === 'A' ? 'config.cardPointsA' : 'config.cardPointsB'),
-    ],
-    [t('rules.lastTrickBonus'), t('rules.points', { n: config.lastTrickBonus })],
-    [
-      t('config.trumpValues'),
-      t(
-        config.trumpValues === 'heartsHigh'
-          ? 'config.trumpValuesHeartsHigh'
-          : 'config.trumpValuesBridge',
-      ),
-    ],
-  ];
-
-  const bidding: Array<[string, string]> = [
-    [t('config.minBid'), String(config.minBid)],
-    [t('rules.bidStep'), String(config.bidStep)],
-    [t('rules.maxBid'), config.maxBid === null ? t('rules.unbounded') : String(config.maxBid)],
-    [
-      t('rules.firstBidder'),
-      t(
-        config.firstBidder === 'dealer'
-          ? 'rules.firstBidderDealer'
-          : 'rules.firstBidderLeftOfDealer',
-      ),
-    ],
-    [t('rules.forcedOpening'), yn(config.forcedOpening)],
-    [
-      t('rules.allPassOutcome'),
-      t(
-        config.allPassOutcome === 'contractlessDeal'
-          ? 'rules.allPassOutcomeContractlessDeal'
-          : 'rules.allPassOutcomeForceLastSeat',
-      ),
-    ],
-    [
-      t('rules.bidBanThreshold'),
-      config.bidBanThreshold === null ? t('rules.off') : String(config.bidBanThreshold),
-    ],
-  ];
-  if (config.bidBanThreshold !== null) {
-    bidding.push([t('rules.bidBanReopen'), yn(config.bidBanReopen)]);
-  }
-  if (is4p) {
-    bidding.push([
-      t('rules.contractTiming'),
-      t(
-        config.contractTiming === 'afterExchange'
-          ? 'rules.contractTimingAfterExchange'
-          : 'rules.contractTimingBeforeReturn',
-      ),
-    ]);
-  }
-
-  const play: Array<[string, string]> = [
-    [
-      t('rules.firstTrickRules'),
-      t(
-        config.firstTrickRules === 'aceShow'
-          ? 'rules.firstTrickRulesAceShow'
-          : 'rules.firstTrickRulesFree',
-      ),
-    ],
-    [
-      t('config.declareRight'),
-      t(
-        config.declareRight === 'anyWonTrick'
-          ? 'config.declareRightAnyWonTrick'
-          : 'config.declareRightOwnLedWonTrick',
-      ),
-    ],
-    [
-      t('rules.askLockouts'),
-      t(config.askLockouts === 'illisoft' ? 'rules.askLockoutsIllisoft' : 'rules.askLockoutsBasic'),
-    ],
-    [t('rules.askHalfMustHoldCard'), yn(config.askHalfMustHoldCard)],
-  ];
-
-  const scoring: Array<[string, string]> = [
-    [
-      t('rules.opponentRounding'),
-      t(
-        config.opponentRounding === 'nearest5'
-          ? 'rules.opponentRoundingNearest'
-          : 'rules.opponentRoundingNone',
-      ),
-    ],
-    [
-      t('rules.declarerPorvooBasis'),
-      t(
-        config.declarerPorvooBasis === 'contract'
-          ? 'rules.declarerPorvooBasisContract'
-          : 'rules.declarerPorvooBasisBid',
-      ),
-    ],
-    [
-      t('rules.declarerPorvooScope'),
-      t(
-        config.declarerPorvooScope === 'side'
-          ? 'rules.declarerPorvooScopeSide'
-          : 'rules.declarerPorvooScopeSeat',
-      ),
-    ],
-  ];
-
-  const winning: Array<[string, string]> = [
-    [t('config.winTarget'), String(config.winTarget)],
-    [
-      t('rules.winCondition'),
-      t(config.winCondition === 'exceed' ? 'rules.winConditionExceed' : 'rules.winConditionReach'),
-    ],
-    [
-      t('rules.winTiebreak'),
-      t(
-        config.winTiebreak === 'declarer' ? 'rules.winTiebreakDeclarer' : 'rules.winTiebreakHigher',
-      ),
-    ],
-  ];
-
-  const sections: Array<[string, Array<[string, string]>]> = [
-    ['rules.secDeal', deal],
-    ['rules.secCards', cards],
-    ['rules.secBidding', bidding],
-    ['rules.secPlay', play],
-    ['rules.secScoring', scoring],
-    ['rules.secWinning', winning],
-    ['rules.secDisplay', [[t('config.showLastTrick'), yn(config.showLastTrick)]]],
-  ];
-
-  const presetKey = presetOf(config);
-  const presetLabel = t(
-    presetKey === 'illisoft'
-      ? 'config.presetIllisoft'
-      : presetKey === 'paamuoto'
-        ? 'config.presetPaamuoto'
-        : 'config.presetCustom',
-  );
+  const presetLabel = t(presetLabelKey(presetOf(config)));
 
   return (
     // biome-ignore lint/a11y/useKeyWithClickEvents: keyboard users dismiss via Escape (handled above) or the × / Close buttons; this is the click-outside touch affordance
@@ -752,19 +565,7 @@ function AllRulesOverlay({ config, onClose }: { config: RuleConfig; onClose: () 
         </button>
         <h2>{t('rules.title')}</h2>
         <p className="dim rules-overlay__preset">{presetLabel}</p>
-        {sections.map(([title, rows]) => (
-          <section key={title} className="stack rules-group">
-            <h3 className="rules-group__title">{t(title)}</h3>
-            <dl className="rules-list">
-              {rows.map(([label, value]) => (
-                <div key={label} className="rules-list__row">
-                  <dt className="dim">{label}</dt>
-                  <dd>{value}</dd>
-                </div>
-              ))}
-            </dl>
-          </section>
-        ))}
+        <RuleSections config={config} />
         <button type="button" className="btn--primary" onClick={onClose}>
           {t('common.close')}
         </button>

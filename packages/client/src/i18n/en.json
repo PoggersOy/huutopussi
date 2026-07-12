@@ -23,7 +23,13 @@
     "bots": {
       "title": "Quick match",
       "desc": "Start a game against bots right away.",
-      "action": "Play against bots"
+      "action": "Play against bots",
+      "difficulty": "Bot level",
+      "level": {
+        "easy": "Easy",
+        "medium": "Medium",
+        "hard": "Hard"
+      }
     },
     "friends": {
       "title": "Play with friends",
@@ -35,6 +41,7 @@
     "join": "Join",
     "language": "Language",
     "historyLink": "Match history",
+    "rulesLink": "How to play",
     "install": "Install the app"
   },
   "auth": {
@@ -191,6 +198,50 @@
     "winTiebreak": "Tie at the target",
     "winTiebreakDeclarer": "Declarer's side wins",
     "winTiebreakHigher": "Highest score wins"
+  },
+  "rulesPage": {
+    "title": "How to play",
+    "intro": "Huutopussi is a Finnish trick-taking game. Here's how it works — and the exact rules played here.",
+    "howTitle": "How a game goes",
+    "how": {
+      "objective": {
+        "title": "Objective",
+        "body": "Win points with tricks and marriages. A match runs over several deals, and the first side to reach the win target (usually 500) wins."
+      },
+      "cards": {
+        "title": "The cards",
+        "body": "A 36-card deck — each suit has the ace, ten, king, queen, jack and 9 down to 6. The ten is second-highest: it beats the king. Aces, tens and court cards score points; low cards don't."
+      },
+      "bidding": {
+        "title": "Bidding",
+        "body": "Players take turns bidding how many points they promise to make. The highest bid wins, and that player becomes the declarer, who sets the trump suit by declaring a marriage."
+      },
+      "exchange": {
+        "title": "Exchange & talon",
+        "body": "In the 4-player game the declarer receives cards from their partner and returns the same number. With 2–3 players the declarer takes the talon and sets spare cards aside."
+      },
+      "play": {
+        "title": "Playing tricks",
+        "body": "You must follow the led suit and beat the highest card on the table if you can. Trumps beat every other suit. The highest card takes the trick and leads the next one."
+      },
+      "marriage": {
+        "title": "Marriages & declaring",
+        "body": "A king and queen of the same suit form a marriage. After winning a trick you may declare one: it scores that suit's value and makes it the trump suit."
+      },
+      "scoring": {
+        "title": "Scoring & winning",
+        "body": "At the end of a deal you count card points, the last-trick bonus and any declared marriages. The declarer succeeds by reaching their bid — otherwise they take a penalty. Points carry deal to deal until someone passes the win target."
+      }
+    },
+    "rankOrder": "Card ranking",
+    "strongest": "strongest",
+    "weakest": "weakest",
+    "suitValues": "Suit values (marriage / trump)",
+    "settingsTitle": "Rulesets",
+    "settingsIntro": "Pick a ruleset and table size to see the exact rules that will be played.",
+    "presetIllisoftDesc": "The classic Illisoft 2002 Huutopussi.exe game. This is the default online.",
+    "presetPaamuotoDesc": "The traditional main variant, without the Illisoft additions.",
+    "hostNote": "A room's host can still fine-tune individual rules in the lobby."
   },
   "tableSettings": {
     "title": "Turn timer",

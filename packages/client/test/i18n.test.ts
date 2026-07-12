@@ -78,6 +78,9 @@ function collectUsedKeys(): Set<string> {
   // 3. Dynamic `suit.${suit}` labels (Table top bar + declaration sheets).
   for (const suit of ['H', 'D', 'C', 'S']) used.add(`suit.${suit}`);
 
+  // 3b. Dynamic `home.bots.level.${difficulty}` labels (Pikapeli level picker).
+  for (const level of ['easy', 'medium', 'hard']) used.add(`home.bots.level.${level}`);
+
   // 4. Engine rule-error codes: the server relays them verbatim as toasts.
   const engineCodes = [...readFileSync(ENGINE_VALIDATE, 'utf8').matchAll(/err\('([^']+)'/g)].map(
     (m) => m[1] as string,

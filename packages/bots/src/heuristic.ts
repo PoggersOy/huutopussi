@@ -3,11 +3,16 @@
  * Consumes ONLY PlayerView + ActionHints, never MatchState; deterministic for
  * a given injected PRNG (the stream is drawn from only to break exact ties).
  *
+ * A BotDifficulty (easy/medium/hard) tunes ONLY bidding/contract aggression via
+ * the SKILL table; card play is identical at every level.
+ *
  * Strategy:
  *  - BIDDING: hand strength = marriage values held + 11/ace + 10/ten + long
- *    suit bonus; keep bidding while strength covers the next amount + margin;
- *    respect forced-opening and bid-ban hints; redeal-eligible hands (>=3
- *    sixes or nothing above jack) are trash by definition, so always redeal.
+ *    suit bonus, plus (by skill) a fraction of each lone marriage half the
+ *    exchange/partner could complete; keep bidding while that covers the next
+ *    amount + the skill's margin; respect forced-opening and bid-ban hints;
+ *    redeal-eligible hands (>=3 sixes or nothing above jack) are trash by
+ *    definition, so always redeal.
  *  - EXCHANGE give: pass the declarer aces, tens and lone marriage halves
  *    (the declarer may complete them); NEVER break an own complete marriage
  *    unless nothing else is left.
@@ -53,10 +58,55 @@ import {
 import type { Actor } from './actor.js';
 import { type Prng, pick } from './prng.js';
 
-/** Bid only while hand strength covers the amount plus this margin. */
-const BID_MARGIN = 15;
-/** Contract = 12-card strength minus this safety margin (never below the bid). */
-const CONTRACT_MARGIN = 20;
+/**
+ * Bot skill level, chosen per game (e.g. the Pikapeli "Bottien taso" setting).
+ * Only bidding/contract aggression varies — card play is identical across
+ * levels, so a weaker bot is a more cautious bidder, not a worse card-player.
+ */
+export type BotDifficulty = 'easy' | 'medium' | 'hard';
+
+interface SkillProfile {
+  /** Bid only while bidding strength covers the next amount plus this margin. */
+  bidMargin: number;
+  /**
+   * Fraction of a lone marriage half's value credited while bidding: optimism
+   * that the exchange or a partner ask completes it. 0 = ignore the potential.
+   */
+  completionCredit: number;
+  /**
+   * Contract = 12-card strength minus this safety margin (never below the bid).
+   * Smaller = a tighter, higher contract that extracts more but risks Porvoo.
+   */
+  contractMargin: number;
+  /**
+   * Probability of throwing a random legal card instead of the heuristic pick.
+   * This is the reliable *strength* dial (a self-play sweep shows monotonic
+   * weakening); bidding aggression is not — in this scoring an over-bold bidder
+   * actually loses. So a weaker level plays looser cards, not just times its
+   * bids differently. 0 = always the full heuristic (the toughest opponent).
+   */
+  sloppiness: number;
+}
+
+/**
+ * Difficulty tracks how hard the bot is to BEAT. The reliable dial is card-play
+ * quality (`sloppiness`); brave bidding is shared by medium and hard because,
+ * in this scoring, pushing bids further would make a bot weaker, not stronger.
+ *
+ * easy   — a gentle opponent: times bids cautiously (undervalues completable
+ *          marriages, needs a fat cushion, sets a safe low contract) AND plays
+ *          loosely (a random legal card over half the time), so a human wins
+ *          comfortably.
+ * medium — brave, sensible bidding (cuts the "everyone passes" deals) but still
+ *          slips on roughly a quarter of its card plays.
+ * hard   — the same brave bidding, a slightly tighter contract, and ALWAYS the
+ *          full heuristic card play: the toughest opponent the heuristics give.
+ */
+const SKILL: Record<BotDifficulty, SkillProfile> = {
+  easy: { bidMargin: 30, completionCredit: 0, contractMargin: 40, sloppiness: 0.55 },
+  medium: { bidMargin: 12, completionCredit: 0.2, contractMargin: 20, sloppiness: 0.25 },
+  hard: { bidMargin: 12, completionCredit: 0.2, contractMargin: 18, sloppiness: 0 },
+};
 
 type BidHint = Extract<ActionHint, { type: 'bid' }>;
 type ContractHint = Extract<ActionHint, { type: 'setContract' }>;
@@ -96,6 +146,26 @@ function handStrength(hand: readonly Card[], config: RuleConfig): number {
   }
   const longest = Math.max(lengths.H, lengths.D, lengths.C, lengths.S);
   strength += Math.max(0, longest - 3) * 5;
+  return strength;
+}
+
+/**
+ * Bidding strength: the plain `handStrength` plus optimism the auction can
+ * afford but a contract can't. A lone marriage half (one of K/Q) is often
+ * completed by the exchange or a partner ask, so it is worth a fraction of the
+ * marriage while bidding — this keeps bolder bots from folding decent hands
+ * into contract-less deals, without inflating the (separately estimated)
+ * contract. `credit` is the skill level's `completionCredit` (0 disables it).
+ */
+function bidStrength(hand: readonly Card[], config: RuleConfig, credit: number): number {
+  let strength = handStrength(hand, config);
+  if (credit > 0) {
+    for (const suit of SUITS) {
+      if (holdsExactlyOneHalf(hand, suit)) {
+        strength += Math.round(marriageValue(suit, config) * credit);
+      }
+    }
+  }
   return strength;
 }
 
@@ -149,9 +219,11 @@ function weakest(cards: readonly Card[]): Card {
 
 export class HeuristicBot implements Actor {
   private readonly rng: Prng;
+  private readonly skill: SkillProfile;
 
-  constructor(rng: Prng) {
+  constructor(rng: Prng, difficulty: BotDifficulty = 'medium') {
     this.rng = rng;
+    this.skill = SKILL[difficulty];
   }
 
   onTurn(view: PlayerView, hints: ActionHint[]): PlayerAction {
@@ -178,7 +250,12 @@ export class HeuristicBot implements Actor {
     }
 
     const contract = findHint(hints, 'setContract');
-    if (contract) return { type: 'setContract', amount: contractAmount(contract, hand, config) };
+    if (contract) {
+      return {
+        type: 'setContract',
+        amount: contractAmount(contract, hand, config, this.skill.contractMargin),
+      };
+    }
 
     const ret = findHint(hints, 'returnCards');
     if (ret) return { type: 'returnCards', cards: returnCards(hand, ret.count, config) };
@@ -205,7 +282,7 @@ export class HeuristicBot implements Actor {
     if (!hint.canPass) return { type: 'bid', amount: hint.min };
     // Bid ban without forced opening: min > max signals "no legal bid".
     if (hint.min > hint.max) return { type: 'pass' };
-    if (handStrength(hand, config) >= hint.min + BID_MARGIN) {
+    if (bidStrength(hand, config, this.skill.completionCredit) >= hint.min + this.skill.bidMargin) {
       return { type: 'bid', amount: hint.min };
     }
     return { type: 'pass' };
@@ -222,6 +299,11 @@ export class HeuristicBot implements Actor {
     if (legal.length === 1) return first;
     if (view.viewer === 'spectator') throw new Error('HeuristicBot: spectator has no turn');
     const me = view.viewer;
+
+    // Weaker levels sometimes just play a random legal card — the strength dial.
+    if (this.skill.sloppiness > 0 && this.rng() < this.skill.sloppiness) {
+      return pick(this.rng, legal);
+    }
 
     // Save undeclared marriage halves we fully hold, whenever a choice exists.
     const reserved = reservedCards(deal.hand, declaredSuits(deal));
@@ -305,9 +387,14 @@ function giveCards(hand: readonly Card[], count: number, config: RuleConfig): Ca
   return [...hand].sort((a, b) => priority(b) - priority(a)).slice(0, count);
 }
 
-/** Conservative contract from the 12-card hand: bid + margin-adjusted raise. */
-function contractAmount(hint: ContractHint, hand: readonly Card[], config: RuleConfig): number {
-  const estimate = handStrength(hand, config) - CONTRACT_MARGIN;
+/** Contract from the 12-card hand: bid + a raise trimmed by the skill margin. */
+function contractAmount(
+  hint: ContractHint,
+  hand: readonly Card[],
+  config: RuleConfig,
+  margin: number,
+): number {
+  const estimate = handStrength(hand, config) - margin;
   const steps = Math.max(0, Math.floor((estimate - hint.min) / hint.step));
   // Contracts must be absolute step multiples; floor the cap accordingly.
   const cap = Math.floor(hint.max / hint.step) * hint.step;

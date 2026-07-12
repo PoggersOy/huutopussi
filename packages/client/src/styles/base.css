@@ -629,6 +629,69 @@ input::placeholder {
   font-weight: 600;
 }
 
+/* ── Rules ("Peliohjeet") page: card-rank strip + suit values ── */
+
+/* Small uppercase caption above a visual (rank strip, suit chips). */
+.rules-cap {
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.rank-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.rank-strip__end {
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+}
+
+.rank-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  padding: 2px var(--space-1);
+  border: 1px solid var(--gold-soft);
+  border-radius: var(--radius-1);
+  background: var(--card-face);
+  color: var(--card-black);
+  font-weight: 700;
+  font-size: var(--fs-sm);
+  line-height: 1.3;
+}
+
+.suit-values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.suit-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-1);
+  background: var(--surface);
+  font-weight: 600;
+  font-size: var(--fs-sm);
+}
+
+.suit-chip__symbol {
+  font-size: var(--fs-md);
+  line-height: 1;
+}
+
+.rules-preset-desc {
+  margin-top: calc(-1 * var(--space-1));
+}
+
 /* ── Debug raw view ── */
 
 .raw {

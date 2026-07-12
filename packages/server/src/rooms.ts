@@ -5,6 +5,7 @@
  * per-room monotonic seq, the authoritative MatchState and timer handles.
  */
 import { randomBytes } from 'node:crypto';
+import type { BotDifficulty } from '@hp/bots';
 import type { MatchState, RuleConfig, Seat } from '@hp/engine';
 import { activeSeats } from '@hp/engine';
 import type { RoomStatePublic, SeatInfo, TableSettings } from '@hp/protocol';
@@ -57,6 +58,8 @@ export interface Room {
   config: RuleConfig;
   /** Turn pacing (autoplay + timeout); host-editable, independent of config. */
   tableSettings: RoomTableSettings;
+  /** Skill level of bots in this room (Pikapeli setting; default medium). */
+  botDifficulty: BotDifficulty;
   status: RoomStatus;
   /** Matchmaking marker (bucket disposition); null = private code-room. */
   matchmaking: RoomMatchmaking | null;
@@ -91,6 +94,7 @@ export function createRoom(init: {
     hostToken: init.hostToken,
     config: init.config,
     tableSettings: init.tableSettings,
+    botDifficulty: 'medium',
     matchmaking: init.matchmaking ?? null,
     status: 'lobby',
     seq: 0,

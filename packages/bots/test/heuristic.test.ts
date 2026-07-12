@@ -65,6 +65,16 @@ function bot(): HeuristicBot {
   return new HeuristicBot(mulberry32(42));
 }
 
+/**
+ * A 'hard' bot never takes the random-play detour (sloppiness 0), so its card
+ * play is the deterministic heuristic — used by the trick-play scenario tests.
+ * The lead/follow logic is identical across difficulties, so this asserts the
+ * shared heuristic, not a level-specific quirk.
+ */
+function sharpBot(): HeuristicBot {
+  return new HeuristicBot(mulberry32(42), 'hard');
+}
+
 describe('HeuristicBot fuzz', () => {
   it('always picks hinted-legal actions across 500 fuzzed turns', () => {
     const deck = makeDeck();
@@ -184,6 +194,17 @@ describe('HeuristicBot bidding', () => {
     const hints = bidHint({ min: 55, max: 50 });
     expect(bot().onTurn(view, hints)).toEqual({ type: 'pass' });
   });
+
+  it('bids braver at higher difficulty (easy folds a hand hard contests)', () => {
+    // Clubs marriage (60) + the club ace (11) = strength 71: clears hard's
+    // 55+12 threshold but not easy's fatter 55+30 cushion.
+    const hand: Card[] = ['CK', 'CQ', 'CA', 'H9', 'H8', 'D9', 'D8', 'S9', 'S8'];
+    const view = makeView(hand, biddingPhase, { bid: { seat: 1, amount: 50 }, declarer: null });
+    const easy = new HeuristicBot(mulberry32(42), 'easy');
+    const hard = new HeuristicBot(mulberry32(42), 'hard');
+    expect(easy.onTurn(view, bidHint())).toEqual({ type: 'pass' });
+    expect(hard.onTurn(view, bidHint())).toEqual({ type: 'bid', amount: 55 });
+  });
 });
 
 describe('HeuristicBot trick play', () => {
@@ -199,7 +220,7 @@ describe('HeuristicBot trick play', () => {
     });
     const hints: ActionHint[] = [{ type: 'playCard', legal: ['HA', 'H10'] }];
     // Both legal cards head the partner's HK; the minimal winner is the 10.
-    expect(bot().onTurn(view, hints)).toEqual({ type: 'playCard', card: 'H10' });
+    expect(sharpBot().onTurn(view, hints)).toEqual({ type: 'playCard', card: 'H10' });
   });
 
   it('wins minimally over an opponent too', () => {
@@ -210,7 +231,7 @@ describe('HeuristicBot trick play', () => {
       plays: [{ seat: 1, card: 'DQ' }],
     });
     const hints: ActionHint[] = [{ type: 'playCard', legal: ['DA', 'D10', 'DK'] }];
-    expect(bot().onTurn(view, hints)).toEqual({ type: 'playCard', card: 'DK' });
+    expect(sharpBot().onTurn(view, hints)).toEqual({ type: 'playCard', card: 'DK' });
   });
 
   it('dumps the lowest-point card when it cannot win', () => {
@@ -225,7 +246,7 @@ describe('HeuristicBot trick play', () => {
     });
     // Void in spades, no trump set: everything is legal, nothing wins.
     const hints: ActionHint[] = [{ type: 'playCard', legal: hand }];
-    expect(bot().onTurn(view, hints)).toEqual({ type: 'playCard', card: 'C7' });
+    expect(sharpBot().onTurn(view, hints)).toEqual({ type: 'playCard', card: 'C7' });
   });
 
   it('smears points when the partner has the trick and it plays last', () => {
@@ -240,14 +261,14 @@ describe('HeuristicBot trick play', () => {
       ],
     });
     const hints: ActionHint[] = [{ type: 'playCard', legal: hand }];
-    expect(bot().onTurn(view, hints)).toEqual({ type: 'playCard', card: 'DA' });
+    expect(sharpBot().onTurn(view, hints)).toEqual({ type: 'playCard', card: 'DA' });
   });
 
   it('saves undeclared marriage halves it fully holds', () => {
     const hand: Card[] = ['HK', 'HQ', 'H7'];
     const view = makeView(hand, { name: 'lead', leader: 0, canDeclare: false });
     const hints: ActionHint[] = [{ type: 'playCard', legal: hand }];
-    expect(bot().onTurn(view, hints)).toEqual({ type: 'playCard', card: 'H7' });
+    expect(sharpBot().onTurn(view, hints)).toEqual({ type: 'playCard', card: 'H7' });
   });
 });
 

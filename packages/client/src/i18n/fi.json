@@ -23,7 +23,13 @@
     "bots": {
       "title": "Pikapeli",
       "desc": "Aloita peli heti botteja vastaan.",
-      "action": "Pelaa botteja vastaan"
+      "action": "Pelaa botteja vastaan",
+      "difficulty": "Bottien taso",
+      "level": {
+        "easy": "Helppo",
+        "medium": "Keskitaso",
+        "hard": "Vaikea"
+      }
     },
     "friends": {
       "title": "Pelaa kavereiden kanssa",
@@ -35,6 +41,7 @@
     "join": "Liity",
     "language": "Kieli",
     "historyLink": "Pelihistoria",
+    "rulesLink": "Peliohjeet",
     "install": "Asenna sovellus"
   },
   "auth": {
@@ -191,6 +198,50 @@
     "winTiebreak": "Tasapeli rajalla",
     "winTiebreakDeclarer": "Huutajan puoli voittaa",
     "winTiebreakHigher": "Korkein pistemäärä voittaa"
+  },
+  "rulesPage": {
+    "title": "Peliohjeet",
+    "intro": "Huutopussi on suomalainen tikkipeli. Näin se toimii — ja millä säännöillä täällä pelataan.",
+    "howTitle": "Näin peli etenee",
+    "how": {
+      "objective": {
+        "title": "Tavoite",
+        "body": "Kerää tikeillä ja avioliitoilla pisteitä. Ottelu pelataan useassa jaossa, ja voittaa puoli, joka ensimmäisenä saavuttaa voittorajan (yleensä 500)."
+      },
+      "cards": {
+        "title": "Kortit",
+        "body": "Pelataan 36 kortin pakalla — joka maassa ässä, kymppi, kuningas, rouva, jätkä sekä 9–6. Kymppi on toiseksi korkein: se voittaa kuninkaan. Ässät, kympit ja kuvakortit tuovat pisteitä, pienet kortit eivät."
+      },
+      "bidding": {
+        "title": "Huutokauppa",
+        "body": "Pelaajat huutavat vuorotellen, kuinka monta pistettä lupaavat tehdä. Korkein huuto voittaa, ja huutajasta tulee pelinviejä, joka määrää valttimaan julistamalla avioliiton."
+      },
+      "exchange": {
+        "title": "Vaihto ja koini",
+        "body": "Nelinpelissä huutaja saa parilta kortteja ja palauttaa saman verran. 2–3 pelaajan pelissä huutaja nostaa koinipakan ja panee ylimääräiset kortit sivuun."
+      },
+      "play": {
+        "title": "Tikkien peluu",
+        "body": "Ajettua maata on seurattava, ja pöydän korkein kortti on ylitettävä jos voi. Valtti voittaa muut maat. Tikin korkein kortti vie tikin ja ajaa seuraavan."
+      },
+      "marriage": {
+        "title": "Avioliitot ja julistus",
+        "body": "Saman maan kuningas ja rouva ovat avioliitto. Voitettuasi tikin voit julistaa sen: se antaa maan arvon verran pisteitä ja tekee maasta valtin."
+      },
+      "scoring": {
+        "title": "Pisteet ja voitto",
+        "body": "Jaon lopuksi lasketaan korttipisteet, viimeisen tikin bonus ja julistetut avioliitot. Huutaja onnistuu, jos yltää huutoonsa — muuten hän saa miinusta. Pisteet kertyvät jaosta toiseen, kunnes joku ylittää voittorajan."
+      }
+    },
+    "rankOrder": "Korttien järjestys",
+    "strongest": "vahvin",
+    "weakest": "heikoin",
+    "suitValues": "Maiden arvot (avioliitto / valtti)",
+    "settingsTitle": "Sääntömuodot",
+    "settingsIntro": "Valitse sääntömuoto ja pöydän koko nähdäksesi tarkat säännöt, joilla pelataan.",
+    "presetIllisoftDesc": "Klassinen Illisoftin vuoden 2002 Huutopussi.exe. Tämä on verkon oletusmuoto.",
+    "presetPaamuotoDesc": "Perinteinen päämuoto ilman Illisoftin lisäyksiä.",
+    "hostNote": "Huoneen isäntä voi vielä hienosäätää yksittäisiä sääntöjä aulassa."
   },
   "tableSettings": {
     "title": "Vuoron ajastin",
