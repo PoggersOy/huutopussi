@@ -31,6 +31,9 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // Production artifacts should not publish source maps for the service
+        // worker or app bundle; there is no source-map error collector here.
+        sourcemap: false,
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
         // The precached SPA shell doubles as the offline fallback page: any
         // navigation while offline serves index.html, which renders the
@@ -53,6 +56,6 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    sourcemap: true,
+    sourcemap: false,
   },
 });

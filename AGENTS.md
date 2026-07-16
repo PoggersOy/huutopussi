@@ -22,6 +22,8 @@ card game *Huutopussi*, playable with friends on mobile phones in the browser
 - an **authoritative WebSocket server** (Node `ws` + SQLite),
 - a **mobile-first React PWA client**,
 - **AI bots** that play through the exact same interface a human sees,
+- a shared **achievements/title catalogue** evaluated from authoritative results,
+- optional Google sign-in, Elo ratings, and ranked/unranked matchmaking,
 - fi/en i18n, reconnection handling, persistent score history.
 
 Live at **huutopussi.online** (Fly.io). See [`README.md`](README.md) for the
@@ -101,18 +103,19 @@ The engine's public API is **self-documenting**: read the doc-commented
 Dependency direction is strict and one-way (`→` means "depends on"):
 
 ```
-client ─┐
-        ├─→ protocol ─→ engine        bots ─→ engine
-server ─┘                              server ─→ bots, protocol, engine
+client ─┬─→ protocol ─→ engine        bots ─→ engine
+        └─→ achievements ─→ engine
+server ──→ bots, protocol, achievements, engine
 ```
 
 | Package | `@hp/…` | What it is | Deps |
 | --- | --- | --- | --- |
 | [`packages/engine`](packages/engine) | `engine` | Pure event-sourced rules engine. The heart. | **none** |
+| [`packages/achievements`](packages/achievements) | `achievements` | Pure achievement predicates, progress, and title catalogue. | engine |
 | [`packages/protocol`](packages/protocol) | `protocol` | zod schemas for the WS wire contract | engine, zod |
 | [`packages/bots`](packages/bots) | `bots` | Actor interface, bots, sim/fuzz CLI | engine |
-| [`packages/server`](packages/server) | `server` | `ws` server: rooms, sessions, timers, SQLite | bots, protocol, engine |
-| [`packages/client`](packages/client) | `client` | React + Vite + PWA mobile client | protocol, engine, react… |
+| [`packages/server`](packages/server) | `server` | `ws` server: rooms, sessions, timers, SQLite | bots, protocol, achievements, engine |
+| [`packages/client`](packages/client) | `client` | React + Vite + PWA mobile client | protocol, achievements, engine, react… |
 
 Top level: `Dockerfile` (multi-stage: build client → server serves static + WS),
 `fly.toml` (Fly.io), `e2e/` (Playwright, iPhone-14 viewport), `docs/`,
@@ -164,6 +167,7 @@ Full step-by-step recipes with the files and checks for each are in
 | A **client screen / sheet** | `client/src/screens/**` (legality from hints only) |
 | A **wire message** | `protocol/src/index.ts` (frozen — needs explicit instruction) then server + client |
 | A **server** behavior (rooms/timers/persistence) | `server/src/{server,rooms,sessions,timers,db,botRunner}.ts` |
+| An **achievement/title** | `achievements/src/{catalogue,predicates,titles}.ts` → server evaluation → client i18n/profile |
 
 ---
 

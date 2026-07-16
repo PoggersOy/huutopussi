@@ -121,10 +121,19 @@ export function sessionAtSeat(room: Room, seat: Seat): Session | null {
 /**
  * The session currently holding lobby powers. If the recorded host is no
  * longer seated while another human is, host transfers to the lowest-seat
- * human (so a room can never lose its ability to start/rematch).
+ * human. A disconnected recorded host temporarily yields powers to the lowest
+ * connected seated human, so one closed browser cannot strand a live lobby;
+ * the original host regains them if it reconnects.
  */
 export function hostSessionOf(room: Room): Session | null {
   const recorded = room.hostToken !== null ? (room.sessions.get(room.hostToken) ?? null) : null;
+  if (recorded && recorded.seat !== null && isConnected(recorded)) return recorded;
+  for (const seat of activeSeats(room.config.players)) {
+    const s = sessionAtSeat(room, seat);
+    if (s && s.kind === 'human' && isConnected(s)) return s;
+  }
+  // With nobody connected, retain the stable recorded/fallback identity for
+  // persistence and for the next reconnect.
   if (recorded && recorded.seat !== null) return recorded;
   for (const seat of activeSeats(room.config.players)) {
     const s = sessionAtSeat(room, seat);

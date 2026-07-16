@@ -110,6 +110,39 @@ test('a signed-in hello shows the account rating in the lobby and defaults the n
   client.close();
 });
 
+test('account deletion immediately downgrades live room sessions to guests', async () => {
+  const u = makeUser('Erase Me');
+  const client = await TestClient.connect(port);
+  const welcome = (await client.hello({ auth: u.token })) as WelcomeMsg;
+  expect(welcome.t).toBe('welcome');
+  const room = server.rooms.get(client.roomCode);
+  const liveSession = room?.sessions.get(client.token);
+  expect(liveSession?.userId).toBe(u.id);
+  expect(liveSession?.rating).toBe(1000);
+
+  const downgraded = client.next(
+    (m) => m.t === 'room' && m.room.seats[0]?.rating === null,
+    5_000,
+    'live session downgraded',
+  );
+  const deleted = await fetch(`http://127.0.0.1:${port}/auth/account`, {
+    method: 'DELETE',
+    headers: { authorization: `Bearer ${u.token}` },
+  });
+  expect(deleted.status).toBe(204);
+  await downgraded;
+
+  expect(server.db.getUserById(u.id)).toBeNull();
+  expect(liveSession?.userId).toBeNull();
+  expect(liveSession?.rating).toBeNull();
+  expect(liveSession?.provisional).toBe(false);
+  const stored = server.db.raw
+    .prepare('SELECT user_id FROM sessions WHERE token = ?')
+    .get(client.token) as { user_id: string | null };
+  expect(stored.user_id).toBeNull();
+  client.close();
+});
+
 test('2p match between two signed-in humans is rated: +20 / −20 from 1000', async () => {
   const a = makeUser('A');
   const b = makeUser('B');

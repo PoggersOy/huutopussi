@@ -63,6 +63,18 @@ test('/ serves the SPA shell as HTML', async () => {
   expect(await res.text()).toContain('<title>Huutopussi</title>');
 });
 
+test('HTTP responses carry browser hardening headers and live APIs are not cached', async () => {
+  const page = await fetch(`http://127.0.0.1:${port}/`);
+  expect(page.headers.get('x-content-type-options')).toBe('nosniff');
+  expect(page.headers.get('x-frame-options')).toBe('DENY');
+  expect(page.headers.get('referrer-policy')).toBe('strict-origin-when-cross-origin');
+  expect(page.headers.get('permissions-policy')).toContain('camera=()');
+  expect(page.headers.get('cross-origin-opener-policy')).toBe('same-origin-allow-popups');
+
+  const live = await fetch(`http://127.0.0.1:${port}/api/matchmaking`);
+  expect(live.headers.get('cache-control')).toBe('no-store');
+});
+
 test('a room deep-link falls back to the SPA shell (crawlable, no 404)', async () => {
   const res = await fetch(`http://127.0.0.1:${port}/r/ABCDE`);
   expect(res.status).toBe(200);

@@ -106,6 +106,41 @@ test('autoplay off: a present idle human keeps their hints and is never auto-pla
   host.close();
 });
 
+test('disconnect with autoplay off broadcasts the newly armed grace deadline', async () => {
+  const host = await TestClient.connect(port);
+  await host.hello({ nickname: 'idler' });
+  const code = host.roomCode;
+  const off = host.next(
+    (m) => m.t === 'room' && m.room.tableSettings.autoplay === false,
+    5_000,
+    'autoplay off',
+  );
+  host.lobby({ type: 'setTableSettings', patch: { autoplay: false } });
+  await off;
+  await fillBotsAndStart(host);
+  await waitHostTurn(host);
+
+  // A spectator keeps the room alive and observes the authoritative deadline.
+  const observer = await TestClient.connect(port);
+  await observer.hello({ roomCode: code, nickname: 'observer' });
+  const update = observer.next(
+    (m) =>
+      m.t === 'update' &&
+      m.room?.seats[0]?.connected === false &&
+      m.turn?.seat === 0 &&
+      m.turn.deadline !== null,
+    5_000,
+    'disconnect grace deadline',
+  );
+  const before = Date.now();
+  host.terminate();
+  const observed = await update;
+  if (observed.t !== 'update') throw new Error('expected update');
+  expect(observed.turn?.deadline as number).toBeGreaterThan(before);
+
+  observer.close();
+});
+
 test('setTableSettings applies a new turn timeout to the live turn', async () => {
   const host = await TestClient.connect(port);
   await host.hello({ nickname: 'host' });

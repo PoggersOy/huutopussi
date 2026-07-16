@@ -359,6 +359,11 @@ export function disconnect(): void {
   stopLearn();
   intentionalClose = true;
   clearTimers();
+  // Invalidate this socket's callbacks before closing it. Browsers may still
+  // deliver a frame already queued on the networking task source after close;
+  // without the generation bump that stale update could repopulate the room
+  // slice immediately after reset and leave Home showing the departed table.
+  generation += 1;
   ws?.close();
   ws = null;
   desired = null;

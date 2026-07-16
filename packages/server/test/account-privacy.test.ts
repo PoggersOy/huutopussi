@@ -100,6 +100,11 @@ test('deleteUserAccount erases the user everywhere and anonymizes only their ros
       createdAt: 1,
     },
   ]);
+  // A casual/bot match has no rating_events row; match_participants is its
+  // only durable account↔seat link and must still drive roster anonymization.
+  db.createMatch({ id: 'm2', roomId: 'r1', config: DEFAULT_RULES, firstDealer: 0 });
+  db.finishMatch('m2', 1, [50, 100], ['Samuli V.', 'Bot']);
+  db.recordMatchParticipants('m2', [{ userId: 'u1', seat: 0, players: 4, won: false }]);
   db.createAuthToken('hash-u1', 'u1', Date.now() + 60_000);
 
   db.deleteUserAccount('u1');
@@ -120,6 +125,10 @@ test('deleteUserAccount erases the user everywhere and anonymizes only their ros
     (db.raw.prepare('SELECT names FROM matches WHERE id = ?').get('m1') as { names: string }).names,
   ) as (string | null)[];
   expect(names).toEqual([null, 'Maija K.']);
+  const casualNames = JSON.parse(
+    (db.raw.prepare('SELECT names FROM matches WHERE id = ?').get('m2') as { names: string }).names,
+  ) as (string | null)[];
+  expect(casualNames).toEqual([null, 'Bot']);
 
   db.close();
 });

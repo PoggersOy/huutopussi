@@ -22,6 +22,12 @@ import type { RoomTableSettings } from './rooms.js';
 import type { SessionKind } from './sessions.js';
 
 export const EVENT_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+/**
+ * Rooms that are no longer recoverable (closed/lobby/finished after a process
+ * restart) are retained briefly for diagnostics, then removed with their
+ * session rows. Match/deal history is independent of the rooms table.
+ */
+export const INACTIVE_ROOM_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS rooms (
@@ -528,6 +534,34 @@ export class Db {
     this.raw.prepare('DELETE FROM sessions WHERE token = ?').run(token);
   }
 
+  /** A closed room has no reconnectable sessions; remove their PII at once. */
+  deleteSessionsForRoom(roomId: string): number {
+    return this.raw.prepare('DELETE FROM sessions WHERE room_id = ?').run(roomId).changes;
+  }
+
+  /**
+   * Prune old room registry rows that cannot be recovered. Active rooms stay
+   * `playing` and are never selected; finished match rows remain intact and
+   * continue to back profile/rating history.
+   */
+  pruneInactiveRooms(cutoffMs: number): { rooms: number; sessions: number } {
+    return this.transaction(() => {
+      const stale = this.raw
+        .prepare("SELECT id FROM rooms WHERE status != 'playing' AND updated_at < ?")
+        .all(cutoffMs) as Array<{ id: string }>;
+      if (stale.length === 0) return { rooms: 0, sessions: 0 };
+      const deleteSessions = this.raw.prepare('DELETE FROM sessions WHERE room_id = ?');
+      const deleteRoom = this.raw.prepare('DELETE FROM rooms WHERE id = ?');
+      let sessions = 0;
+      let rooms = 0;
+      for (const { id } of stale) {
+        sessions += deleteSessions.run(id).changes;
+        rooms += deleteRoom.run(id).changes;
+      }
+      return { rooms, sessions };
+    });
+  }
+
   // ── matches / deals / events ───────────────────────────────────────────────
 
   createMatch(row: { id: string; roomId: string; config: RuleConfig; firstDealer: Seat }): void {
@@ -822,9 +856,16 @@ export class Db {
    */
   deleteUserAccount(userId: string): void {
     this.transaction(() => {
+      // rating_events covers rated games; match_participants is the durable
+      // link for casual and bot games. Both must feed roster anonymization or
+      // deleting an account would leave its name in non-rated match history.
       const events = this.raw
-        .prepare('SELECT match_id, seat FROM rating_events WHERE user_id = ?')
-        .all(userId) as Array<{ match_id: string; seat: number }>;
+        .prepare(
+          `SELECT match_id, seat FROM rating_events WHERE user_id = ?
+           UNION
+           SELECT match_id, seat FROM match_participants WHERE user_id = ?`,
+        )
+        .all(userId, userId) as Array<{ match_id: string; seat: number }>;
       const getNames = this.raw.prepare('SELECT names FROM matches WHERE id = ?');
       const setNames = this.raw.prepare('UPDATE matches SET names = ? WHERE id = ?');
       for (const ev of events) {

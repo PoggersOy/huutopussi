@@ -61,7 +61,14 @@ import { type WebSocket, WebSocketServer } from 'ws';
 import { backfillAchievementsOnce, evaluateMatchAchievements } from './achievements.js';
 import { AUTH_TOKEN_TTL_MS, createGoogleVerifier, hashToken, mintToken } from './auth.js';
 import { computeBotAction, getBot, getFallbackBot } from './botRunner.js';
-import { Db, EVENT_RETENTION_MS, MAX_RULE_CONFIGS, type RatingUpdate, type UserRow } from './db.js';
+import {
+  Db,
+  EVENT_RETENTION_MS,
+  INACTIVE_ROOM_RETENTION_MS,
+  MAX_RULE_CONFIGS,
+  type RatingUpdate,
+  type UserRow,
+} from './db.js';
 import { computeRatingChanges, PROVISIONAL_GAMES, type SideInput } from './elo.js';
 import {
   allSeatsFilled,
@@ -114,6 +121,10 @@ export interface ServerOpts {
   maxRooms?: number;
   /** Cap on sessions per room; new guest joins are refused past it. */
   maxSessionsPerRoom?: number;
+  /** Time allowed for a new WebSocket to send hello; tests may shorten it. */
+  wsHelloTimeoutMs?: number;
+  /** Per-socket inbound message flood guard; tests may lower the cap. */
+  wsRateLimit?: { windowMs: number; maxMessages: number };
   /**
    * Google OAuth client id for Sign-In. When unset (null), login is disabled
    * and the app runs guest-only — the natural mode for local dev and e2e.
@@ -257,6 +268,8 @@ export function createServer(opts: ServerOpts = {}): HpServer {
   const staticDir = opts.staticDir ?? null;
   const maxRooms = opts.maxRooms ?? 1000;
   const maxSessionsPerRoom = opts.maxSessionsPerRoom ?? 64;
+  const wsHelloTimeoutMs = opts.wsHelloTimeoutMs ?? 10_000;
+  const wsRateLimit = opts.wsRateLimit ?? { windowMs: 10_000, maxMessages: 120 };
   const db = new Db(opts.dbPath ?? './data/hp.db');
   const googleClientId = opts.googleClientId ?? null;
   const verifyGoogle = createGoogleVerifier(googleClientId);
@@ -544,6 +557,10 @@ export function createServer(opts: ServerOpts = {}): HpServer {
         }
       }
     }
+    // Closed sessions can never reconnect. Remove their tokens, nicknames and
+    // account links immediately instead of retaining that PII until a later
+    // maintenance sweep; the small room row remains as an operational tombstone.
+    db.deleteSessionsForRoom(room.id);
     rooms.delete(room.code);
     roomsById.delete(room.id);
   }
@@ -1211,6 +1228,25 @@ export function createServer(opts: ServerOpts = {}): HpServer {
     }
   }
 
+  /**
+   * Account erasure already unlinks durable sessions in Db.deleteUserAccount;
+   * mirror that change into live room objects before another match can finish.
+   * Otherwise a deleted user could still be treated as signed in from the
+   * in-memory cache and accrue fresh participant/achievement rows.
+   */
+  function unlinkLiveUserSessions(userId: string): void {
+    const changedRooms = new Set<Room>();
+    for (const session of sessionsByToken.values()) {
+      if (session.userId !== userId) continue;
+      session.userId = null;
+      session.rating = null;
+      session.provisional = false;
+      const room = roomsById.get(session.roomId);
+      if (room && !room.closed) changedRooms.add(room);
+    }
+    for (const room of changedRooms) broadcastRoom(room);
+  }
+
   /** Lowest unoccupied active seat, or null if the room is full. */
   function firstFreeSeat(room: Room): Seat | null {
     for (const seat of activeSeats(room.config.players)) {
@@ -1538,7 +1574,6 @@ export function createServer(opts: ServerOpts = {}): HpServer {
       armIdleTimerIfEmpty(room);
       return;
     }
-    broadcastRoom(room); // connected flag changed
     // Mid-turn disconnect: guarantee a dropped actor a full turn to reconnect
     // before autoplay (reconnectGraceMs) — but ONLY when nothing is already
     // counting down. With autoplay on the present actor already holds a budget
@@ -1562,10 +1597,19 @@ export function createServer(opts: ServerOpts = {}): HpServer {
       const seat = session.seat;
       scheduleTurnExpiry(room, grace, () => onTurnExpired(room, seat));
     }
+    // A playing-room disconnect changes both the public connected flag and,
+    // with autoplay off, possibly the turn deadline. Send one full update so
+    // every table receives the new deadline; a room-only frame cannot carry it.
+    if (room.match && room.status === 'playing') {
+      room.seq += 1;
+      broadcastUpdate(room, null, { includeRoom: true });
+    } else {
+      broadcastRoom(room);
+    }
     armIdleTimerIfEmpty(room);
   }
 
-  function handleMessage(sock: WebSocket, raw: unknown, ctx: { session: Session | null }): void {
+  function handleMessage(sock: WebSocket, raw: unknown, ctx: SocketState): void {
     let parsed: unknown;
     try {
       parsed = JSON.parse(String(raw));
@@ -1608,6 +1652,10 @@ export function createServer(opts: ServerOpts = {}): HpServer {
       }
       handleHello(sock, msg, (s) => {
         ctx.session = s;
+        if (ctx.helloTimer !== null) {
+          clearTimeout(ctx.helloTimer);
+          ctx.helloTimer = null;
+        }
       });
       return;
     }
@@ -1718,6 +1766,20 @@ export function createServer(opts: ServerOpts = {}): HpServer {
   function sendHttpJson(res: http.ServerResponse, status: number, body: unknown): void {
     res.writeHead(status, { 'content-type': 'application/json' });
     res.end(JSON.stringify(body));
+  }
+
+  /** Baseline browser hardening for every HTTP response (static and JSON). */
+  function setHttpSecurityHeaders(res: http.ServerResponse): void {
+    res.setHeader('x-content-type-options', 'nosniff');
+    res.setHeader('x-frame-options', 'DENY');
+    res.setHeader('referrer-policy', 'strict-origin-when-cross-origin');
+    res.setHeader('permissions-policy', 'camera=(), microphone=(), geolocation=()');
+    // Google Identity Services uses a popup; this preserves opener isolation
+    // without breaking that explicitly supported login flow.
+    res.setHeader('cross-origin-opener-policy', 'same-origin-allow-popups');
+    // Dynamic room/auth responses must never be cached by a browser or proxy.
+    // streamFile overrides this with the asset-specific policy below.
+    res.setHeader('cache-control', 'no-store');
   }
 
   /** Read a size-capped JSON request body (POST endpoints only). */
@@ -1915,6 +1977,9 @@ export function createServer(opts: ServerOpts = {}): HpServer {
         picture: identity.picture,
       });
       const rawToken = mintToken();
+      // Keep the token table bounded even during a long-running deployment;
+      // startup also performs the same maintenance pass.
+      db.pruneExpiredTokens(now);
       db.createAuthToken(hashToken(rawToken), user.id, now + AUTH_TOKEN_TTL_MS);
       sendHttpJson(res, 200, { token: rawToken, user: publicUser(user) });
       return;
@@ -2122,6 +2187,7 @@ export function createServer(opts: ServerOpts = {}): HpServer {
         return;
       }
       db.deleteUserAccount(user.id);
+      unlinkLiveUserSessions(user.id);
       res.writeHead(204);
       res.end();
       return;
@@ -2133,6 +2199,7 @@ export function createServer(opts: ServerOpts = {}): HpServer {
   // ── HTTP: healthz + static client (SPA fallback for /r/*) ───────────────────
 
   const httpServer = http.createServer((req, res) => {
+    setHttpSecurityHeaders(res);
     const url = new URL(req.url ?? '/', 'http://localhost');
     if (url.pathname === '/healthz') {
       res.writeHead(200, { 'content-type': 'application/json' });
@@ -2245,16 +2312,43 @@ export function createServer(opts: ServerOpts = {}): HpServer {
   interface SocketState {
     session: Session | null;
     isAlive: boolean;
+    helloTimer: NodeJS.Timeout | null;
+    rateStartedAt: number;
+    rateMessages: number;
   }
   const socketStates = new Map<WebSocket, SocketState>();
 
   wss.on('connection', (sock: WebSocket) => {
-    const ctx: SocketState = { session: null, isAlive: true };
+    const now = Date.now();
+    const ctx: SocketState = {
+      session: null,
+      isAlive: true,
+      helloTimer: null,
+      rateStartedAt: now,
+      rateMessages: 0,
+    };
+    // An upgraded socket that never identifies itself otherwise lives forever:
+    // ws clients auto-pong, so the heartbeat cannot distinguish it from a real
+    // player. Bound the unauthenticated resource lifetime.
+    ctx.helloTimer = setTimeout(() => {
+      ctx.helloTimer = null;
+      if (ctx.session === null) sock.close(1008, 'hello timeout');
+    }, wsHelloTimeoutMs);
     socketStates.set(sock, ctx);
     sock.on('pong', () => {
       ctx.isAlive = true;
     });
     sock.on('message', (data) => {
+      const messageNow = Date.now();
+      if (messageNow - ctx.rateStartedAt >= wsRateLimit.windowMs) {
+        ctx.rateStartedAt = messageNow;
+        ctx.rateMessages = 0;
+      }
+      ctx.rateMessages += 1;
+      if (ctx.rateMessages > wsRateLimit.maxMessages) {
+        sock.close(1008, 'message rate exceeded');
+        return;
+      }
       try {
         handleMessage(sock, data, ctx);
       } catch (err) {
@@ -2263,6 +2357,7 @@ export function createServer(opts: ServerOpts = {}): HpServer {
       }
     });
     sock.on('close', () => {
+      if (ctx.helloTimer !== null) clearTimeout(ctx.helloTimer);
       socketStates.delete(sock);
       if (ctx.session) onSocketClosed(ctx.session, sock);
     });
@@ -2370,7 +2465,10 @@ export function createServer(opts: ServerOpts = {}): HpServer {
     }
   }
 
-  db.pruneOldEvents(Date.now() - EVENT_RETENTION_MS);
+  const bootNow = Date.now();
+  db.pruneOldEvents(bootNow - EVENT_RETENTION_MS);
+  db.pruneExpiredTokens(bootNow);
+  db.pruneInactiveRooms(bootNow - INACTIVE_ROOM_RETENTION_MS);
   // One-time achievement backfill from rated history (guarded by a meta marker).
   try {
     backfillAchievementsOnce(db);

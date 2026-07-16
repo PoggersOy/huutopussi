@@ -21,7 +21,7 @@ and **"what happens when a player acts."**
         │   ▼
    ┌────────────────────────────────────────────────────────────┐
    │  server (Node ws)  — AUTHORITATIVE                          │
-   │  rooms · sessions · timers · bot runner · SQLite            │
+│  rooms · sessions · auth/Elo · achievements · timers · SQLite│
    │                                                            │
    │   validateAction ─► [GameEvent…] ─► applyEvent ─► MatchState│
    │        (engine)          │             (engine)             │
@@ -110,6 +110,12 @@ follow (× tricks) → scored`. Declarations happen only in the `lead` phase
 | --- | --- |
 | `index.ts` | **FROZEN.** `PROTOCOL_VERSION`, `clientMsgSchema` (untrusted inbound → zod-parsed), server→client `ServerMsg` types (trusted, types only), `configPatchSchema` (host-editable rules), `TableSettings`. Contains **compile-time drift guards** asserting the schemas stay in sync with the engine's `PlayerAction`/`RuleConfig` — if you change the engine contract and forget the protocol, typecheck fails here. |
 
+### `packages/achievements` — pure achievements and titles
+
+Depends only on the engine. The catalogue, predicates, counter progress and
+rating/prestige title selection are pure and shared by the authoritative server
+evaluation and the client presentation. It performs no I/O and owns no clock.
+
 ### `packages/bots` — actors + fuzz harness
 
 | File | Responsibility |
@@ -129,8 +135,14 @@ follow (× tricks) → scored`. Declarations happen only in the `lead` phase
 | `sessions.ts` | Sessions keyed by uuid token, bound to `(room, seat, nickname)`. Last-connect-wins rebinding. Per-session actionId LRU for idempotent replay. |
 | `timers.ts` | Turn deadlines, disconnect grace, autoplay policy, idle-room reaper. Host-editable turn timeout (separate from `RuleConfig`). |
 | `botRunner.ts` | Bot actor selection + turn computation; submits through the same action pipeline as WS messages. |
-| `db.ts` | `better-sqlite3` (WAL) persistence: `rooms`, `sessions`, `matches`, `deals`, `deal_events`. Events appended in the action transaction → boot-time crash recovery replays unfinished matches. |
+| `auth.ts` / `elo.ts` | Google ID-token verification, opaque app tokens, and pure Elo costing for 2/3/4-player games. |
+| `achievements.ts` | Match-end achievement evaluation and idempotent historical backfill using the pure catalogue. |
+| `db.ts` | `better-sqlite3` (WAL) persistence for rooms, sessions, matches, auth/Elo and achievements. Events appended in the action transaction → boot-time crash recovery replays unfinished matches; expired tokens/events/inactive rooms are pruned. |
 | `index.ts` | Entry script (env: `PORT`, `DB_PATH`, `CLIENT_DIST`) + module exports for tests. |
+
+New WebSockets must identify with `hello` within 10 seconds and each socket has
+an inbound message flood cap. HTTP responses carry no-sniff/frame/referrer/
+permissions/COOP hardening headers; dynamic JSON is `no-store`.
 
 ### `packages/client` — React PWA
 
@@ -142,6 +154,7 @@ comes **only** from `ActionHint`s.
 | --- | --- |
 | Entry / routing | `App.tsx`, `main.tsx`, `screens/Room.tsx` (routes `/`, `/r/:code`; Lobby vs Table by room status) |
 | Network / state | `socket.ts` (typed WS client: backoff reconnect, per-room session tokens, uuid actionIds, wake-resync, ping), `api.ts` (stateless HTTP probes outside the WS protocol — e.g. `GET /api/rooms` for the History screen's open-games list), `store.ts` (two slices) |
+| Account | `auth.ts`, `screens/Profile.tsx`, `components/{AuthPanel,AchievementsPanel,TitleSelector}.tsx` |
 | Screens | `screens/{Home,Lobby,Table,History}.tsx` |
 | Table internals | `screens/table/{TableSheets,TableOverlays,tableUtils,talonMemory}.ts(x)` — hint-driven bottom sheets, score/end overlays, 2-3p talon-reveal memory |
 | Components | `components/{CardFace,ConnectionPill,ConnectionBanner,MatchList,Toasts}.tsx` |

@@ -52,3 +52,29 @@ test('takeSeat / leaveSeat re-welcome the actor so their client learns its seat'
   host.close();
   guest.close();
 });
+
+test('a disconnected host temporarily yields lobby powers to a connected player', async () => {
+  const host = await TestClient.connect(port);
+  await host.hello({ nickname: 'host' });
+  const guest = await TestClient.connect(port);
+  await guest.hello({ roomCode: host.roomCode, nickname: 'guest' });
+
+  const transferred = guest.next(
+    (m) => m.t === 'room' && m.room.hostSeat === 1 && m.room.seats[0]?.connected === false,
+    5_000,
+    'host transfer',
+  );
+  host.close();
+  await transferred;
+
+  // The temporary host can keep the lobby operable instead of waiting forever
+  // for the creator's browser to return.
+  const botAdded = guest.next(
+    (m) => m.t === 'room' && m.room.seats[2]?.kind === 'bot',
+    5_000,
+    'temporary host command',
+  );
+  guest.lobby({ type: 'addBot', seat: 2 });
+  await botAdded;
+  guest.close();
+});

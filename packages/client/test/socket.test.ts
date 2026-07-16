@@ -149,4 +149,20 @@ describe('reconnect vs terminal close', () => {
     disconnect();
     expect(useStore.getState().server.room).toBeNull();
   });
+
+  it('ignores a frame already queued by the socket after disconnect()', () => {
+    connect('ABCDE');
+    const sock = MockWebSocket.instances.at(-1);
+    if (!sock) throw new Error('no socket opened');
+    sock.fireOpen();
+
+    disconnect();
+    // A browser is allowed to deliver networking tasks that were queued before
+    // close(). The departed socket must no longer be able to repopulate state.
+    sock.onmessage?.({
+      data: JSON.stringify({ t: 'room', seq: 99, room: { code: 'ABCDE' } }),
+    });
+    expect(useStore.getState().server.room).toBeNull();
+    expect(useStore.getState().server.seq).toBe(0);
+  });
 });

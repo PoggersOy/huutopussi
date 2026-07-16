@@ -146,3 +146,26 @@ test('a full room refuses further guests with error.roomFull', async () => {
   overflow.close();
   for (const g of guests) g.close();
 });
+
+test('unidentified and message-flooding WebSockets are closed', async () => {
+  await server.close();
+  server = createServer({
+    port: 0,
+    dbPath: ':memory:',
+    heartbeatMs: null,
+    wsHelloTimeoutMs: 30,
+    wsRateLimit: { windowMs: 60_000, maxMessages: 3 },
+  });
+  port = await server.listen();
+
+  const unidentified = await TestClient.connect(port);
+  expect(await unidentified.waitClose(2_000, 'hello timeout')).toBe(1008);
+
+  const flood = await TestClient.connect(port);
+  const welcome = await flood.hello({ nickname: 'flood' });
+  expect(welcome.t).toBe('welcome'); // hello consumed one message from the cap
+  flood.send({ t: 'ping' });
+  flood.send({ t: 'ping' });
+  flood.send({ t: 'ping' });
+  expect(await flood.waitClose(2_000, 'message rate close')).toBe(1008);
+});

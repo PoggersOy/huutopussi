@@ -8,8 +8,9 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { Seat } from '@hp/engine';
+import { DEFAULT_RULES, type Seat } from '@hp/engine';
 import { expect, test } from 'vitest';
+import { Db } from '../src/db.js';
 import { createServer, type HpServer } from '../src/index.js';
 import { attachDriver, sleep, TestClient, waitForDealScored } from './helpers.js';
 
@@ -150,6 +151,10 @@ test('room with zero connected humans is abandoned and closed after idle timeout
       | { status: string }
       | undefined;
     expect(roomRow?.status).toBe('closed');
+    const sessionRows = server.db.raw
+      .prepare('SELECT COUNT(*) AS n FROM sessions WHERE room_id = ?')
+      .get(room.id) as { n: number };
+    expect(sessionRows.n).toBe(0);
 
     // The closed room is gone: the old token cannot resume it.
     const late = await TestClient.connect(port);
@@ -162,3 +167,38 @@ test('room with zero connected humans is abandoned and closed after idle timeout
     rmSync(dir, { recursive: true, force: true });
   }
 }, 60_000);
+
+test('maintenance prunes old inactive rooms but preserves recoverable playing rooms', () => {
+  const db = new Db(':memory:');
+  const settings = { autoplay: true, turnTimeoutMs: 90_000 };
+  db.createRoom({
+    id: 'old',
+    code: 'AAAAA',
+    hostToken: null,
+    config: DEFAULT_RULES,
+    tableSettings: settings,
+  });
+  db.saveSession({
+    token: 'old-token',
+    roomId: 'old',
+    seat: 0,
+    nickname: 'Old name',
+    kind: 'human',
+    userId: null,
+  });
+  db.setRoomStatus('old', 'closed');
+  db.createRoom({
+    id: 'active',
+    code: 'BBBBB',
+    hostToken: null,
+    config: DEFAULT_RULES,
+    tableSettings: settings,
+  });
+  db.setRoomStatus('active', 'playing');
+  db.raw.prepare('UPDATE rooms SET updated_at = 1').run();
+
+  expect(db.pruneInactiveRooms(2)).toEqual({ rooms: 1, sessions: 1 });
+  expect(db.raw.prepare('SELECT id FROM rooms ORDER BY id').all()).toEqual([{ id: 'active' }]);
+  expect(db.raw.prepare('SELECT token FROM sessions').all()).toEqual([]);
+  db.close();
+});

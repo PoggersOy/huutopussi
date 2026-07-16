@@ -30,7 +30,7 @@ handling.
 
 **Endpoints** (raw `node:http` in `server.ts`, dispatched before the non-GET 405
 guard): `GET /api/auth-config`, `POST /auth/google`, `GET /auth/me`,
-`POST /auth/logout`, `GET /api/profile`. A small per-IP token bucket rate-limits
+`POST /auth/logout`, `GET /api/profile`. A small per-IP fixed-window limiter protects
 them; bodies are size-capped at 16 KB.
 
 ## Elo model (`packages/server/src/elo.ts`, pure + unit-tested)

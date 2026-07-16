@@ -26,10 +26,6 @@
 # (`--legacy` is required by pnpm 10 because this workspace does not use
 # injected workspace packages.)
 #
-# NOTE for the integration phase: `esbuild` is declared as a root devDependency
-# in package.json but `pnpm install` has NOT been run yet — run it once to
-# update pnpm-lock.yaml, or the deps stage below will fail on --frozen-lockfile.
-#
 # Runtime contract the server implements (see fly.toml):
 #   PORT=8080          HTTP+WS listen port
 #   DB_PATH=/data/hp.db  SQLite database file (Fly volume mounted at /data)
@@ -46,9 +42,9 @@ ENV CI=true
 RUN corepack enable
 WORKDIR /repo
 
-# ── deps: lockfile-cached package store (only invalidated by lockfile edits) ─
+# ── deps: dependency metadata-cached package store ───────────────────────────
 FROM base AS deps
-COPY pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 # pnpm fetch populates the store from the lockfile alone — maximal cache reuse.
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     pnpm fetch

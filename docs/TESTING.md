@@ -22,6 +22,7 @@ pnpm test:e2e                         # Playwright (iPhone-14 viewport)
 | --- | --- | --- |
 | **Engine unit** | `packages/engine/test/` (11 suites) | rules, scoring, legality, declarations, redaction, per-mode/talon behavior, bidding, regressions |
 | **Engine property/fuzz** | `packages/bots/src/sim.ts` (`pnpm sim`) | invariants over whole random games; a legality oracle cross-check |
+| **Achievements** | `packages/achievements/test/` | pure predicates, counters, title tiers |
 | **Bots** | `packages/bots/test/` | heuristic strategy |
 | **Server** | `packages/server/test/` | integration (scripted full deal over WS), chaos (drops/dup actions), hidden-info scan, reconnect, persistence/recovery, autoplay, modes |
 | **Client** | `packages/client/test/` | store, socket, screens, i18n key parity, CardFace |

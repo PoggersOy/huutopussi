@@ -4,17 +4,31 @@ Plan: `docs/plan.md`. Rules: `docs/huutopussin-saannot.md`.
 
 | Phase | Status | Verified by |
 |---|---|---|
-| P0 Scaffolding | done | pnpm workspaces build; `pnpm typecheck`/`pnpm lint` green across 5 packages |
-| P1 Engine: deal/bid/exchange/scoring | done | engine vitest suite (part of 319 engine tests); 5000-game sim clean |
-| P2 Engine: tricks/declarations/fuzz | done | 319 engine tests + 50k-game fuzz gate (earlier) + 5000-game sim (seed 31337, mixed) — 36,306 deals, zero invariant violations |
-| P3 Server | done | 19 server tests (integration/chaos/hidden-info/persistence/reconnect/modes) green |
-| P4 Client MVP | done | 49 client vitest tests; `pnpm --filter @hp/client build` (Vite+PWA) green |
+| P0 Scaffolding | done | pnpm workspaces build; `pnpm typecheck`/`pnpm lint` green across 6 packages |
+| P1 Engine: deal/bid/exchange/scoring | done | engine vitest suite (321 engine tests); 5000-game sim clean |
+| P2 Engine: tricks/declarations/fuzz | done | 321 engine tests + 50k-game fuzz gate (earlier) + 5000-game sim (seed 31337, mixed) — 36,306 deals, zero invariant violations |
+| P3 Server | done | 19 server test files / 111 tests (integration/chaos/privacy/persistence/reconnect/modes) green |
+| P4 Client MVP | done | 120 client tests; `pnpm --filter @hp/client build` (Vite+PWA) green |
 | P5 Reconnect + PWA + i18n | done | client reconnect/PWA covered by e2e reconnect+pwa specs; i18n fi+en suite green |
-| P6 Persistence + deploy | done | persistence+recovery server tests; `docker build` → 267 MB image serving healthz/SPA/WS |
-| E2E (Playwright, chromium/iPhone-14) | done | 5 specs green (full-game, two-humans, reconnect, pwa×2) — 3.9 min/run |
-| P7 Polish | pending | — |
+| P6 Persistence + deploy | done | persistence+recovery server tests; `docker build` → 266 MiB image serving healthz/SPA/WS |
+| E2E (Playwright, chromium/iPhone-14) | done | 5 specs green (full-game, two-humans, reconnect, pwa×2) — latest local run 1.5 min |
+| P7 Polish | done | production-readiness audit; 588 tests + full unit/sim/build/Docker/E2E gate |
 
 ## Log
+
+- 2026-07-16: **Production-readiness audit completed.** Fixed GDPR erasure for
+  casual/bot match rosters and detached erased users from live sessions; pruned
+  expired auth tokens, closed-room sessions and inactive rooms; made a connected
+  guest temporary host when the recorded host is offline; synchronized the
+  disconnect grace deadline; rejected stale client WebSocket frames; added
+  WebSocket hello timeouts and fixed-window flood protection; and added baseline
+  HTTP security headers. Production sourcemaps are disabled, CI/deploy actions
+  are commit-SHA pinned, and Docker now uses the repository-pinned pnpm version
+  in every build stage. Added regression coverage for every changed behavior.
+  Final gate: typecheck + lint clean, **588 tests** green, 500-game seed-42 sim
+  clean (5,665 deals / 223,448 actions / 297,047 events), client+server builds
+  green, OSV production-dependency scan clean (77 packages / 0 findings), Docker
+  image starts and serves `/healthz`/SPA with no sourcemaps, Playwright 5/5.
 
 - 2026-07-10: Repo initialized. Frozen engine contracts written by architect:
   `packages/engine/src/{types,config,deck}.ts`. Workflow WF-1 (scaffold + engine
@@ -158,10 +172,10 @@ Plan: `docs/plan.md`. Rules: `docs/huutopussin-saannot.md`.
      (edges fine); consider spreading the fan or a tap-to-front affordance.
   3. `--text-dim` over the brightest point of the felt gradient is ~4:1 (below
      WCAG AA 4.5 for small text); darken the dim token or the gradient center.
-  4. `rooms`/`sessions` SQLite rows are never pruned (only `deal_events` age out)
-     — slow disk growth over months; add a closed-room reaper.
-  5. Mid-turn-disconnect grace extension isn't broadcast, so other clients' turn
-     countdown drifts until the next update (cosmetic timer skew).
+  4. ~~`rooms`/`sessions` SQLite rows are never pruned.~~ Fixed 2026-07-16:
+     closed-session PII is removed immediately and old inactive rooms are pruned.
+  5. ~~Mid-turn-disconnect grace extension isn't broadcast.~~ Fixed 2026-07-16:
+     disconnects now send one full update carrying the authoritative deadline.
   6. Erlangen bluff half-ask (`askHalfMustHoldCard=false`, not in any default
      preset) can award marriage points for a marriage the side doesn't hold —
      revisit if/when an Erlangen preset ships.
@@ -266,12 +280,4 @@ Plan: `docs/plan.md`. Rules: `docs/huutopussin-saannot.md`.
 
 ## Backlog (post-MVP)
 
-- **illisoft ruleset preset**: the user's old Huutopussi.exe (2002) help file
-  documents ~10 rule deltas (last trick 20, minBid 60, maxBid 420 instant win,
-  no forced opening → contract-less deals, 4-card exchange, anyWonTrick,
-  first-trick ace/spade + ace-must-show, negative-score bid ban with reopen,
-  opponent rounding to 5, trickless-opponents lose un-raised bid, >500 win with
-  declarer tiebreak, four-6s redeal, pair-wide half-ask lockout). Several need
-  new RuleConfig fields. Source: memory `illisoft-hlp-ruleset`.
-- 3-player pirunpakka form; 2-player variants (rules doc §6–8).
 - Erlangen variant preset (rules doc §9).
