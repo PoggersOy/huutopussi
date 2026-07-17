@@ -49,6 +49,7 @@
     "rulesLink": "How to play",
     "privacyLink": "Privacy",
     "install": "Install the app",
+    "builtBy": "Built by:",
     "prefs": {
       "sound": "Sound",
       "haptics": "Vibration"

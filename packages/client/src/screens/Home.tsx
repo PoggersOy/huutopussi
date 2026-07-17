@@ -434,6 +434,16 @@ export function Home() {
         </button>
       </main>
 
+      <p
+        className="dim"
+        style={{ margin: 0, padding: '0 var(--space-4) var(--space-2)', textAlign: 'center' }}
+      >
+        {t('home.builtBy')}{' '}
+        <a className="link" href="https://poggers.fi" target="_blank" rel="noopener">
+          Poggers Oy
+        </a>
+      </p>
+
       <footer className="screen__bottom row" style={{ justifyContent: 'space-between' }}>
         <div className="row">
           <span className="dim">{t('home.language')}:</span>

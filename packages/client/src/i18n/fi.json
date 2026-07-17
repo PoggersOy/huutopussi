@@ -49,6 +49,7 @@
     "rulesLink": "Peliohjeet",
     "privacyLink": "Tietosuoja",
     "install": "Asenna sovellus",
+    "builtBy": "Toteutus:",
     "prefs": {
       "sound": "Äänet",
       "haptics": "Värinä"
