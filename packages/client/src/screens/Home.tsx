@@ -436,7 +436,11 @@ export function Home() {
 
       <p
         className="dim"
-        style={{ margin: 0, padding: '0 var(--space-4) var(--space-2)', textAlign: 'center' }}
+        style={{
+          margin: 0,
+          padding: 'var(--space-4) var(--space-4) var(--space-3)',
+          textAlign: 'center',
+        }}
       >
         {t('home.builtBy')}{' '}
         <a className="link" href="https://poggers.fi" target="_blank" rel="noopener">
