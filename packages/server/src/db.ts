@@ -637,6 +637,68 @@ export class Db {
       .run(Date.now(), id);
   }
 
+  /**
+   * Aggregate activity counts for the admin `/stats` endpoint. `sinceMs` is the
+   * start-of-today boundary (epoch ms) the caller computes in the desired
+   * timezone. Every figure is a count only — no nicknames, room codes, or other
+   * PII — so it is as safe to expose as the other aggregate probes.
+   *
+   *  - `gamesToday`: matches that STARTED on/after `sinceMs`, any status (a game
+   *    played today counts whether it finished, is still running, or was left).
+   *  - `registeredPlayersToday` / `guestPlayersToday`: distinct HUMAN players
+   *    seated in a room whose match started today. Signed-in players dedupe by
+   *    account (a user in two games counts once); guests have no cross-room
+   *    identity, so they can only dedupe by session (one seat in one room).
+   *  - `uniquePlayersToday`: the two above summed (registered ∪ guest).
+   *  - `registeredUsersTotal`: all accounts ever created.
+   */
+  adminStats(sinceMs: number): {
+    gamesToday: number;
+    uniquePlayersToday: number;
+    registeredPlayersToday: number;
+    guestPlayersToday: number;
+    registeredUsersTotal: number;
+  } {
+    const gamesToday = (
+      this.raw.prepare('SELECT COUNT(*) AS n FROM matches WHERE started_at >= ?').get(sinceMs) as {
+        n: number;
+      }
+    ).n;
+
+    // Human players seated in a room that hosted a match started today, and who
+    // were themselves active today — the `updated_at` guard drops stale sessions
+    // lingering in a room reused across days. GROUP BY token collapses the
+    // duplicate rows a room with several matches today would otherwise produce.
+    const players = this.raw
+      .prepare(
+        `SELECT s.user_id AS userId
+           FROM sessions s
+           JOIN matches m ON m.room_id = s.room_id
+          WHERE s.kind = 'human' AND s.seat IS NOT NULL
+            AND m.started_at >= ? AND s.updated_at >= ?
+          GROUP BY s.token`,
+      )
+      .all(sinceMs, sinceMs) as Array<{ userId: string | null }>;
+    const registered = new Set<string>();
+    let guestPlayersToday = 0;
+    for (const p of players) {
+      if (p.userId !== null) registered.add(p.userId);
+      else guestPlayersToday += 1;
+    }
+
+    const registeredUsersTotal = (
+      this.raw.prepare('SELECT COUNT(*) AS n FROM users').get() as { n: number }
+    ).n;
+
+    return {
+      gamesToday,
+      uniquePlayersToday: registered.size + guestPlayersToday,
+      registeredPlayersToday: registered.size,
+      guestPlayersToday,
+      registeredUsersTotal,
+    };
+  }
+
   matchSummaries(roomId: string): MatchSummary[] {
     const rows = this.raw
       .prepare(

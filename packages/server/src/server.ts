@@ -229,6 +229,45 @@ const MIME: Record<string, string> = {
 };
 
 /**
+ * Epoch-ms of the most recent midnight in `timeZone`, derived from `nowMs`.
+ * Reads the wall-clock time-of-day in that zone (via Intl, so DST is handled
+ * for free) and subtracts it from `nowMs` — no offset table needed.
+ */
+function startOfDayMs(nowMs: number, timeZone: string): number {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hourCycle: 'h23',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).formatToParts(new Date(nowMs));
+  const field = (type: string): number => Number(parts.find((p) => p.type === type)?.value ?? 0);
+  const msIntoDay =
+    ((field('hour') * 60 + field('minute')) * 60 + field('second')) * 1000 + (nowMs % 1000);
+  return nowMs - msIntoDay;
+}
+
+/**
+ * The client-side routes React Router knows how to render (mirror of
+ * client/src/App.tsx). A known route falls back to the SPA shell with a 200;
+ * an unknown one still serves the shell — so the client shows its NotFound
+ * screen — but with a 404 status. If this drifts from App.tsx the only cost is
+ * a real route reporting 404 while still rendering; functionality is unaffected.
+ */
+function isKnownAppRoute(pathname: string): boolean {
+  return (
+    pathname === '/' ||
+    pathname === '/history' ||
+    pathname === '/rules' ||
+    pathname === '/privacy' ||
+    pathname === '/profile' ||
+    pathname === '/learn' ||
+    pathname.startsWith('/r/') ||
+    pathname.startsWith('/learn/')
+  );
+}
+
+/**
  * `Cache-Control` for a static asset. Critical for PWA update propagation: if
  * the origin sends no header, the CDN (Cloudflare) invents `max-age=14400`,
  * which pins a *stale service worker* for 4h so new deploys are never even
@@ -1727,18 +1766,20 @@ export function createServer(opts: ServerOpts = {}): HpServer {
         streamFile(filePath, res);
         return;
       }
-      // SPA fallback: root, room links (/r/CODE) and app screens serve index.html.
-      if (
-        pathname === '/' ||
-        pathname.startsWith('/r/') ||
-        pathname === '/profile' ||
-        pathname === '/history' ||
-        pathname === '/rules' ||
-        pathname === '/privacy' ||
-        pathname === '/learn' ||
-        pathname.startsWith('/learn/')
-      ) {
-        streamFile(join(dir, 'index.html'), res);
+      const indexHtml = join(dir, 'index.html');
+      // SPA fallback: root, room links (/r/CODE) and app screens serve index.html
+      // with a 200 — these are real routes the React router renders.
+      if (isKnownAppRoute(pathname)) {
+        streamFile(indexHtml, res);
+        return;
+      }
+      // Any OTHER extension-less path is an app route that doesn't exist: still
+      // serve the SPA shell (so the client renders its localized NotFound
+      // screen) but with a 404 status, so crawlers and probes see the truth.
+      // Missing paths that look like a file (they have an extension) stay a
+      // plain 404 — a bad asset URL should not masquerade as the app.
+      if (extname(pathname) === '') {
+        streamFile(indexHtml, res, 404);
         return;
       }
       res.writeHead(404, { 'content-type': 'text/plain' });
@@ -1746,14 +1787,14 @@ export function createServer(opts: ServerOpts = {}): HpServer {
     });
   }
 
-  function streamFile(filePath: string, res: http.ServerResponse): void {
+  function streamFile(filePath: string, res: http.ServerResponse, status = 200): void {
     fs.readFile(filePath, (err, data) => {
       if (err) {
         res.writeHead(404, { 'content-type': 'text/plain' });
         res.end('not found');
         return;
       }
-      res.writeHead(200, {
+      res.writeHead(status, {
         'content-type': MIME[extname(filePath)] ?? 'application/octet-stream',
         'cache-control': cacheControlFor(filePath),
       });
@@ -2277,6 +2318,20 @@ export function createServer(opts: ServerOpts = {}): HpServer {
       }
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ buckets }));
+      return;
+    }
+    // Admin activity snapshot: games + unique players today, and total sign-ups.
+    // Aggregate counts only (no codes/nicknames), so — like /api/matchmaking —
+    // it needs no auth. "Today" is a full local day in Europe/Helsinki, the
+    // game's home timezone, so the numbers match what an operator there expects.
+    if (url.pathname === '/stats') {
+      const timeZone = 'Europe/Helsinki';
+      const now = Date.now();
+      const since = startOfDayMs(now, timeZone);
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(
+        JSON.stringify({ generatedAt: now, timezone: timeZone, since, ...db.adminStats(since) }),
+      );
       return;
     }
     let pathname: string;

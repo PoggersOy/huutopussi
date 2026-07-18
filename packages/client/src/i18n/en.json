@@ -363,6 +363,12 @@
     "prevDeal": "Previous deal",
     "nextDeal": "Next deal"
   },
+  "notFound": {
+    "title": "Page not found",
+    "heading": "Oops — this page is missing",
+    "text": "The page you're looking for doesn't exist. The link may be old or the address mistyped.",
+    "home": "Back to home"
+  },
   "connection": {
     "connecting": "Connecting…",
     "connected": "Connected",

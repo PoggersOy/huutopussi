@@ -4,6 +4,7 @@ import { Toasts } from './components/Toasts';
 import { History } from './screens/History';
 import { Home } from './screens/Home';
 import { LearnMenu, LearnPlay } from './screens/Learn';
+import { NotFound } from './screens/NotFound';
 import { PrivacyPolicy } from './screens/PrivacyPolicy';
 import { Profile } from './screens/Profile';
 import { Room } from './screens/Room';
@@ -22,6 +23,7 @@ export default function App() {
         <Route path="/rules" element={<Rules />} />
         <Route path="/privacy" element={<PrivacyPolicy />} />
         <Route path="/profile" element={<Profile />} />
+        <Route path="*" element={<NotFound />} />
       </Routes>
       <Toasts />
     </BrowserRouter>

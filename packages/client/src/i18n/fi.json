@@ -363,6 +363,12 @@
     "prevDeal": "Edellinen jako",
     "nextDeal": "Seuraava jako"
   },
+  "notFound": {
+    "title": "Sivua ei löytynyt",
+    "heading": "Hupsis — sivu hukassa",
+    "text": "Etsimääsi sivua ei ole. Ehkä linkki oli vanha tai osoitteessa on kirjoitusvirhe.",
+    "home": "Takaisin etusivulle"
+  },
   "connection": {
     "connecting": "Yhdistetään…",
     "connected": "Yhdistetty",

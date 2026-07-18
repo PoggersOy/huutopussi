@@ -94,6 +94,33 @@ test('an unknown asset is a 404', async () => {
   expect(res.status).toBe(404);
 });
 
+test('an unknown app route serves the SPA shell with a 404 status (client 404 page)', async () => {
+  const res = await fetch(`http://127.0.0.1:${port}/does-not-exist`);
+  expect(res.status).toBe(404);
+  expect(res.headers.get('content-type')).toContain('text/html');
+  expect(await res.text()).toContain('<title>Huutopussi</title>');
+});
+
+test('/stats reports aggregate activity counts as JSON', async () => {
+  const res = await fetch(`http://127.0.0.1:${port}/stats`);
+  expect(res.status).toBe(200);
+  expect(res.headers.get('content-type')).toContain('application/json');
+  const body = (await res.json()) as Record<string, unknown>;
+  expect(body).toMatchObject({
+    gamesToday: 0,
+    uniquePlayersToday: 0,
+    registeredPlayersToday: 0,
+    guestPlayersToday: 0,
+    registeredUsersTotal: 0,
+    timezone: 'Europe/Helsinki',
+  });
+  expect(typeof body.generatedAt).toBe('number');
+  expect(typeof body.since).toBe('number');
+  // Local midnight is at or before now, and within the last 24h + DST slack.
+  expect(body.since as number).toBeLessThanOrEqual(body.generatedAt as number);
+  expect((body.generatedAt as number) - (body.since as number)).toBeLessThan(25 * 60 * 60 * 1000);
+});
+
 // Cache-Control drives PWA update propagation: sw.js and the shell must always
 // revalidate (else the CDN pins a stale service worker), while content-hashed
 // build output is safe to cache forever.
