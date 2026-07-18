@@ -248,6 +248,31 @@ function startOfDayMs(nowMs: number, timeZone: string): number {
 }
 
 /**
+ * Fixed-window per-key limiter shared by the lightweight HTTP probes. Returns
+ * true when `key` has exceeded `max` hits in the current `windowMs`. Expired
+ * buckets are evicted lazily (only once the map grows past a threshold) so it
+ * can't leak memory under IP churn while staying allocation-free on the hot path.
+ */
+function fixedWindowLimited(
+  buckets: Map<string, { count: number; resetAt: number }>,
+  key: string,
+  now: number,
+  windowMs: number,
+  max: number,
+): boolean {
+  const bucket = buckets.get(key);
+  if (!bucket || bucket.resetAt <= now) {
+    if (buckets.size > 5000) {
+      for (const [k, v] of buckets) if (v.resetAt <= now) buckets.delete(k);
+    }
+    buckets.set(key, { count: 1, resetAt: now + windowMs });
+    return false;
+  }
+  bucket.count += 1;
+  return bucket.count > max;
+}
+
+/**
  * The client-side routes React Router knows how to render (mirror of
  * client/src/App.tsx). A known route falls back to the SPA shell with a 200;
  * an unknown one still serves the shell — so the client shows its NotFound
@@ -1897,18 +1922,18 @@ export function createServer(opts: ServerOpts = {}): HpServer {
 
   /** Fixed-window per-IP limiter for the auth endpoints; true = over the cap. */
   function authRateLimited(req: http.IncomingMessage, now: number): boolean {
-    const ip = clientIp(req);
-    const bucket = authRate.get(ip);
-    if (!bucket || bucket.resetAt <= now) {
-      if (authRate.size > 5000) {
-        for (const [k, v] of authRate) if (v.resetAt <= now) authRate.delete(k);
-      }
-      authRate.set(ip, { count: 1, resetAt: now + AUTH_RATE_WINDOW_MS });
-      return false;
-    }
-    bucket.count += 1;
-    return bucket.count > AUTH_RATE_MAX;
+    return fixedWindowLimited(authRate, clientIp(req), now, AUTH_RATE_WINDOW_MS, AUTH_RATE_MAX);
   }
+
+  // Strict per-IP limiter + 1-hour cache for GET /stats. The snapshot only
+  // shifts with real activity, so an hourly recompute is plenty; the cache
+  // keeps even the allowed hits off the db, and the low ceiling blocks floods
+  // (the aggregate is cheap, but nothing should be hammering an admin probe).
+  const statsRate = new Map<string, { count: number; resetAt: number }>();
+  const STATS_RATE_WINDOW_MS = 60_000;
+  const STATS_RATE_MAX = 6; // per IP per minute — far below auth's 30
+  const STATS_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+  let statsCache: { since: number; body: string; computedAt: number } | null = null;
 
   function bearerToken(req: http.IncomingMessage): string | null {
     const h = req.headers.authorization;
@@ -2324,14 +2349,27 @@ export function createServer(opts: ServerOpts = {}): HpServer {
     // Aggregate counts only (no codes/nicknames), so — like /api/matchmaking —
     // it needs no auth. "Today" is a full local day in Europe/Helsinki, the
     // game's home timezone, so the numbers match what an operator there expects.
+    // Strictly rate-limited and cached for an hour (see statsCache above).
     if (url.pathname === '/stats') {
-      const timeZone = 'Europe/Helsinki';
       const now = Date.now();
+      if (fixedWindowLimited(statsRate, clientIp(req), now, STATS_RATE_WINDOW_MS, STATS_RATE_MAX)) {
+        sendHttpJson(res, 429, { error: 'rate_limited' });
+        return;
+      }
+      const timeZone = 'Europe/Helsinki';
       const since = startOfDayMs(now, timeZone);
+      // Recompute only when the cache is empty, expired, or the local day has
+      // rolled over (so a new day's zeros never linger behind a stale entry).
+      if (
+        statsCache === null ||
+        statsCache.since !== since ||
+        now - statsCache.computedAt >= STATS_CACHE_TTL_MS
+      ) {
+        const payload = { generatedAt: now, timezone: timeZone, since, ...db.adminStats(since) };
+        statsCache = { since, body: JSON.stringify(payload), computedAt: now };
+      }
       res.writeHead(200, { 'content-type': 'application/json' });
-      res.end(
-        JSON.stringify({ generatedAt: now, timezone: timeZone, since, ...db.adminStats(since) }),
-      );
+      res.end(statsCache.body);
       return;
     }
     let pathname: string;

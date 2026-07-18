@@ -121,6 +121,40 @@ test('/stats reports aggregate activity counts as JSON', async () => {
   expect((body.generatedAt as number) - (body.since as number)).toBeLessThan(25 * 60 * 60 * 1000);
 });
 
+// A fresh server per test → the per-IP /stats bucket starts empty, so these
+// don't interfere with each other or the shared-server test above.
+test('/stats is strictly rate-limited (429 past the per-minute cap)', async () => {
+  const s = createServer({ port: 0, dbPath: ':memory:', heartbeatMs: null, staticDir: dir });
+  const p = await s.listen();
+  try {
+    const codes: number[] = [];
+    for (let i = 0; i < 9; i++) codes.push((await fetch(`http://127.0.0.1:${p}/stats`)).status);
+    // The cap is 6/min; the first six pass, everything after is refused.
+    expect(codes).toEqual([200, 200, 200, 200, 200, 200, 429, 429, 429]);
+    const refused = await fetch(`http://127.0.0.1:${p}/stats`);
+    expect(await refused.json()).toEqual({ error: 'rate_limited' });
+  } finally {
+    await s.close();
+  }
+});
+
+test('/stats is cached: repeat reads return the same snapshot (no recompute)', async () => {
+  const s = createServer({ port: 0, dbPath: ':memory:', heartbeatMs: null, staticDir: dir });
+  const p = await s.listen();
+  try {
+    const first = (await (await fetch(`http://127.0.0.1:${p}/stats`)).json()) as {
+      generatedAt: number;
+    };
+    const second = (await (await fetch(`http://127.0.0.1:${p}/stats`)).json()) as {
+      generatedAt: number;
+    };
+    // Same generatedAt ⇒ the second read came from the 1h cache, not a re-run.
+    expect(second.generatedAt).toBe(first.generatedAt);
+  } finally {
+    await s.close();
+  }
+});
+
 // Cache-Control drives PWA update propagation: sw.js and the shell must always
 // revalidate (else the CDN pins a stale service worker), while content-hashed
 // build output is safe to cache forever.
