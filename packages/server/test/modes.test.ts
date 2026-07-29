@@ -74,6 +74,20 @@ test('rooms default to the Oletus (ILLISOFT) config; a full patch replaces it', 
   // A partial patch overrides individual fields on top of the current config.
   const raised = await setConfigOk(c, { winTarget: 300 });
   expect(raised.room.config).toEqual({ ...DEFAULT_RULES, winTarget: 300 });
+
+  // Every engine variation that used to be missing from the wire is applied.
+  const varied = await setConfigOk(c, {
+    bidStep: 10,
+    firstBidder: 'dealer',
+    askHalfMustHoldCard: false,
+  });
+  expect(varied.room.config).toEqual({
+    ...DEFAULT_RULES,
+    winTarget: 300,
+    bidStep: 10,
+    firstBidder: 'dealer',
+    askHalfMustHoldCard: false,
+  });
   c.close();
 });
 
@@ -95,6 +109,9 @@ test('cross-field config validation and active-seat bounds', async () => {
   expect(err.code).toBe('error.badConfig');
   // Bid bounds must stay ordered.
   err = await expectLobbyError(c, { type: 'setConfig', patch: { minBid: 200, maxBid: 100 } });
+  expect(err.code).toBe('error.badConfig');
+  // Bid bounds must also remain reachable with a custom increment.
+  err = await expectLobbyError(c, { type: 'setConfig', patch: { bidStep: 7 } });
   expect(err.code).toBe('error.badConfig');
 
   // A rejected patch leaves the room config untouched.

@@ -205,6 +205,8 @@
     "deleteConfirm": "Poista lopullisesti",
     "errName": "Anna sääntömuodolle nimi.",
     "errMinMaxBid": "Alin huuto ei voi olla suurempi kuin ylin huuto.",
+    "errMinBidStep": "Alimman huudon on oltava jaollinen korotusvälillä.",
+    "errMaxBidStep": "Ylimmän huudon on oltava jaollinen korotusvälillä.",
     "errLimit": "Voit tallentaa enintään 10 sääntömuotoa. Poista jokin ensin.",
     "errInvalid": "Tarkista arvot ja yritä uudelleen.",
     "errUnauthorized": "Kirjaudu sisään tallentaaksesi sääntömuotoja.",
@@ -321,7 +323,7 @@
       },
       "scoring": {
         "title": "Pisteet ja voitto",
-        "body": "Jaon lopuksi lasketaan korttipisteet, viimeisen tikin bonus ja julistetut avioliitot. Huutaja onnistuu, jos yltää huutoonsa — muuten hän saa miinusta. Pisteet kertyvät jaosta toiseen, kunnes joku ylittää voittorajan."
+        "body": "Jaon lopuksi lasketaan korttipisteet, viimeisen tikin bonus ja julistetut avioliitot. Huutaja onnistuu, jos yltää huutoonsa — muuten hän saa miinusta. Pisteet kertyvät jaosta toiseen, kunnes joku saavuttaa voittorajan."
       }
     },
     "rankOrder": "Korttien järjestys",

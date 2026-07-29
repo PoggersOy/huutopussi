@@ -16,13 +16,17 @@
  *    (päämuoto: 'seat' & 'bid'; illisoft: 'side' & 'contract').
  *  - Match-end ties follow winTiebreak; an exact tie among crossers with no
  *    applicable declarer tiebreak means another deal is played.
+ *  - The overtake obligation includes overtrumping: when void in the led suit
+ *    after a trump has been played, a higher trump must be played if held.
  *  - A whole-ask is answered from declarable marriages only (suits not yet
  *    declared this deal). 0 or 1 such marriages → truthful auto-answer;
  *    2+ → the partner chooses which suit to reveal.
  *  - Illisoft pins (spec §10): contract-less deals score rounded raw totals
  *    with no penalties; reopened bidding starts clockwise from left of the
- *    dealer; a redeal keeps the same dealer; a 2p läpäri (slam) counts the
- *    full deck's card points regardless of what the dummy/talon held.
+ *    dealer; a redeal keeps the same dealer and may still be demanded at the
+ *    exchangeContract raise decision; a 2p läpäri (slam) counts the full
+ *    deck's card points regardless of what the dummy/talon held; the match
+ *    ends when a side reaches 500 (not only after exceeding it).
  */
 
 export interface RuleConfig {
@@ -100,7 +104,7 @@ export interface RuleConfig {
    */
   bidBanReopen: boolean;
   winTarget: number;
-  /** 'reach': score ≥ winTarget wins. 'exceed' (illisoft): score > winTarget. */
+  /** 'reach': score ≥ winTarget wins. 'exceed': score > winTarget. */
   winCondition: 'exceed' | 'reach';
   /**
    * Several sides crossing winTarget in the same deal: 'declarer' — the
@@ -131,7 +135,7 @@ export interface RuleConfig {
   /**
    * 'firstBidTurn': redeal may only be demanded on a seat's first bidding
    * turn. 'bidAndExchange' (illisoft): additionally during the exchange
-   * phases by the acting seat.
+   * phases by the acting seat, through the exchangeContract raise decision.
    */
   redealWindow: 'firstBidTurn' | 'bidAndExchange';
   /** Asker must hold the announced half (false = Erlangen bluff asks). */
@@ -196,7 +200,7 @@ export const ILLISOFT_RULES: RuleConfig = {
   bidBanThreshold: -1,
   bidBanReopen: true,
   winTarget: 500,
-  winCondition: 'exceed',
+  winCondition: 'reach',
   winTiebreak: 'declarer',
   firstTrickRules: 'aceShow',
   opponentRounding: 'nearest5',

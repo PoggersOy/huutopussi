@@ -7,7 +7,7 @@
  */
 import { ILLISOFT_RULES, type RuleConfig } from '@hp/engine';
 import { describe, expect, it } from 'vitest';
-import { activeConfigId } from '../src/rules';
+import { activeConfigId, ruleConfigError } from '../src/rules';
 
 type Opt = { id: string; name: string; config: RuleConfig };
 const opt = (id: string, name: string, config: RuleConfig): Opt => ({ id, name, config });
@@ -46,5 +46,17 @@ describe('activeConfigId', () => {
   it('returns null for a named config no longer among the options (edited/deleted)', () => {
     const custom: RuleConfig = { ...ILLISOFT_RULES, winTarget: 1000 };
     expect(activeConfigId([DEFAULT_OPT], custom, 'Gone')).toBeNull();
+  });
+});
+
+describe('ruleConfigError', () => {
+  it('requires the bid bounds to align with the selected bid increment', () => {
+    expect(ruleConfigError({ ...ILLISOFT_RULES, bidStep: 10, minBid: 65 })).toBe(
+      'config.errMinBidStep',
+    );
+    expect(ruleConfigError({ ...ILLISOFT_RULES, bidStep: 10, maxBid: 425 })).toBe(
+      'config.errMaxBidStep',
+    );
+    expect(ruleConfigError({ ...ILLISOFT_RULES, bidStep: 10 })).toBeNull();
   });
 });

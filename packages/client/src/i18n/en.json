@@ -205,6 +205,8 @@
     "deleteConfirm": "Delete permanently",
     "errName": "Give the ruleset a name.",
     "errMinMaxBid": "The minimum bid can't be higher than the maximum bid.",
+    "errMinBidStep": "The minimum bid must be divisible by the bid increment.",
+    "errMaxBidStep": "The maximum bid must be divisible by the bid increment.",
     "errLimit": "You can save at most 10 rulesets. Delete one first.",
     "errInvalid": "Check the values and try again.",
     "errUnauthorized": "Sign in to save rulesets.",
@@ -321,7 +323,7 @@
       },
       "scoring": {
         "title": "Scoring & winning",
-        "body": "At the end of a deal you count card points, the last-trick bonus and any declared marriages. The declarer succeeds by reaching their bid — otherwise they take a penalty. Points carry deal to deal until someone passes the win target."
+        "body": "At the end of a deal you count card points, the last-trick bonus and any declared marriages. The declarer succeeds by reaching their bid — otherwise they take a penalty. Points carry deal to deal until someone reaches the win target."
       }
     },
     "rankOrder": "Card ranking",

@@ -79,8 +79,10 @@ take→discard→raise (2–3p).
 Unchanged from the current engine (`docs/plan.md` legalPlays algorithm):
 follow suit; within led suit head the trick if possible (obligation lapses when the
 trick already contains a trump on a non-trump lead); void ⇒ must trump and overtrump
-if possible; else any card. Highest trump wins, else highest led-suit card.
-Trick size = number of active players (2/3/4). Winner leads next.
+if possible; otherwise any held trump must be played. In particular, a player who
+is void in the led suit after somebody has trumped must play a higher trump when
+holding one (user ruling 2026-07-29). Highest trump wins, else highest led-suit
+card. Trick size = number of active players (2/3/4). Winner leads next.
 
 ## 7. Trump declarations (valtin tekeminen)
 
@@ -138,14 +140,15 @@ Card points: A=11, 10=10, K=4, Q=3, J=2; **last trick +20** ⇒ 140 card points/
 
 ## 9. Match end (pelin voittaminen)
 
-- After a deal, a side wins by **exceeding 500** (≥505: "eli saa vähintään 505
-  pistettä").
+- After a deal, a side wins by **reaching 500** (score ≥500). This 2026-07-29
+  product ruling supersedes the source text's stricter ≥505 interpretation;
+  `winCondition: 'exceed'` remains available as a configurable variation.
 - If several sides cross in the same deal: the **declarer's side wins if it is among
   them** ("yksi heistä on jakokierroksen huutaja, hän voittaa pelin"); otherwise the
   **highest total** wins; exact tie among crossers with no declarer ⇒ play another
   deal (pinned).
 
-## 10. Pinned decisions (ohje is silent — decided here, do not change silently)
+## 10. Pinned decisions (do not change silently)
 
 1. All-pass deals: no penalties, everyone scores rounded raw; dealer rotates normally;
    the deal counts toward the match.
@@ -160,6 +163,11 @@ Card points: A=11, 10=10, K=4, Q=3, J=2; **last trick +20** ⇒ 140 card points/
    lockouts above limit it).
 7. 2p slam check: "every trick" means all tricks of the deal won by that player.
 8. Contract raise via `setContract`: amount = bid means "Ohi" (no raise).
+9. The overtake obligation always requires an overtrump when the player is void
+   in the led suit and holds a trump higher than the current highest trump.
+10. `redealWindow: 'bidAndExchange'` remains open through the final
+    `exchangeContract` raise decision; this is the last possible redeal moment.
+11. The default Illisoft game ends at score ≥500, not only after passing 500.
 
 ## 11. RuleConfig extension (contract change — authorized by user 2026-07-10)
 
@@ -185,7 +193,7 @@ redealCondition: 'fourSixes' | 'threeSixesOrNoneAboveJack' | null; // replaces
                                            // redealRule: boolean (4p fourSixes:
                                            // pair's combined hands)
 redealWindow: 'firstBidTurn' | 'bidAndExchange';                   // NEW
-winCondition: 'exceed' | 'reach';          // NEW  (illisoft: 'exceed')
+winCondition: 'exceed' | 'reach';          // NEW  (illisoft product preset: 'reach')
 winTiebreak: 'declarer' | 'higher';        // NEW  (illisoft: 'declarer'; falls back
                                            //  to 'higher' when no declarer exists)
 askLockouts: 'illisoft' | 'basic';         // NEW  (basic = current askedWhole
@@ -208,7 +216,7 @@ Presets:
   minBid 60, bidStep 5, maxBid 420, firstBidder 'leftOfDealer', forcedOpening false,
   allPassOutcome 'contractlessDeal', contractTiming 'afterExchange', exchangeCount 4,
   declareRight 'anyWonTrick', bidBanThreshold −1, bidBanReopen true, winTarget 500,
-  winCondition 'exceed', winTiebreak 'declarer', firstTrickRules 'aceShow',
+  winCondition 'reach', winTiebreak 'declarer', firstTrickRules 'aceShow',
   opponentRounding 'nearest5', declarerPorvooBasis 'contract', declarerPorvooScope
   'side', redealCondition 'fourSixes', redealWindow 'bidAndExchange', askLockouts
   'illisoft', askHalfMustHoldCard true, showLastTrick true.

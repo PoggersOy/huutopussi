@@ -119,6 +119,25 @@ test('a saved config may carry both 2-3p and 4p mode fields (gating deferred to 
   expect(res.status).toBe(200);
 });
 
+test('saved configs preserve every formerly missing engine variation', async () => {
+  const u = makeUser('BidVar');
+  const cfg: RuleConfig = {
+    ...ILLISOFT_RULES,
+    bidStep: 10,
+    firstBidder: 'dealer',
+    askHalfMustHoldCard: false,
+  };
+  const created = await createConfig(u.token, 'Kaikki variaatiot', cfg);
+  expect(created.status).toBe(200);
+  const body = (await created.json()) as { config: { config: RuleConfig } };
+  expect(body.config.config).toEqual(cfg);
+
+  const listed = (await (await listConfigs(u.token)).json()) as {
+    configs: Array<{ config: RuleConfig }>;
+  };
+  expect(listed.configs[0]?.config).toEqual(cfg);
+});
+
 test('invalid bodies are rejected (400): empty name, minBid > maxBid', async () => {
   const u = makeUser('Cy');
   expect((await createConfig(u.token, '   ', DEFAULT_RULES)).status).toBe(400);

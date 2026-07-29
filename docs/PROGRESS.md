@@ -16,6 +16,19 @@ Plan: `docs/plan.md`. Rules: `docs/huutopussin-saannot.md`.
 
 ## Log
 
+- 2026-07-29: **Illisoft rule rulings pinned and every engine variation exposed.**
+  The existing mandatory overtrump behavior was confirmed and documented: when
+  void in the led suit after a trump, a higher trump is compulsory if held. The
+  existing `bidAndExchange` redeal window remains open through the final contract
+  raise. The default Illisoft match now ends at score **≥500** (`winCondition:
+  'reach'`), and the help copy says “reaches” rather than “passes” the target.
+  The saved-rules editor and wire schema now include the three formerly omitted
+  `RuleConfig` fields: `bidStep`, `firstBidder`, and `askHalfMustHoldCard`;
+  a protocol regression test asserts that the schema contains every engine
+  config key. Verification: typecheck + lint clean, **600 tests** green,
+  500-game seed-42 sim clean (5,645 deals / 222,808 actions / 296,124 events),
+  client+server production builds green, Playwright 5/5.
+
 - 2026-07-16: **Production-readiness audit completed.** Fixed GDPR erasure for
   casual/bot match rosters and detached erased users from live sessions; pruned
   expired auth tokens, closed-room sessions and inactive rooms; made a connected

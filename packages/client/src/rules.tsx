@@ -72,6 +72,10 @@ export function activeConfigId(
  *  Returns an i18n error key, or null when the config is valid. */
 export function ruleConfigError(config: RuleConfig): string | null {
   if (config.maxBid !== null && config.minBid > config.maxBid) return 'config.errMinMaxBid';
+  if (config.minBid % config.bidStep !== 0) return 'config.errMinBidStep';
+  if (config.maxBid !== null && config.maxBid % config.bidStep !== 0) {
+    return 'config.errMaxBidStep';
+  }
   return null;
 }
 
@@ -272,6 +276,7 @@ export function RuleSections({ config }: { config: RuleConfig }) {
 // ── Full rule-config editor (profile: build/edit a saved configuration) ───────
 
 const MIN_BID_OPTS = [0, 25, 50, 60, 75, 100, 120, 150, 200];
+const BID_STEP_OPTS = [1, 5, 10, 20, 25];
 const WIN_TARGET_OPTS = [250, 300, 500, 750, 1000];
 const LAST_TRICK_OPTS = [0, 10, 20];
 const EXCHANGE_OPTS = [1, 2, 3, 4, 5, 6];
@@ -385,6 +390,13 @@ export function RuleConfigEditor({
           {numOptions(withCurrent(MIN_BID_OPTS, value.minBid))}
         </SelectRow>
         <SelectRow
+          label={t('rules.bidStep')}
+          value={String(value.bidStep)}
+          onChange={(v) => set({ bidStep: Number(v) })}
+        >
+          {numOptions(withCurrent(BID_STEP_OPTS, value.bidStep))}
+        </SelectRow>
+        <SelectRow
           label={t('rules.maxBid')}
           value={value.maxBid === null ? 'unbounded' : String(value.maxBid)}
           onChange={(v) => set({ maxBid: v === 'unbounded' ? null : Number(v) })}
@@ -393,6 +405,14 @@ export function RuleConfigEditor({
           {numOptions(
             value.maxBid === null ? MAX_BID_OPTS : withCurrent(MAX_BID_OPTS, value.maxBid),
           )}
+        </SelectRow>
+        <SelectRow
+          label={t('rules.firstBidder')}
+          value={value.firstBidder}
+          onChange={(v) => set({ firstBidder: v as 'leftOfDealer' | 'dealer' })}
+        >
+          <option value="leftOfDealer">{t('rules.firstBidderLeftOfDealer')}</option>
+          <option value="dealer">{t('rules.firstBidderDealer')}</option>
         </SelectRow>
         <CheckRow
           label={t('rules.forcedOpening')}
@@ -467,6 +487,11 @@ export function RuleConfigEditor({
           <option value="illisoft">{t('rules.askLockoutsIllisoft')}</option>
           <option value="basic">{t('rules.askLockoutsBasic')}</option>
         </SelectRow>
+        <CheckRow
+          label={`${t('rules.askHalfMustHoldCard')}${modeSuffix('config.modeFourPlayers')}`}
+          checked={value.askHalfMustHoldCard}
+          onChange={(v) => set({ askHalfMustHoldCard: v })}
+        />
       </section>
 
       <section className="stack rules-group">

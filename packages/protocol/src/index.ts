@@ -165,7 +165,9 @@ export const configPatchSchema = z
     lastTrickBonus: z.number().int().min(0).max(50),
     trumpValues: z.enum(['heartsHigh', 'bridge']),
     minBid: z.number().int().min(0).max(200).multipleOf(5),
+    bidStep: z.number().int().min(1).max(100),
     maxBid: z.number().int().min(5).max(1000).multipleOf(5).nullable(),
+    firstBidder: z.enum(['leftOfDealer', 'dealer']),
     forcedOpening: z.boolean(),
     allPassOutcome: z.enum(['forceLastSeat', 'contractlessDeal']),
     contractTiming: z.enum(['beforeReturn', 'afterExchange']),
@@ -183,6 +185,7 @@ export const configPatchSchema = z
     declarerPorvooScope: z.enum(['seat', 'side']),
     redealCondition: z.enum(['fourSixes', 'threeSixesOrNoneAboveJack']).nullable(),
     redealWindow: z.enum(['firstBidTurn', 'bidAndExchange']),
+    askHalfMustHoldCard: z.boolean(),
     showLastTrick: z.boolean(),
   })
   .partial();

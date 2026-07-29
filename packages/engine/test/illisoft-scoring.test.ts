@@ -4,7 +4,7 @@
  *
  * scoreDeal under ILLISOFT_RULES (cardPoints 'A', lastTrickBonus 20 → 140/deal,
  * opponentRounding 'nearest5', declarerPorvooScope 'side', declarerPorvooBasis
- * 'contract', winCondition 'exceed', winTiebreak 'declarer', firstTrickRules
+ * 'contract', winCondition 'reach', winTiebreak 'declarer', firstTrickRules
  * 'aceShow', askLockouts 'illisoft'):
  *  - last-trick bonus 20; every non-declarer side's rawTotal rounded to the
  *    nearest 5 (roundedTotal + scoreDelta);
@@ -16,7 +16,7 @@
  *  - a 2p läpäri (all tricks) scores a notional 140 + own marriages, ignoring
  *    the captured piles and NOT double-counting the discards;
  *  - a contract-less deal scores every side its rounded raw with no penalties;
- *  - the match is won by EXCEEDING winTarget (an exact landing does not win),
+ *  - the match is won by REACHING winTarget (an exact landing wins),
  *    the declarer's side takes a multi-cross tie, a declarer-less deal falls
  *    back to the higher total, and an exact top tie plays on.
  *
@@ -522,7 +522,7 @@ function playLast(built: { state: MatchState; lastSeat: Seat; lastCard: Card }):
   return { events: res, state };
 }
 
-describe('match end — winCondition exceed', () => {
+describe('match end — winCondition reach', () => {
   // Declarer side 0 makes contract 60 (+60); opponents collect rounded raw 35.
   const madeDeal = (scores: [number, number]): FinalTrickOpts => ({
     scores,
@@ -533,18 +533,26 @@ describe('match end — winCondition exceed', () => {
     leader: 0,
   });
 
-  it('does NOT win on an exact landing (500 is not > 500)', () => {
+  it('wins on an exact landing (500 >= 500)', () => {
     const { events, state } = playLast(finalTrick4p(madeDeal([440, 0])));
     expect(state.scores).toEqual([500, 35]);
-    expect(state.winnerSide).toBeNull();
-    expect(events.some((e) => e.type === 'matchEnded')).toBe(false);
+    expect(state.winnerSide).toBe(0);
+    expect(events.at(-1)).toEqual({ type: 'matchEnded', winnerSide: 0 });
   });
 
-  it('wins by exceeding winTarget (505 > 500)', () => {
+  it('still wins above winTarget (505 > 500)', () => {
     const { events, state } = playLast(finalTrick4p(madeDeal([445, 0])));
     expect(state.scores).toEqual([505, 35]);
     expect(state.winnerSide).toBe(0);
     expect(events.at(-1)).toEqual({ type: 'matchEnded', winnerSide: 0 });
+  });
+
+  it('keeps strict exceed available as a configurable variation', () => {
+    const config: RuleConfig = { ...ILLISOFT_RULES, winCondition: 'exceed' };
+    const { events, state } = playLast(finalTrick4p({ ...madeDeal([440, 0]), config }));
+    expect(state.scores).toEqual([500, 35]);
+    expect(state.winnerSide).toBeNull();
+    expect(events.some((e) => e.type === 'matchEnded')).toBe(false);
   });
 });
 
