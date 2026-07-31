@@ -22,7 +22,7 @@ jobs:
     # Running in a job container fixes both: inside node:24 the only npm on PATH
     # is the image's, so the self-installer works, and the job gets a throwaway
     # filesystem instead of the production host's.
-    runs-on: [self-hosted, prod-docker-01]
+    runs-on: [self-hosted, Linux, X64, poggersoy-shared]
     container: node:24
     # Self-hosted runners are the production box. This workflow also triggers on
     # pull_request, and without this a fork PR would execute repo code there.
@@ -73,8 +73,8 @@ jobs:
   e2e:
     name: e2e (Playwright / chromium)
     # Kept on GitHub-hosted: the real-time gameplay suite is timing-sensitive and
-    # times out under the load of the shared self-hosted box (ci + deploy run
-    # self-hosted; e2e stays here where it's fast and reliable).
+    # times out under the load of the shared PoggersOy runner (ci + deploy run
+    # there; e2e stays here where it's fast and reliable).
     #
     # While hosted runners cannot start, this is a SKIP rather than a red run —
     # a permanently red CI is one nobody reads, and Deploy gates on this

@@ -16,7 +16,7 @@ concurrency:
 jobs:
   deploy:
     name: Deploy to Fly.io
-    runs-on: [self-hosted, prod-docker-01]
+    runs-on: [self-hosted, Linux, X64, poggersoy-shared]
     timeout-minutes: 20
     if: github.event.workflow_run.conclusion == 'success'
     steps:
