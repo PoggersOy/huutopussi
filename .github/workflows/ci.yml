@@ -12,9 +12,24 @@ concurrency:
 jobs:
   ci:
     name: typecheck / lint / test / sim
-    # GitHub-hosted: the self-hosted runner's bundled npm breaks pnpm/action-setup
-    # ("self-installer exits with code 1"). e2e already runs here; keep both hosted.
-    runs-on: ubuntu-latest
+    # Was GitHub-hosted because the self-hosted runner's bundled npm breaks
+    # pnpm/action-setup ("self-installer exits with code 1"). That is still true
+    # on the bare host — but hosted runners have not started at all since
+    # 2026-07-30 (billed minutes on a private repo; the job gets no runner and
+    # runs 0 steps), and Deploy gates on this workflow succeeding, so main has
+    # not reached Fly.io since 07-18.
+    #
+    # Running in a job container fixes both: inside node:24 the only npm on PATH
+    # is the image's, so the self-installer works, and the job gets a throwaway
+    # filesystem instead of the production host's.
+    runs-on: [self-hosted, prod-docker-01]
+    container: node:24
+    # Self-hosted runners are the production box. This workflow also triggers on
+    # pull_request, and without this a fork PR would execute repo code there.
+    # Same-repo PRs are fine — pushing a branch already needs write access.
+    if: >-
+      github.event_name == 'push'
+      || github.event.pull_request.head.repo.full_name == github.repository
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
@@ -47,7 +62,14 @@ jobs:
     # Kept on GitHub-hosted: the real-time gameplay suite is timing-sensitive and
     # times out under the load of the shared self-hosted box (ci + deploy run
     # self-hosted; e2e stays here where it's fast and reliable).
+    #
+    # While hosted runners cannot start, this is a SKIP rather than a red run —
+    # a permanently red CI is one nobody reads, and Deploy gates on this
+    # workflow's conclusion, which a skipped job does not spoil. Set
+    # HOSTED_RUNNERS_AVAILABLE=true in repo variables when billing is back and
+    # the gate returns with no code change.
     runs-on: ubuntu-latest
+    if: vars.HOSTED_RUNNERS_AVAILABLE == 'true'
     timeout-minutes: 40
     needs: ci
     steps:
