@@ -62,7 +62,13 @@ jobs:
       # cannot clean the workspace and the run dies with EACCES before it starts.
       - name: Return the workspace to the runner user
         if: always()
-        run: chown -R 1001:1001 "$GITHUB_WORKSPACE" "$RUNNER_TEMP" || true
+        run: |
+          # /__w is the runner's whole _work tree as mounted into the container.
+          # Chowning only $GITHUB_WORKSPACE left pnpm's content-addressable store
+          # (_work/.pnpm-store, ~1000 root-owned paths per run) behind, which a
+          # later non-container job running as uid 1001 could not write to.
+          chown -R 1001:1001 /__w 2>/dev/null || true
+          chown -R 1001:1001 "$GITHUB_WORKSPACE" "$RUNNER_TEMP" 2>/dev/null || true
 
   e2e:
     name: e2e (Playwright / chromium)
