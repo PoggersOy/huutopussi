@@ -57,6 +57,13 @@ jobs:
       - name: Simulation (500 seeded fuzz games)
         run: pnpm sim -- --games 500 --seed 42
 
+      # The container runs as root; the runner and every later job on this box are
+      # uid 1001. Without handing ownership back, actions/checkout in the next job
+      # cannot clean the workspace and the run dies with EACCES before it starts.
+      - name: Return the workspace to the runner user
+        if: always()
+        run: chown -R 1001:1001 "$GITHUB_WORKSPACE" "$RUNNER_TEMP" || true
+
   e2e:
     name: e2e (Playwright / chromium)
     # Kept on GitHub-hosted: the real-time gameplay suite is timing-sensitive and
