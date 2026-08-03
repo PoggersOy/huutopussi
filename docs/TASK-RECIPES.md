@@ -128,6 +128,11 @@ strings are keys too.
    i18n (Recipe D).
 5. Tests: the relevant `client/test/*.test.tsx`. Verify loop; consider an e2e
    spec if it's a core flow.
+6. Anything that **animates** → read [`MOTION.md`](MOTION.md) first and reuse its
+   tokens (`--dur-*`, `--ease-*`, `--stagger`). Two hard rules: animate only
+   `transform`/`opacity`/`filter` (never `background`/`box-shadow` on a loop), and
+   give every addition a `prefers-reduced-motion` branch that keeps the
+   information and drops the travel.
 
 ---
 

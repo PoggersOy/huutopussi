@@ -291,6 +291,40 @@ Plan: `docs/plan.md`. Rules: `docs/huutopussin-saannot.md`.
   Verified: 543 unit tests green, lint clean, client+server build, legacy-DB migration
   + boot backfill + route smoke.
 
+## Table motion rework (feel)
+
+- **`docs/MOTION.md`** — audit of the old, ad-hoc animation set (12 defects,
+  measured by playing the offline learn scenarios at an iPhone-14 viewport) plus
+  the motion language that replaced it. Read it before touching anything that
+  moves on the table.
+- **Motion tokens** (`tokens.css`): five durations, four curves, one stagger unit.
+  Every table animation now picks from that set instead of the previous spread of
+  a dozen arbitrary timings and five easings.
+- **The hand is a real fan**, laid out with transforms instead of negative margins
+  (`base.css`). That is the enabling change: playing a card now makes the
+  neighbours glide into the gap, the raised card straightens out of the arc as it
+  lifts, its neighbours part around it, and a fresh hand deals in card by card.
+  Opponent hands use the same geometry, so their fans close up instead of the
+  count silently ticking 9 → 6.
+- **Your own speech bubble is attached to you again**: a `felt-foot` rail at the
+  bottom of the felt holds your bubble, your reaction and (formerly) the
+  countdown, so nothing floats unanchored mid-felt. Bubbles spring out of their
+  speaker's tail and fade out before unmounting instead of popping.
+- **The trick resolves in five beats** (land → hold → winner lift → gather → fly
+  to the winner) and its offsets are a fraction of the trick box, so the stack can
+  no longer glide off the felt and under the hand. The label moved above the cards.
+  New per-seat **trick piles** give the felt something that accumulates.
+- **New moments**: a felt-wide declaration flash when trump is set, scores that
+  count up on staggered rows behind a blurred backdrop, a confetti *cannon*, and a
+  läpäri shockwave. Turn arrival gets its own one-shot sweep, distinct from the
+  waiting heartbeat, and the countdown drains as a bar along the hand's top edge.
+- **Perf**: the three infinite turn-pulses no longer animate `background`/
+  `box-shadow` (continuous repaint on up to three surfaces); each is now a static
+  glow whose `opacity` animates.
+- Every addition has a `prefers-reduced-motion` branch that keeps the information
+  and drops the travel. Engine untouched. Verified: `pnpm typecheck`/`lint`/`test`
+  green, e2e green.
+
 ## Backlog (post-MVP)
 
 - Erlangen variant preset (rules doc §9).

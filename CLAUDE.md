@@ -12,6 +12,7 @@ index. Read it, then open the one deep doc your task needs:
 - `docs/TASK-RECIPES.md` — ordered checklists for common changes (rules, i18n, bots, screens…).
 - `docs/GLOSSARY.md` — Finnish/domain terms → code symbols.
 - `docs/TESTING.md` — test taxonomy, fuzz invariants, how to add/reproduce a test.
+- `docs/MOTION.md` — the table's animation design: motion tokens, fan geometry, the trick's five beats.
 - `docs/README.md` — the full doc index.
 
 @AGENTS.md

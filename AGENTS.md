@@ -42,6 +42,7 @@ Open **one** of these based on your task, not all of them:
 | Make a specific kind of change (add a rule, an i18n string, a bot behavior…) | [`docs/TASK-RECIPES.md`](docs/TASK-RECIPES.md) |
 | Decode a Finnish/domain term (*Porvoo, koini, läpäri, marriage, päämuoto*…) | [`docs/GLOSSARY.md`](docs/GLOSSARY.md) |
 | Add or run tests, reproduce a fuzz failure, understand the invariants | [`docs/TESTING.md`](docs/TESTING.md) |
+| Touch anything that **moves** on the table (motion tokens, the hand fan, bubbles, the trick resolution, celebrations) | [`docs/MOTION.md`](docs/MOTION.md) |
 | Settle a rules dispute | [`docs/huutopussin-saannot.md`](docs/huutopussin-saannot.md) (authoritative) |
 | Understand the illisoft 2002 ruleset preset | [`docs/illisoft-saannot-spec.md`](docs/illisoft-saannot-spec.md) |
 | Know the original architecture/plan & decisions | [`docs/plan.md`](docs/plan.md) |

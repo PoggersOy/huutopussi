@@ -41,14 +41,26 @@ test('Anna vs three bots: a full deal reaches a consistent score overlay', async
   // Solo-vs-bots is player-paced: the overlay waits for a "Continue" tap and the
   // driver never presses it, so it lingers. Still read every row in one atomic
   // evaluate, then assert offline — cheap insurance against any future timer.
-  const rows: OverlayRow[] = await page.locator('.overlay tbody tr').evaluateAll((trs) =>
-    trs.map((tr) => ({
-      label: tr.querySelector('th')?.textContent?.trim() ?? '',
-      cells: Array.from(tr.querySelectorAll('td')).map((td) =>
-        Number.parseInt(td.textContent ?? '', 10),
-      ),
-    })),
-  );
+  const readRows = async (): Promise<OverlayRow[]> =>
+    await page.locator('.overlay tbody tr').evaluateAll((trs) =>
+      trs.map((tr) => ({
+        label: tr.querySelector('th')?.textContent?.trim() ?? '',
+        cells: Array.from(tr.querySelectorAll('td')).map((td) =>
+          Number.parseInt(td.textContent ?? '', 10),
+        ),
+      })),
+    );
+
+  // The figures COUNT UP when the card lands (docs/MOTION.md §3.5), so a single
+  // read can catch them mid-tick — that is what "card points summed to 82" was.
+  // Read until two consecutive samples agree, i.e. the numbers have settled.
+  let rows: OverlayRow[] = await readRows();
+  for (let i = 0; i < 20; i++) {
+    await page.waitForTimeout(200);
+    const again = await readRows();
+    if (JSON.stringify(again) === JSON.stringify(rows)) break;
+    rows = again;
+  }
 
   const row = (label: string): number[] => {
     const found = rows.find((r) => r.label === label);

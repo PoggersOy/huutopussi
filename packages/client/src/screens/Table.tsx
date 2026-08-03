@@ -19,10 +19,11 @@ import {
   partnerOf,
   type Seat,
   type Side,
+  type Suit,
   sideOf,
 } from '@hp/engine';
 import type { SeatInfo } from '@hp/protocol';
-import { type ReactElement, useEffect, useRef, useState } from 'react';
+import { type CSSProperties, type ReactElement, useEffect, useRef, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { CardBack, CardFace, CardStack } from '../components/CardFace';
@@ -91,23 +92,31 @@ function EmoteFloat({ emote, me }: { emote: EmoteBubble; me?: boolean }): ReactE
 const VISIBLE_SECONDS = 15;
 /** …and becomes urgent (big, red, pulsing) at/under this many. */
 const URGENT_SECONDS = 10;
+/** The drain bar starts filling in this far out — well before the numeral shows. */
+const DRAIN_SECONDS = 30;
 
-/** Whole seconds left until `deadline` (epoch ms), re-computed ~4×/second. */
-function useSecondsLeft(deadline: number): number {
+/** Now, re-sampled ~4×/second (drives every countdown on this screen). */
+function useNow(): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 250);
     return () => clearInterval(id);
   }, []);
-  return Math.max(0, Math.ceil((deadline - now) / 1000));
+  return now;
+}
+
+/** Whole seconds left until `deadline` (epoch ms). */
+function useSecondsLeft(deadline: number): number {
+  return Math.max(0, Math.ceil((deadline - useNow()) / 1000));
 }
 
 /**
  * The acting player's countdown ("…3, 2, 1"), shown only on your own turn while
  * a deadline is live (i.e. autoplay is on) and ONLY in the final VISIBLE_SECONDS
  * — it stays hidden until you're running low, then appears (and goes urgent
- * under URGENT_SECONDS) so you act before a bot takes over. Rendered inside the
- * felt (bottom centre); taps pass through to the felt (pointer-events: none).
+ * under URGENT_SECONDS) so you act before a bot takes over. Rendered at the
+ * felt's bottom-RIGHT, clear of both the trick's landing zone and the felt-foot
+ * rail; taps pass through to the felt (pointer-events: none).
  */
 function TurnCountdown({ deadline }: { deadline: number }): ReactElement | null {
   const { t } = useTranslation();
@@ -122,6 +131,57 @@ function TurnCountdown({ deadline }: { deadline: number }): ReactElement | null 
     >
       <span className="turn-timer__num">{secs}</span>
       <span className="turn-timer__unit">{t('table.secondsShort')}</span>
+    </div>
+  );
+}
+
+/**
+ * The same deadline as a bar draining along the hand footer's top edge. A digit
+ * at the edge of the felt is easy to miss mid-thought; a shrinking bar under
+ * your own cards is read by peripheral vision without looking at it.
+ * Decorative — `TurnCountdown` carries the accessible readout.
+ */
+function TurnDrain({ deadline }: { deadline: number }): ReactElement | null {
+  const now = useNow();
+  const left = (deadline - now) / 1000;
+  if (left > DRAIN_SECONDS || left <= 0) return null;
+  return (
+    <span
+      aria-hidden="true"
+      className={`thand__drain${left <= URGENT_SECONDS ? ' thand__drain--urgent' : ''}`}
+      style={{ '--left': Math.max(0, left / DRAIN_SECONDS) } as CSSProperties}
+    />
+  );
+}
+
+/**
+ * Counts how many times the turn has ARRIVED at this device (false → true).
+ * Used as a React key so the hand footer's gold sweep replays on every arrival
+ * — without it, "your turn just landed" and "your turn is still waiting" look
+ * identical (both are only the heartbeat).
+ */
+function useTurnArrivals(myTurn: boolean): number {
+  const [arrivals, setArrivals] = useState(0);
+  const prev = useRef(false);
+  useEffect(() => {
+    if (myTurn && !prev.current) setArrivals((n) => n + 1);
+    prev.current = myTurn;
+  }, [myTurn]);
+  return arrivals;
+}
+
+/**
+ * The felt-wide acknowledgement of a trump being set (a marriage declared, or a
+ * whole/half ask that landed): a coloured wash sweeps out of the centre and the
+ * suit's glyph blooms and settles. Keyed by the bubble that triggered it, so it
+ * replays for every declaration. Purely decorative; the top-bar chip remains the
+ * authoritative trump readout.
+ */
+function DeclarationFlash({ suit }: { suit: Suit }): ReactElement {
+  return (
+    <div className="declflash" aria-hidden="true">
+      <span className="declflash__wash" />
+      <span className={`declflash__glyph suit--${suit}`}>{SUIT_GLYPH[suit]}</span>
     </div>
   );
 }
@@ -146,6 +206,8 @@ export function Table() {
   const matchRating = useStore((s) => s.ui.matchRating);
   const learn = useStore((s) => s.ui.learn);
   const nameOf = useNameOf();
+  const myTurnNow = seat !== null && turn !== null && turn.seat === seat;
+  const turnArrivals = useTurnArrivals(myTurnNow);
 
   // Primitives the reveal/linger effects key off (computed before the early
   // return so the hooks below always run). `dealScored` = the final trick has
@@ -289,7 +351,7 @@ export function Table() {
   const players = view.config.players;
   const me: Seat = seat ?? 0; // spectators watch from seat 0's angle
   const mySide = sideOf(me, players);
-  const myTurn = seat !== null && turn !== null && turn.seat === seat;
+  const myTurn = myTurnNow;
   const hints: ActionHint[] = (myTurn && turn !== null ? turn.hints : null) ?? [];
 
   const playHint = hints.find((h): h is PlayHint => h.type === 'playCard') ?? null;
@@ -378,6 +440,16 @@ export function Table() {
   const myBubble = seat !== null ? (bubbles.find((b) => b.seat === seat) ?? null) : null;
   const myEmote = seat !== null ? (emotes.find((e) => e.seat === seat) ?? null) : null;
 
+  // A trump was just set (a marriage declared, or an ask that landed): the felt
+  // acknowledges it once, keyed by the bubble that carried it so it never
+  // replays. `suitCode` is the raw suit the bubble already carries for tinting.
+  const trumpBubble = bubbles.filter((b) => b.code === 'bubble.trump').at(-1) ?? null;
+  const declaredSuitCode = trumpBubble?.params?.suitCode;
+  const declaredSuit =
+    trumpBubble !== null && typeof declaredSuitCode === 'string'
+      ? { id: trumpBubble.id, suit: declaredSuitCode as Suit }
+      : null;
+
   function onFeltTap(): void {
     if (raisedCard !== null && !pending) raiseCard(null);
   }
@@ -433,6 +505,7 @@ export function Table() {
                     info={info}
                     name={nameOf(other)}
                     count={deal.handCounts[other]}
+                    tricks={deal.tricksWon[other] ?? 0}
                     isTurn={actor === other && view.winnerSide === null}
                     isDealer={view.dealer === other}
                     isDeclarer={deal.declarer === other}
@@ -451,17 +524,29 @@ export function Table() {
               nameOf={nameOf}
             />
             <LastTrickPeek deal={deal} hidden={completedTrick !== null} nameOf={nameOf} />
+            <TrickPile count={deal.tricksWon[me] ?? 0} mine />
+            {declaredSuit !== null && (
+              <DeclarationFlash key={declaredSuit.id} suit={declaredSuit.suit} />
+            )}
             {myTurn && turn?.deadline != null && view.winnerSide === null && (
               <TurnCountdown deadline={turn.deadline} />
             )}
-            {myBubble !== null && (
-              <div
-                className={`bubble bubble--me${myBubble.code === 'bubble.trump' ? ' bubble--trump' : ''}`}
-              >
-                <BubbleText bubble={myBubble} />
+            {/* Your own bubble + reaction share one bottom-centre rail hugging the
+                top edge of the sheet/hand, so they read as coming from YOU (they
+                used to float unattached at 16%/23% of the felt) and can never
+                overlap each other or the trick. */}
+            {(myBubble !== null || myEmote !== null) && (
+              <div className="felt-foot">
+                {myEmote !== null && <EmoteFloat emote={myEmote} me />}
+                {myBubble !== null && (
+                  <div
+                    className={`bubble bubble--me${myBubble.code === 'bubble.trump' ? ' bubble--trump' : ''}`}
+                  >
+                    <BubbleText bubble={myBubble} />
+                  </div>
+                )}
               </div>
             )}
-            {myEmote !== null && <EmoteFloat emote={myEmote} me />}
           </>
         )}
       </main>
@@ -469,6 +554,11 @@ export function Table() {
       {sheet}
 
       <footer className={`thand${myTurn && contractHint === null ? ' thand--turn' : ''}`}>
+        {/* Re-keyed on every turn arrival so the gold sweep replays. */}
+        {myTurn && <span key={turnArrivals} className="thand__sweep" aria-hidden="true" />}
+        {myTurn && turn?.deadline != null && view.winnerSide === null && (
+          <TurnDrain deadline={turn.deadline} />
+        )}
         {raisedCard !== null && playHint !== null && !pending && (
           <p className="thand__hint dim">{t('table.tapAgain')}</p>
         )}
@@ -660,6 +750,29 @@ function TopBar({
   );
 }
 
+// ── Trick piles ──────────────────────────────────────────────────────────────
+
+/**
+ * A seat's captured tricks, as a growing heap of card backs. The felt used to
+ * have nothing that accumulated — won tricks slid off and vanished — so a deal
+ * gave no sense of progress and the trick-to-winner glide landed nowhere. The
+ * element is keyed on the count by the caller, so a remount replays the bump.
+ */
+function TrickPile({ count, mine }: { count: number; mine?: boolean }): ReactElement | null {
+  const { t } = useTranslation();
+  if (count <= 0) return null;
+  return (
+    <span
+      key={count}
+      className={`trick-pile trick-pile--grew${mine === true ? ' trick-pile--me' : ''}`}
+      title={t('table.tricksWon', { n: count })}
+    >
+      <CardStack count={count} width="var(--card-w-opp)" maxLayers={4} />
+      <span className="trick-pile__n">{count}</span>
+    </span>
+  );
+}
+
 // ── Opponent / partner panels ────────────────────────────────────────────────
 
 function OpponentPanel({
@@ -667,6 +780,7 @@ function OpponentPanel({
   info,
   name,
   count,
+  tricks,
   isTurn,
   isDealer,
   isDeclarer,
@@ -677,6 +791,8 @@ function OpponentPanel({
   info: SeatInfo;
   name: string;
   count: number;
+  /** Tricks this seat has captured in the current deal (their pile's height). */
+  tricks: number;
   isTurn: boolean;
   isDealer: boolean;
   isDeclarer: boolean;
@@ -685,7 +801,7 @@ function OpponentPanel({
 }) {
   const { t } = useTranslation();
   const offline = info.kind === 'human' && !info.connected;
-  const backs = Array.from({ length: count }, (_, i) => `back-${i}`);
+  const backs = Array.from({ length: count }, (_, i) => i);
 
   return (
     <div className={`opp opp--${pos}${isTurn ? ' opp--turn' : ''}`}>
@@ -698,12 +814,24 @@ function OpponentPanel({
           </span>
         )}
       </div>
-      <div className="opp__fan">
-        {backs.map((id) => (
-          <CardBack key={id} width="var(--card-w-opp)" />
-        ))}
+      <div className="opp__hand">
+        {/* A small fan, positioned by transform like your own hand, so playing a
+            card makes the remaining backs glide into the gap instead of the
+            count silently ticking down. `--i`/`--n` drive the geometry. */}
+        <div className="opp__fan" style={{ '--n': count } as CSSProperties}>
+          {backs.map((i) => (
+            <span
+              key={`back-${i}`}
+              className="opp__back"
+              style={{ '--i': i, '--n': count } as CSSProperties}
+            >
+              <CardBack width="var(--card-w-opp)" />
+            </span>
+          ))}
+        </div>
         <span className="opp__count dim">{count}</span>
       </div>
+      <TrickPile count={tricks} />
       <div className="opp__badges">
         {info.kind === 'bot' && <span className="chip">{t('lobby.bot')}</span>}
         {info.botControlled && <span className="chip chip--warn">{t('lobby.botControlled')}</span>}
@@ -896,20 +1024,24 @@ function HandFan({
 
   const density =
     hand.length > 12 ? ' hand--dense hand--xdense' : hand.length > 9 ? ' hand--dense' : '';
+  const raisedIndex = raisedCard !== null ? hand.indexOf(raisedCard) : -1;
   return (
-    <div className={`hand${density}`}>
-      {hand.map((card) => {
+    <div className={`hand${density}`} style={{ '--n': hand.length } as CSSProperties}>
+      {hand.map((card, i) => {
         const illegal =
           (playHint !== null && !playHint.legal.includes(card)) ||
           (selectCount !== null && selectLegal !== null && !selectLegal.includes(card));
         const raised = raisedCard === card;
         const picked = selectedCards.includes(card);
+        // Neighbours part around the raised card — the "peek" of a real hand.
+        const part = raisedIndex < 0 || raised ? 0 : i < raisedIndex ? -6 : 6;
         return (
           <button
             type="button"
             key={card}
             disabled={illegal}
             aria-pressed={raised || picked}
+            style={{ '--i': i, '--n': hand.length, '--part': `${part}px` } as CSSProperties}
             className={`hand__card${raised ? ' hand__card--raised' : ''}${
               picked ? ' hand__card--picked' : ''
             }${illegal ? ' hand__card--dim' : ''}`}

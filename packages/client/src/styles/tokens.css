@@ -93,6 +93,23 @@
   --fs-lg: 1.25rem;
   --fs-xl: 1.6rem;
 
+  /* ── Motion (docs/MOTION.md) ──
+   * Five durations and four curves, and nothing in between: every animation on
+   * the table picks from this set so the whole screen feels like one physical
+   * world instead of a pile of one-off effects. */
+  --dur-1: 90ms; /* micro: press acknowledgement */
+  --dur-2: 180ms; /* UI: bubble, chip, sheet */
+  --dur-3: 300ms; /* object: a card in flight */
+  --dur-4: 520ms; /* stage: the trick sweeping to its winner */
+  --dur-5: 900ms; /* moment: a celebration beat */
+  /* Arriving / leaving / popping / sliding across cloth. */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in: cubic-bezier(0.55, 0, 1, 0.45);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-felt: cubic-bezier(0.36, 0, 0.3, 1);
+  /* Per-item delay when a group animates in sequence (dealt cards, score rows). */
+  --stagger: 55ms;
+
   /* ── Z layers ── */
   --z-sheet: 40;
   --z-banner: 50;

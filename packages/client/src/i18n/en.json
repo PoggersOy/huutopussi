@@ -422,6 +422,7 @@
     "talon": "Talon",
     "dummy": "Dummy",
     "openTalon": "Open talon",
+    "tricksWon": "Tricks won: {{n}}",
     "lastTrickBtn": "Last trick",
     "trickWonBy": "{{name}} took the trick",
     "leadsNow": "{{name}} leads",

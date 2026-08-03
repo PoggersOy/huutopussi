@@ -200,22 +200,35 @@
 }
 
 /* The seat the table is waiting on gets a breathing gold glow so it's obvious
-   at a glance whose turn it is. Opponent panels pulse their border + halo; your
-   own hand footer pulses in sync (see .thand--turn) since you have no panel. */
+   at a glance whose turn it is. Opponent panels glow; your own hand footer
+   breathes in sync (see .thand--turn) since you have no panel.
+
+   The halo is a STATIC pseudo-element whose opacity animates — the old version
+   animated `border-color` + `box-shadow` directly, which repaints the panel
+   every frame, on up to three surfaces at once, forever. Same look, no paint. */
 .opp--turn {
   border-color: var(--gold);
-  animation: turn-pulse 1.5s ease-in-out infinite;
 }
 
-@keyframes turn-pulse {
+.opp--turn::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  border: 1px solid var(--gold);
+  box-shadow: 0 0 18px 3px rgba(212, 175, 55, 0.75);
+  pointer-events: none;
+  animation: glow-breathe 1.5s ease-in-out infinite;
+}
+
+/* The one heartbeat every "waiting on this seat" surface shares. */
+@keyframes glow-breathe {
   0%,
   100% {
-    border-color: var(--gold-soft);
-    box-shadow: 0 0 6px rgba(212, 175, 55, 0.3);
+    opacity: 0.3;
   }
   50% {
-    border-color: var(--gold);
-    box-shadow: 0 0 18px 3px rgba(212, 175, 55, 0.75);
+    opacity: 1;
   }
 }
 
@@ -271,18 +284,50 @@
   color: var(--danger);
 }
 
-.opp__fan {
+/* An opponent's hand, as a real (small) fan rather than the flat overlapped row
+ * it used to be — that read as a barcode, and when a card left the hand the
+ * count simply ticked 9 → 6 with no motion at all. Same transform geometry as
+ * your own fan (base.css), so the remaining backs glide into the gap. */
+.opp__hand {
   display: flex;
   align-items: center;
+  gap: var(--space-1);
 }
 
-.opp__fan > * + * {
-  margin-left: -9px;
+.opp__fan {
+  --n: 1;
+  --fan-step: calc(var(--card-w-opp) * 0.62);
+  --fan-spread: 2.6deg;
+  --fan-lift: 0.5px;
+  --fan-half: calc((var(--n) - 1) / 2);
+  --fan-rise: calc(var(--fan-half) * var(--fan-half) * var(--fan-lift));
+  --deal-from: calc(var(--card-w-opp) * 1.2);
+  position: relative;
+  height: calc(var(--card-w-opp) * var(--card-ratio) + var(--fan-rise));
+  width: calc(var(--fan-step) * (var(--n) - 1) + var(--card-w-opp));
+  transition: width var(--dur-2) var(--ease-out);
+}
+
+.opp__back {
+  --i: 0;
+  --n: 1;
+  --off: calc(var(--i) - (var(--n) - 1) / 2);
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  margin-left: calc(var(--card-w-opp) / -2);
+  transform: translate(
+      calc(var(--off) * var(--fan-step)),
+      calc((var(--off) * var(--off) - var(--fan-half) * var(--fan-half)) * var(--fan-lift))
+    )
+    rotate(calc(var(--off) * var(--fan-spread)));
+  transition: transform var(--dur-2) var(--ease-out);
+  animation: deal-in var(--dur-3) var(--ease-felt) backwards;
+  animation-delay: calc(var(--i) * var(--stagger));
 }
 
 .opp__count {
   font-size: 0.625rem;
-  margin-left: var(--space-1);
 }
 
 .opp__badges {
@@ -306,8 +351,15 @@
   font-weight: 600;
   text-align: center;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
-  animation: bubble-in 160ms ease-out;
   pointer-events: none;
+  /* Grows OUT OF its speaker: the origin is the tail, not the box's middle. */
+  transform-origin: var(--tail-x, 50%) var(--tail-y, 0%);
+  /* Entry AND exit in one animation list — the store drops the bubble at
+   * BUBBLE_MS (5s), so the fade is timed to finish just before the unmount and
+   * nothing ever pops out of existence. Keep the two in sync with Table.tsx. */
+  animation:
+    bubble-in var(--dur-2) var(--ease-spring),
+    bubble-out 220ms var(--ease-in) 4780ms both;
 }
 
 .bubble::after {
@@ -353,15 +405,19 @@
   color: var(--felt-950);
 }
 
+/* Centred under its panel. The shift uses the standalone `translate` property,
+   not `transform`, so the bubble's own transform stays free for the spring
+   in/out animation — the two compose (translate first, then transform). */
 .opp .bubble {
   top: calc(100% + 8px);
   left: 50%;
-  transform: translateX(-50%);
+  translate: -50% 0;
 }
 
 .opp--left .bubble {
   left: 0;
-  transform: none;
+  translate: none;
+  --tail-x: 14px;
 }
 
 .opp--left .bubble::after {
@@ -371,7 +427,8 @@
 .opp--right .bubble {
   left: auto;
   right: 0;
-  transform: none;
+  translate: none;
+  --tail-x: calc(100% - 14px);
 }
 
 .opp--right .bubble::after {
@@ -379,10 +436,15 @@
   right: 14px;
 }
 
+/* YOUR OWN line. It used to float at `bottom: 16%` — marooned in the middle of
+ * the felt, a tail pointing at nothing, nowhere near your cards. It now lives in
+ * the felt-foot rail (below), hugging the top edge of the sheet/hand, so it
+ * reads as coming from you. The rail owns the positioning; the bubble only
+ * flips its tail to point down at your hand. */
 .bubble--me {
-  bottom: 16%;
-  left: 50%;
-  transform: translateX(-50%);
+  position: relative;
+  --tail-y: 100%;
+  max-width: 78vw;
 }
 
 .bubble--me::after {
@@ -393,7 +455,34 @@
 @keyframes bubble-in {
   from {
     opacity: 0;
+    transform: scale(0.72) translateY(6px);
   }
+}
+
+@keyframes bubble-out {
+  to {
+    opacity: 0;
+    transform: scale(0.9) translateY(-4px);
+  }
+}
+
+/* ── Felt-foot rail ──
+ * Your own bubble, your reaction and the turn countdown all used to be
+ * independently absolutely-positioned at the felt's bottom centre, fighting for
+ * the same 60px. They now stack in one column that grows upward from the felt's
+ * bottom edge, so they can never overlap each other or the trick's landing zone. */
+.felt-foot {
+  position: absolute;
+  z-index: 6;
+  left: 50%;
+  bottom: var(--space-2);
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  max-width: calc(100% - var(--space-4));
+  pointer-events: none;
 }
 
 /* ── Current trick ── */
@@ -402,7 +491,7 @@
   position: absolute;
   z-index: 1;
   left: 50%;
-  top: 55%;
+  top: 52%;
   transform: translate(-50%, -50%);
   width: min(76vw, 300px);
   height: min(42vh, 250px);
@@ -428,7 +517,7 @@
   margin-left: calc(var(--card-w-md) / -2);
   margin-top: calc(var(--card-w-md) * var(--card-ratio) / -2);
   transform: translate(var(--ox), var(--oy)) rotate(var(--rot));
-  animation: trick-in 220ms ease-out backwards;
+  animation: trick-in var(--dur-3) var(--ease-out) backwards;
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.45));
 }
 
@@ -464,57 +553,145 @@
   }
 }
 
+/* ── Trick resolution, in five beats (docs/MOTION.md §3.4) ──
+ *
+ *   1  0–300ms    the last card lands (`trick-in`, above)
+ *   2  300–420ms  hold — the beat where you actually read the trick
+ *   3  420–680ms  the winning card lifts and takes a gold rim
+ *   4  680–860ms  the four cards gather into a neat stack
+ *   5  860–1380ms the stack flies to the winner and shrinks onto their pile
+ *
+ * The old version fired one 520ms slide after a 720ms delay, translating a
+ * fixed 122/158px regardless of felt height — on a phone the stack ended up
+ * clipped by `.felt{overflow:hidden}` and buried under the hand. The offsets are
+ * now a percentage of the trick box, so the landing scales with the viewport. */
+
 .trick__card--win {
   z-index: 2;
-  animation: win-pulse 650ms ease-in-out;
   filter: drop-shadow(0 0 10px var(--gold));
 }
 
-@keyframes win-pulse {
+/* Beat 3 — no fill: the lift returns to rest exactly as the gather takes over. */
+.trick--won .trick__card--win {
+  animation:
+    win-lift 260ms var(--ease-spring) 120ms,
+    trick-gather var(--dur-2) var(--ease-out) 380ms both;
+}
+
+/* Beat 4 — everyone else just gathers. */
+.trick--won .trick__card {
+  animation: trick-gather var(--dur-2) var(--ease-out) 380ms both;
+}
+
+@keyframes win-lift {
   50% {
-    transform: translate(var(--ox), var(--oy)) rotate(var(--rot)) scale(1.12);
+    transform: translate(var(--ox), var(--oy)) rotate(var(--rot)) scale(1.14);
   }
 }
 
-/* Slide-to-winner: once the trick is won the gold flash plays first, then the
- * whole card group glides toward the winning seat's edge (`--gx/--gy`, set per
- * slot below) and settles as a slightly-gathered stack — as if the winner
- * scooped up the trick. The delay clears the ~650ms win-pulse; `both` holds the
- * cards resting during it and parked at the winner after, so the final trick of
- * a deal stays visible by the winner until the score card covers the felt. */
-.trick--won .trick__cards {
-  animation: trick-to-winner 520ms cubic-bezier(0.36, 0, 0.3, 1) 720ms both;
+/* Pull each card most of the way back to the centre and straighten it: four
+   scattered cards become one tidy stack the winner can scoop. */
+@keyframes trick-gather {
+  to {
+    transform: translate(calc(var(--ox) * 0.16), calc(var(--oy) * 0.16))
+      rotate(calc(var(--rot) * 0.25));
+  }
 }
 
+/* Beat 5 — the gathered stack flies to the winner's side of the felt. `both`
+ * parks it there afterwards, so the final trick of a deal stays visible by its
+ * winner until the score card covers the felt. */
+.trick--won .trick__cards {
+  animation: trick-to-winner var(--dur-4) var(--ease-felt) 560ms both;
+  will-change: transform;
+}
+
+/* Offsets are a fraction of the trick box (296×250 on a phone), chosen so the
+ * scaled stack's whole bounding box stays inside the felt even at its shortest
+ * — with the learn banner shown the felt is only ~357px tall. Measured, not
+ * guessed: see the probe in the commit that introduced these. */
 .trick--to-p0 {
-  --gx: 0px;
-  --gy: 122px;
+  --gx: -38%;
+  --gy: 40%;
 }
 .trick--to-p1 {
-  --gx: -158px;
-  --gy: 0px;
+  --gx: -40%;
+  --gy: -22%;
 }
 .trick--to-p2 {
-  --gx: 0px;
-  --gy: -122px;
+  --gx: 0%;
+  --gy: -46%;
 }
 .trick--to-p3 {
-  --gx: 158px;
-  --gy: 0px;
+  --gx: 40%;
+  --gy: -22%;
 }
 
 @keyframes trick-to-winner {
   to {
-    transform: translate(var(--gx), var(--gy)) scale(0.86);
+    transform: translate(var(--gx), var(--gy)) scale(0.5);
+    opacity: 0.9;
   }
 }
 
+/* The label sits ABOVE the trick, not under it — it used to be at the box's
+   bottom edge, where the cards (and, once won, the whole gathered stack) covered
+   it. It also outlives the glide, so "X voitti tikin" is readable throughout. */
 .trick__label {
   position: absolute;
+  z-index: 3;
   left: 50%;
-  bottom: -4px;
+  top: -1.5em;
   transform: translateX(-50%);
   white-space: nowrap;
+  padding: 1px var(--space-2);
+  border-radius: 999px;
+  background: rgba(4, 26, 18, 0.62);
+  animation: label-in var(--dur-2) var(--ease-out);
+}
+
+@keyframes label-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 4px);
+  }
+}
+
+/* ── Trick piles ──
+ * Each seat's captured tricks, drawn as a growing heap of card backs. The felt
+ * had nothing that accumulated: tricks slid away and vanished, so there was no
+ * visible progress through a deal. The pile is also where beat 5 lands. */
+.trick-pile {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: 0.625rem;
+  line-height: 1;
+}
+
+.trick-pile__n {
+  font-weight: 700;
+  color: var(--gold);
+}
+
+/* A trick just landed here — the heap takes the impact. */
+.trick-pile--grew {
+  animation: pile-bump 420ms var(--ease-spring);
+}
+
+@keyframes pile-bump {
+  40% {
+    transform: scale(1.16) translateY(-2px);
+  }
+}
+
+/* Your own pile: the felt's bottom-left corner, clear of the last-trick peek
+   (bottom-right) and the felt-foot rail (bottom-centre). */
+.trick-pile--me {
+  position: absolute;
+  z-index: 3;
+  left: var(--space-2);
+  bottom: var(--space-2);
 }
 
 /* ── Last-trick peek ── */
@@ -635,6 +812,7 @@
 /* ── Bottom sheets (in-flow above the hand so the fan stays visible) ── */
 
 .tsheet {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
@@ -644,7 +822,7 @@
   border-top: 1px solid var(--line);
   border-radius: var(--radius-3) var(--radius-3) 0 0;
   background: var(--felt-800);
-  animation: sheet-up 200ms ease-out;
+  animation: sheet-up var(--dur-3) var(--ease-out);
 }
 
 @keyframes sheet-up {
@@ -654,27 +832,23 @@
   }
 }
 
-/* Your turn, action-in-sheet (e.g. the raise/Korotus box): the whole sheet
-   breathes on the same 1.5s gold heartbeat as the opponent panels, so it's the
-   sheet — not the hand fan — that signals the table is waiting on you. Keeps the
-   `sheet-up` entry as the first (finite) animation. */
+/* Your turn, action-in-sheet (e.g. the raise/Korotus box): the sheet breathes on
+   the same 1.5s gold heartbeat as the opponent panels, so it's the sheet — not
+   the hand fan — that signals the table is waiting on you. Again the halo is a
+   static overlay whose opacity animates rather than a repainting box-shadow. */
 .tsheet--turn {
   border-top-color: var(--gold);
-  animation:
-    sheet-up 200ms ease-out,
-    sheet-turn-pulse 1.5s ease-in-out infinite;
 }
 
-@keyframes sheet-turn-pulse {
-  0%,
-  100% {
-    box-shadow: 0 0 12px 0 rgba(212, 175, 55, 0.28);
-    background: var(--felt-800);
-  }
-  50% {
-    box-shadow: 0 0 26px 3px rgba(212, 175, 55, 0.6);
-    background: rgba(212, 175, 55, 0.1);
-  }
+.tsheet--turn::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: rgba(212, 175, 55, 0.1);
+  box-shadow: inset 0 0 26px 3px rgba(212, 175, 55, 0.28);
+  animation: glow-breathe 1.5s ease-in-out infinite;
 }
 
 .tsheet__handle {
@@ -751,63 +925,105 @@
 /* ── Own hand footer ── */
 
 .thand {
+  position: relative;
   padding: var(--space-2) var(--space-2) calc(var(--space-2) + var(--safe-bottom));
   border-top: 1px solid var(--line);
   background: rgba(0, 0, 0, 0.24);
 }
 
 /* Your turn: the hand footer lights up and breathes in sync with the opponent
-   pulse (same 1.5s heartbeat) so it's unmistakable the table is waiting on you.
-   The glow rises off the top edge into the felt. */
+   panels (same 1.5s heartbeat) so it's unmistakable the table is waiting on you.
+   The glow rises off the top edge into the felt — and, like the panels, it is a
+   static pseudo-element whose OPACITY animates, not a repainting box-shadow. */
 .thand--turn {
   border-top: 2px solid var(--gold);
   background: rgba(212, 175, 55, 0.12);
-  animation: hand-turn-pulse 1.5s ease-in-out infinite;
 }
 
-@keyframes hand-turn-pulse {
-  0%,
-  100% {
-    box-shadow: 0 -3px 12px -2px rgba(212, 175, 55, 0.28);
-    background: rgba(212, 175, 55, 0.08);
+.thand--turn::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(212, 175, 55, 0.22), transparent 55%);
+  box-shadow: 0 -6px 22px 0 rgba(212, 175, 55, 0.6);
+  animation: glow-breathe 1.5s ease-in-out infinite;
+}
+
+/* ── Turn ARRIVAL ──
+ * Arriving on your turn and sitting on your turn used to look identical (both
+ * were just the heartbeat). A single gold sweep runs the width of the footer's
+ * top edge the moment the turn lands, then hands over to the heartbeat. The
+ * element is re-keyed per arrival in Table.tsx so the animation replays. */
+.thand__sweep {
+  position: absolute;
+  top: -2px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, var(--gold), transparent);
+  animation: turn-sweep var(--dur-3) var(--ease-out) 2;
+}
+
+@keyframes turn-sweep {
+  from {
+    transform: translateX(-100%);
+    opacity: 0;
   }
-  50% {
-    box-shadow: 0 -6px 22px 0 rgba(212, 175, 55, 0.6);
-    background: rgba(212, 175, 55, 0.16);
+  35% {
+    opacity: 1;
+  }
+  to {
+    transform: translateX(100%);
+    opacity: 0;
   }
 }
 
+/* ── Turn countdown, as a draining bar ──
+ * A number alone is easy to miss on a phone. The bar drains along the footer's
+ * top edge — peripheral vision reads "running out" without you looking at it —
+ * and goes red under URGENT_SECONDS. The numeral itself moved to the felt's
+ * bottom-right, out of the trick's landing zone. */
+.thand__drain {
+  position: absolute;
+  top: -2px;
+  left: 0;
+  height: 3px;
+  width: 100%;
+  transform-origin: left center;
+  transform: scaleX(var(--left, 1));
+  background: var(--gold);
+  transition: transform 250ms linear;
+  pointer-events: none;
+}
+
+.thand__drain--urgent {
+  background: var(--danger);
+}
+
+/* "Tap again to play": floated ABOVE the footer rather than sitting in flow
+   inside it — the raised card lifts clear of the fan and would otherwise cover
+   the very instruction telling you what to do next. */
 .thand__hint {
-  text-align: center;
-  margin-bottom: var(--space-1);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 2px);
+  transform: translateX(-50%);
+  z-index: 8;
+  white-space: nowrap;
+  padding: 2px var(--space-3);
+  border-radius: 999px;
+  background: rgba(4, 26, 18, 0.82);
+  animation: label-in var(--dur-2) var(--ease-out);
 }
 
-.hand__card {
-  position: relative;
-}
-
-/* 12-card fan during the declarer's exchange still fits portrait width. */
-.hand--dense .hand__card {
-  margin-left: calc(var(--card-w) * -0.62);
-}
-
-.hand--dense .hand__card:first-child {
-  margin-left: 0;
-}
-
-/* >12 cards (2-3p declarer holding the picked-up talon): tighter still so a
- * 13-14 card fan does not spill past the 320px viewport. Overrides --dense
- * (equal specificity, later in the source). */
-.hand--xdense .hand__card {
-  margin-left: calc(var(--card-w) * -0.74);
-}
-
-.hand--xdense .hand__card:first-child {
-  margin-left: 0;
-}
-
+/* Multi-select (exchange give/return, koini discard): a picked card rides above
+   the fan with a gold outline. The fan geometry itself lives in base.css. */
 .hand__card--picked {
-  transform: translateY(calc(var(--card-h) * -0.14));
+  --lift: calc(var(--card-h) * -0.16);
+  --scale: 1.03;
+  z-index: 98;
 }
 
 .hand__card--picked svg {
@@ -847,6 +1063,19 @@
   justify-content: center;
   padding: var(--space-4);
   background: rgba(4, 26, 18, 0.72);
+  /* The felt recedes behind the result card instead of just dimming. */
+  animation: overlay-veil var(--dur-2) var(--ease-out) both;
+}
+
+@keyframes overlay-veil {
+  from {
+    opacity: 0;
+    backdrop-filter: blur(0);
+  }
+  to {
+    opacity: 1;
+    backdrop-filter: blur(3px);
+  }
 }
 
 .overlay__panel {
@@ -858,7 +1087,7 @@
   border: 1px solid var(--gold-soft);
   border-radius: var(--radius-3);
   background: var(--felt-800);
-  animation: overlay-in 200ms ease-out;
+  animation: overlay-in var(--dur-3) var(--ease-spring);
 }
 
 .overlay__panel h2 {
@@ -870,6 +1099,26 @@
     transform: scale(0.92);
     opacity: 0;
   }
+}
+
+/* Result rows arrive one after another instead of all at once — the eye gets to
+   follow the breakdown down the table. `--r` is the row index (set inline). */
+.score tbody tr,
+.overlay__rank {
+  animation: row-in var(--dur-2) var(--ease-out) backwards;
+  animation-delay: calc(var(--r, 0) * var(--stagger));
+}
+
+@keyframes row-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+/* A score that counted up to its value gets a brief gold tick as it lands. */
+.count-up {
+  font-variant-numeric: tabular-nums;
 }
 
 .overlay__made {
@@ -1113,9 +1362,8 @@
  * URGENT_SECONDS so the pressure to act is felt. Taps pass through to the felt. */
 .turn-timer {
   position: absolute;
-  bottom: var(--space-2);
-  left: 50%;
-  transform: translateX(-50%);
+  bottom: calc(var(--space-2) + var(--touch-min));
+  right: var(--space-2);
   z-index: 7;
   pointer-events: none;
   display: flex;
@@ -1160,10 +1408,10 @@
 @keyframes turn-timer-pulse {
   0%,
   100% {
-    transform: translateX(-50%) scale(1);
+    transform: scale(1);
   }
   50% {
-    transform: translateX(-50%) scale(1.1);
+    transform: scale(1.1);
   }
 }
 
@@ -1173,27 +1421,40 @@
     animation: none;
   }
 
-  /* Active-turn highlights: hold the "bright" end of the pulse, no breathing. */
-  .opp--turn {
+  /* Active-turn highlights: hold the "bright" end of the heartbeat, no breathing. */
+  .opp--turn::before,
+  .thand--turn::before,
+  .tsheet--turn::before {
     animation: none;
-    border-color: var(--gold);
-    box-shadow: 0 0 14px 2px rgba(212, 175, 55, 0.6);
+    opacity: 0.75;
   }
 
-  .thand--turn {
+  .thand__sweep {
+    display: none;
+  }
+
+  /* Trick: keep the winner's rim and the final resting place, drop the travel. */
+  .trick--won .trick__card,
+  .trick--won .trick__card--win {
     animation: none;
-    box-shadow: 0 -4px 16px -2px rgba(212, 175, 55, 0.45);
   }
 
-  .tsheet--turn {
-    animation: sheet-up 200ms ease-out;
-    box-shadow: 0 0 18px 2px rgba(212, 175, 55, 0.5);
-  }
-
-  /* Trick-to-winner: skip the glide, just park the group at the winner's edge. */
   .trick--won .trick__cards {
     animation: none;
-    transform: translate(var(--gx), var(--gy)) scale(0.86);
+    transform: translate(var(--gx), var(--gy)) scale(0.5);
+  }
+
+  .trick__label,
+  .overlay,
+  .score tbody tr,
+  .overlay__rank,
+  .trick-pile--grew,
+  .laapari__shock {
+    animation: none;
+  }
+
+  .overlay {
+    backdrop-filter: blur(3px);
   }
 }
 
@@ -1262,9 +1523,14 @@
   animation: emote-life 2800ms ease-out both;
 }
 
+/* Your own reaction rides in the felt-foot rail with your speech bubble (see
+   .felt-foot) instead of floating at a hard-coded 23% of the felt. */
 .emote--me {
+  position: relative;
+  left: auto;
   top: auto;
-  bottom: 23%;
+  transform: none;
+  animation-name: emote-life-me;
 }
 
 .emote__emoji {
@@ -1296,6 +1562,29 @@
   }
 }
 
+/* Same life, minus the centring translate (the rail already centres it). */
+@keyframes emote-life-me {
+  0% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.4);
+  }
+  10% {
+    opacity: 1;
+    transform: translateY(0) scale(1.18);
+  }
+  22% {
+    transform: translateY(0) scale(1);
+  }
+  80% {
+    opacity: 1;
+    transform: translateY(-12px) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-26px) scale(1);
+  }
+}
+
 @keyframes emote-fade {
   0% {
     opacity: 0;
@@ -1308,6 +1597,104 @@
   }
   100% {
     opacity: 0;
+  }
+}
+
+/* ── Declaration flash (trump set / marriage declared) ──
+ * The dramatic peak of a Huutopussi deal used to be a 760ms blink on a chip in
+ * the top bar. Now the whole felt acknowledges it: a coloured wash sweeps
+ * outward from the centre and the suit's glyph blooms out of focus and settles.
+ * Decorative only — the authoritative trump readout is still the top-bar chip. */
+.declflash {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.declflash__wash {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  margin: -5px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(212, 175, 55, 0.55), rgba(212, 175, 55, 0) 68%);
+  animation: decl-wash 1.1s var(--ease-out) both;
+}
+
+@keyframes decl-wash {
+  from {
+    transform: scale(1);
+    opacity: 0;
+  }
+  25% {
+    opacity: 1;
+  }
+  to {
+    transform: scale(90);
+    opacity: 0;
+  }
+}
+
+/* Big enough to be an event, translucent enough that the table stays readable
+   underneath — this plays over the seats and the trick. */
+.declflash__glyph {
+  font-size: min(28vmin, 170px);
+  line-height: 1;
+  font-weight: 700;
+  animation: decl-glyph 1.4s var(--ease-out) both;
+  text-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
+}
+
+@keyframes decl-glyph {
+  0% {
+    opacity: 0;
+    transform: scale(0.4);
+    filter: blur(8px);
+  }
+  30% {
+    opacity: 0.72;
+    transform: scale(1.15);
+    filter: blur(0);
+  }
+  45% {
+    transform: scale(1);
+  }
+  70% {
+    opacity: 0.62;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.05);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Keep the information (which suit is trump now), drop the travel. */
+  .declflash__wash {
+    animation: none;
+    display: none;
+  }
+
+  .declflash__glyph {
+    animation: decl-glyph-still 900ms linear both;
+    filter: none;
+  }
+
+  @keyframes decl-glyph-still {
+    0%,
+    70% {
+      opacity: 0.85;
+    }
+    100% {
+      opacity: 0;
+    }
   }
 }
 
@@ -1398,13 +1785,39 @@
 
 .laapari__word {
   display: block;
+  position: relative;
   font-family: var(--font-display);
   font-size: var(--fs-xl);
   font-weight: 800;
   letter-spacing: 0.06em;
   color: var(--gold);
   text-shadow: 0 0 14px rgba(212, 175, 55, 0.7);
-  animation: laapari-pop 420ms cubic-bezier(0.2, 1.5, 0.4, 1) both;
+  animation: laapari-pop 420ms var(--ease-spring) both;
+}
+
+/* A single expanding ring behind the word — the punch that a clean sweep earns. */
+.laapari__shock {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 40px;
+  height: 40px;
+  margin: -20px;
+  border-radius: 50%;
+  border: 2px solid var(--gold);
+  pointer-events: none;
+  animation: laapari-shock 620ms var(--ease-out) both;
+}
+
+@keyframes laapari-shock {
+  from {
+    transform: scale(0.3);
+    opacity: 0.9;
+  }
+  to {
+    transform: scale(5);
+    opacity: 0;
+  }
 }
 
 .laapari__by {
@@ -1438,27 +1851,39 @@
   z-index: var(--z-toast);
 }
 
+/* Pieces launch UPWARD from the bottom edge and then fall — a cannon, not the
+ * uniform top-down drizzle it used to be. `--w`/`--h` vary the shape per piece
+ * and `--rise` how high each one is thrown, so the burst reads as scattered
+ * confetti rather than a grid of identical rectangles. */
 .confetti__pc {
   position: absolute;
-  top: -16px;
-  width: 8px;
-  height: 13px;
-  border-radius: 1px;
+  bottom: -20px;
+  width: var(--w, 8px);
+  height: var(--h, 13px);
+  border-radius: var(--pcr, 1px);
   opacity: 0.95;
-  animation-name: confetti-fall;
-  animation-timing-function: ease-in;
+  animation-name: confetti-cannon;
+  animation-timing-function: cubic-bezier(0.15, 0.6, 0.5, 1);
   animation-iteration-count: 1;
   animation-fill-mode: forwards;
 }
 
-@keyframes confetti-fall {
+@keyframes confetti-cannon {
   0% {
-    transform: translateY(0) translateX(0) rotate(var(--rot));
+    transform: translate3d(0, 0, 0) rotate(var(--rot));
+    opacity: 0;
+  }
+  8% {
+    opacity: 1;
+  }
+  42% {
+    transform: translate3d(calc(var(--drift) * 0.45), calc(var(--rise) * -1), 0)
+      rotate(calc(var(--rot) + 200deg));
     opacity: 1;
   }
   100% {
-    transform: translateY(104vh) translateX(var(--drift)) rotate(calc(var(--rot) + 540deg));
-    opacity: 0.85;
+    transform: translate3d(var(--drift), 30vh, 0) rotate(calc(var(--rot) + 720deg));
+    opacity: 0;
   }
 }
 
@@ -1467,6 +1892,31 @@
 @media (prefers-reduced-motion: reduce) {
   .emote {
     animation-name: emote-fade;
+  }
+
+  /* Bubbles keep their timed fade-out (that's information, not decoration) but
+     lose the spring; opponent fans appear without the dealing flight. */
+  .bubble {
+    animation:
+      bubble-fade-in var(--dur-2) linear,
+      bubble-fade-out 220ms linear 4780ms both;
+  }
+
+  @keyframes bubble-fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+
+  @keyframes bubble-fade-out {
+    to {
+      opacity: 0;
+    }
+  }
+
+  .opp__back {
+    animation: none;
+    transition: none;
   }
 
   .confetti {

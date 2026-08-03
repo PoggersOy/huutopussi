@@ -15,15 +15,24 @@ import {
   sideOf,
 } from '@hp/engine';
 import type { MatchRatingResult } from '@hp/protocol';
-import { useEffect, useState } from 'react';
+import { type CSSProperties, type ReactElement, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Confetti } from '../../components/Confetti';
 import { DealBreakdownTable, DealContractLine } from '../../components/DealBreakdownTable';
+import { useCountUp } from '../../countUp';
 import { sendLobby } from '../../socket';
 import { useStore } from '../../store';
 
 function signed(n: number): string {
   return n > 0 ? `+${n}` : `${n}`;
+}
+
+/** Per-row delay; mirrors the `--stagger` token the row slide-in uses. */
+const STAGGER_MS = 55;
+
+/** A standings figure that ticks up as its row arrives. */
+function RankScore({ value, delay }: { value: number; delay: number }): ReactElement {
+  return <span className="count-up">{useCountUp(value, delay)}</span>;
 }
 
 /**
@@ -169,12 +178,14 @@ export function StandingsOverlay({
           {ranked.map((side, i) => (
             <li
               key={side}
+              style={{ '--r': i } as CSSProperties}
               className={`overlay__rank${side === mySide ? ' overlay__rank--you' : ''}`}
             >
               <span className="overlay__rank-medal" aria-hidden="true">
                 {MEDALS[i] ?? ''}
               </span>
               <span className="overlay__rank-name">{sideMembers(side)}</span>
+              {/* No count-up here: you opened this panel to READ the numbers. */}
               <span className="overlay__rank-score">{scores[side] ?? 0}</span>
             </li>
           ))}
@@ -225,7 +236,10 @@ export function DealScoredOverlay({
         {laapari && (
           <div className={`laapari${laapariMine ? ' laapari--mine' : ''}`}>
             <Confetti count={50} />
-            <span className="laapari__word">{t('overlay.laapari')}</span>
+            <span className="laapari__word">
+              <span className="laapari__shock" aria-hidden="true" />
+              {t('overlay.laapari')}
+            </span>
             <span className="laapari__by dim">
               {t('overlay.laapariBy', { name: sideLabel(sweepSide as Side) })}
             </span>
@@ -233,7 +247,13 @@ export function DealScoredOverlay({
         )}
         <h2>{t('overlay.dealResults')}</h2>
         <DealContractLine result={result} nameOf={nameOf} />
-        <DealBreakdownTable result={result} scores={scores} order={order} sideLabel={sideLabel} />
+        <DealBreakdownTable
+          result={result}
+          scores={scores}
+          order={order}
+          sideLabel={sideLabel}
+          animate
+        />
         <NextDealPrompt solo={solo} seated={seated} />
       </div>
     </div>
@@ -325,13 +345,16 @@ export function MatchEndedOverlay({
           {ranked.map((side, i) => (
             <li
               key={side}
+              style={{ '--r': i } as CSSProperties}
               className={`overlay__rank${side === winnerSide ? ' overlay__rank--winner' : ''}`}
             >
               <span className="overlay__rank-medal" aria-hidden="true">
                 {MEDALS[i] ?? ''}
               </span>
               <span className="overlay__rank-name">{sideMembers(side)}</span>
-              <span className="overlay__rank-score">{scores[side] ?? 0}</span>
+              <span className="overlay__rank-score">
+                <RankScore value={scores[side] ?? 0} delay={i * STAGGER_MS} />
+              </span>
             </li>
           ))}
         </ul>

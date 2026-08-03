@@ -203,43 +203,139 @@ input::placeholder {
   font-size: var(--fs-sm);
 }
 
-/* ── Card fan (bottom of the table) ── */
+/* ── Card fan (bottom of the table) ──
+ *
+ * The fan is laid out with TRANSFORMS, not margins (docs/MOTION.md §3.2): each
+ * card is absolutely positioned at the centre and pushed out along the arc by
+ * its index. That is what makes the hand animate at all — a margin-driven flex
+ * row reflows in one frame when a card leaves, whereas every transform here is
+ * transitioned, so playing a card makes the neighbours glide into the gap, and
+ * the raised card can straighten out of the arc as it lifts.
+ *
+ * Geometry (`--i` = card index, `--n` = hand size, both set from Table.tsx):
+ *   off   = i - (n-1)/2               signed distance from the middle
+ *   x     = off * step                step tightens as the hand grows
+ *   y     = (off² - half²) * lift     the arc — see below
+ *   angle = off * spread
+ *
+ * The arc is measured from the OUTERMOST card, not from the middle: the outer
+ * cards sit on the baseline and the middle ones ride up, so the whole fan hangs
+ * off the footer's bottom edge and can never dip below it (a middle-anchored
+ * arc pushed the end cards off the bottom of the phone).
+ */
 
 .hand {
-  display: flex;
-  justify-content: center;
+  --n: 1;
+  --fan-step: calc(var(--card-w) * 0.55);
+  --fan-lift: 1.1px;
+  --fan-spread: 3.2deg;
+  --fan-half: calc((var(--n) - 1) / 2);
+  /* How far the middle of the arc rises above the outer cards. */
+  --fan-rise: calc(var(--fan-half) * var(--fan-half) * var(--fan-lift));
+  position: relative;
+  height: calc(var(--card-h) + var(--fan-rise) + var(--space-2));
   padding: var(--space-2) 0;
 }
 
+/* 10-12 cards (declarer's exchange) and 13-14 (2-3p declarer holding the talon)
+   tighten the fan so it still fits a 320px viewport. */
+.hand--dense {
+  --fan-step: calc(var(--card-w) * 0.38);
+  --fan-spread: 2.5deg;
+  --fan-lift: 0.7px;
+}
+
+.hand--xdense {
+  --fan-step: calc(var(--card-w) * 0.26);
+  --fan-spread: 2deg;
+  --fan-lift: 0.34px;
+}
+
 .hand__card {
-  /* Overlap so 9 cards fit portrait width; the tap target stays ≥44px wide. */
-  margin-left: calc(var(--card-w) * -0.45);
+  --i: 0;
+  --n: 1;
+  /* Signed distance from the fan's middle, and the neighbour-parting nudge the
+     raised card pushes onto its siblings (set per card in Table.tsx). */
+  --off: calc(var(--i) - (var(--n) - 1) / 2);
+  --part: 0px;
+  --fan-x: calc(var(--off) * var(--fan-step) + var(--part));
+  /* Negative (upward) for the middle cards, zero at the ends — see the arc note. */
+  --fan-y: calc((var(--off) * var(--off) - var(--fan-half) * var(--fan-half)) * var(--fan-lift));
+  --fan-rot: calc(var(--off) * var(--fan-spread));
+  --lift: 0px;
+  --scale: 1;
+  position: absolute;
+  left: 50%;
+  bottom: var(--space-2);
+  margin-left: calc(var(--card-w) / -2);
   border: none;
   background: none;
   padding: 0;
   min-width: 0;
   min-height: 0;
-  transition: transform 120ms ease-out;
+  transform: translate(var(--fan-x), calc(var(--fan-y) + var(--lift))) rotate(var(--fan-rot))
+    scale(var(--scale));
+  transition: transform var(--dur-2) var(--ease-out);
+  /* Later cards sit on top of earlier ones, so a tap lands on the card whose
+     face you can actually see. */
+  z-index: calc(var(--i) + 1);
+  /* Cards arriving in a new hand (a fresh deal, or the exchange) fly in from the
+     dealer's edge, one --stagger after the next. Unchanged cards keep their DOM
+     node and so never replay it. */
+  animation: deal-in var(--dur-3) var(--ease-felt) backwards;
+  animation-delay: calc(var(--i) * var(--stagger));
 }
 
-.hand__card:first-child {
-  margin-left: 0;
+/* Shared by your fan and the opponents' — `--deal-from` is how far away the
+   dealer's edge is for that card size. */
+@keyframes deal-in {
+  from {
+    opacity: 0;
+    transform: translate(0, var(--deal-from, calc(var(--card-h) * 0.9))) rotate(-14deg) scale(0.78);
+  }
 }
 
+/* Raised (first tap of the two-step play): the card lifts clear of the fan AND
+   straightens out of the arc — a card pulled from a real hand stands upright. */
 .hand__card--raised {
-  transform: translateY(calc(var(--card-h) * -0.22));
+  --lift: calc(var(--card-h) * -0.26);
+  --fan-rot: 0deg;
+  --scale: 1.06;
+  z-index: 99;
+}
+
+/* Press acknowledgement — the card gives under the thumb. */
+.hand__card:active {
+  --scale: 0.97;
+  transition-duration: var(--dur-1);
+}
+
+.hand__card--raised:active {
+  --scale: 1.03;
 }
 
 /* Grey out illegal cards via a filter only — never opacity. Hand cards overlap
    in the fan, and a semi-transparent card lets the neighbour behind it bleed
    through its middle, which reads as a rendering glitch. Override the global
-   button:disabled fade here so the brightness/saturate cue does all the work. */
+   button:disabled fade here so the brightness/saturate cue does all the work.
+   The extra dip makes legality readable as SHAPE, not colour alone. */
 .hand__card:disabled {
   opacity: 1;
 }
 
+.hand__card--dim {
+  --lift: 4px;
+}
+
 .hand__card--dim svg {
   filter: brightness(0.55) saturate(0.6);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hand__card {
+    animation: none;
+    transition: none;
+  }
 }
 
 /* ── Connection banner & toasts ── */

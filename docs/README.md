@@ -12,6 +12,7 @@ Start with the one row that matches your task.
 | [`TASK-RECIPES.md`](TASK-RECIPES.md) | …have a specific change to make (add a rule, an i18n string, a bot behavior, a screen…). Ordered checklists with exact files. |
 | [`GLOSSARY.md`](GLOSSARY.md) | …hit a Finnish/domain term (*Porvoo, koini, läpäri, marriage, päämuoto*) and want the code symbol. |
 | [`TESTING.md`](TESTING.md) | …add/run tests, reproduce a fuzz failure, or want the invariant list. |
+| [`MOTION.md`](MOTION.md) | …touch anything that moves on the table: the motion tokens, the hand fan geometry, bubbles, the trick resolution, the celebrations. |
 | [`AUTH-ELO.md`](AUTH-ELO.md) | …work on Google Sign-In or the Elo rating system (auth flow, rating math, data model, deploy). |
 
 ## Source-of-truth references

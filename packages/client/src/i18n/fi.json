@@ -422,6 +422,7 @@
     "talon": "Koinipakka",
     "dummy": "Kuollut käsi",
     "openTalon": "Avoin koini",
+    "tricksWon": "Tikkejä: {{n}}",
     "lastTrickBtn": "Viime tikki",
     "trickWonBy": "{{name}} vei tikin",
     "leadsNow": "{{name}} ajaa",
