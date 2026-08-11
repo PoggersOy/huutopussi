@@ -4,7 +4,9 @@
  * Graph, Twitter card, JSON-LD). A missing/renamed tag here silently tanks the
  * SEO score, so pin the contract.
  */
-import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -72,12 +74,16 @@ describe('index.html SEO head', () => {
 });
 
 describe('crawler files (robots + sitemap)', () => {
-  it('sitemap.xml is well-formed XML listing the canonical home URL', () => {
+  it('sitemap.xml lists every canonical public search landing page', () => {
     const xml = readPkg('public/sitemap.xml');
     const sm = new DOMParser().parseFromString(xml, 'application/xml');
     expect(sm.querySelector('parsererror')).toBeNull(); // parse errors surface here
     const locs = [...sm.getElementsByTagName('loc')].map((l) => l.textContent);
-    expect(locs).toContain('https://huutopussi.online/');
+    expect(locs).toEqual([
+      'https://huutopussi.online/',
+      'https://huutopussi.online/saannot',
+      'https://huutopussi.online/opettele',
+    ]);
     // Every <loc> must be an absolute https URL on the production origin, or
     // Search Console rejects the entry.
     for (const loc of locs) expect(loc).toMatch(/^https:\/\/huutopussi\.online\//);
@@ -88,5 +94,45 @@ describe('crawler files (robots + sitemap)', () => {
     expect(txt).toMatch(/Sitemap:\s*https:\/\/huutopussi\.online\/sitemap\.xml/);
     expect(txt).toMatch(/Disallow:\s*\/r\//); // private room links stay out of the index
     expect(txt).not.toMatch(/Disallow:\s*\/\s*$/m); // never a blanket site-wide block
+  });
+});
+
+describe('pre-rendered SEO pages', () => {
+  it('builds route-specific, crawlable HTML before React runs', () => {
+    const dist = mkdtempSync(join(tmpdir(), 'hp-seo-'));
+    try {
+      writeFileSync(join(dist, 'index.html'), html);
+      execFileSync(process.execPath, [join(process.cwd(), 'scripts/prerender-seo.mjs'), dist]);
+
+      for (const page of [
+        {
+          slug: 'saannot',
+          canonical: 'https://huutopussi.online/saannot',
+          heading: 'Huutopussin säännöt',
+        },
+        {
+          slug: 'opettele',
+          canonical: 'https://huutopussi.online/opettele',
+          heading: 'Opettele pelaamaan Huutopussia',
+        },
+      ]) {
+        const output = readFileSync(join(dist, page.slug, 'index.html'), 'utf8');
+        const rendered = new DOMParser().parseFromString(output, 'text/html');
+        expect(rendered.title).toMatch(/Huutopussi/i);
+        expect(rendered.querySelector('link[rel="canonical"]')?.getAttribute('href')).toBe(
+          page.canonical,
+        );
+        expect(rendered.querySelector('h1')?.textContent).toBe(page.heading);
+        expect(rendered.querySelector('#root')?.textContent?.length).toBeGreaterThan(500);
+        expect(rendered.querySelectorAll('#root a[href]').length).toBeGreaterThanOrEqual(2);
+
+        const schemas = [...rendered.querySelectorAll('script[type="application/ld+json"]')].map(
+          (script) => JSON.parse(script.textContent ?? ''),
+        );
+        expect(schemas.some((schema) => schema['@type'] === 'WebPage')).toBe(true);
+      }
+    } finally {
+      rmSync(dist, { recursive: true, force: true });
+    }
   });
 });

@@ -1,7 +1,7 @@
 /**
  * Plain-HTTP probes to the server that live OUTSIDE the WebSocket protocol.
  * The WS connection is a room-bound singleton, so a multi-room status query
- * (used by the History screen's "open games" list) rides a stateless GET
+ * (used by the History screen's "open games" list) rides a small POST
  * instead. Same-origin in prod (the server serves the client); dev proxies
  * `/api` to :8080 via vite.config.ts. Degrades to `[]` on any failure.
  */
@@ -18,6 +18,11 @@ export interface MatchmakingBucket {
   ranked: boolean;
   /** Players currently waiting in this bucket's open room. */
   waiting: number;
+}
+
+export interface RoomProof {
+  code: string;
+  sessionToken: string;
 }
 
 /**
@@ -48,10 +53,14 @@ export async function fetchMatchmaking(): Promise<MatchmakingBucket[]> {
  * rooms that currently exist, in the same order the server saw them; unknown or
  * closed rooms are simply absent. Never throws.
  */
-export async function fetchOpenRooms(codes: string[]): Promise<OpenRoom[]> {
-  if (codes.length === 0) return [];
+export async function fetchOpenRooms(rooms: RoomProof[]): Promise<OpenRoom[]> {
+  if (rooms.length === 0) return [];
   try {
-    const res = await fetch(`/api/rooms?codes=${encodeURIComponent(codes.join(','))}`);
+    const res = await fetch('/api/rooms', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ rooms: rooms.slice(0, 8) }),
+    });
     if (!res.ok) return [];
     const data = (await res.json()) as { rooms?: unknown };
     if (!Array.isArray(data.rooms)) return [];

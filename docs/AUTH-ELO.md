@@ -24,9 +24,11 @@ handling.
 4. Client stores the app token in **localStorage** (`hp:auth`) — persistent across
    tab close, deliberately separate from the per-tab room token in sessionStorage.
 5. The WS `hello` carries the app token as `auth`; the server resolves it to a
-   `userId`, binds it to the `Session`, and defaults the nickname to the Google
-   name. A stale/invalid token silently degrades to guest — it never rejects a
-   join. Restore-on-boot uses `GET /auth/me`; `POST /auth/logout` revokes.
+   `userId`, binds both the account and the token hash to the `Session`, and
+   defaults the nickname to the Google name. A stale/invalid token degrades to
+   guest. Seated identities cannot be swapped to another account; logout,
+   expiry and account deletion revoke the derived WS authentication as well.
+   Restore-on-boot uses `GET /auth/me`; `POST /auth/logout` revokes.
 
 **Endpoints** (raw `node:http` in `server.ts`, dispatched before the non-GET 405
 guard): `GET /api/auth-config`, `POST /auth/google`, `GET /auth/me`,
@@ -50,11 +52,12 @@ One algorithm for all three modes via `sideCount` (2p→2, 4p→2 team sides, 3p
 - Constants: start 1000, provisional < 10 games (K=40), else K=20 (K=10 ≥ 2100),
   rating floor 100.
 
-**Rated eligibility** (evaluated at match end, `planMatchRating` in `server.ts`):
-every active seat is a `kind==='human'` session with a non-null `userId`, and all
-userIds are **distinct** (guards the one-browser-two-seats case). Bots or guests
-present → unrated; AFK autoplay (`botControlled`) does **not** unrate. Ratings are
-persisted in the same transaction as `finishMatch`.
+**Rated eligibility** is frozen at match start: every active seat must be a
+signed-in human and all userIds must be **distinct**. The immutable roster and
+eligibility bit are persisted with the match and reused after recovery and at
+settlement. Bots, guests and explicitly unranked matchmaking stay unrated; AFK
+autoplay (`botControlled`) does **not** unrate. Ratings are persisted in the same
+transaction as `finishMatch`.
 
 ## Data model
 
@@ -64,7 +67,10 @@ New tables (`packages/server/src/db.ts`, idempotent migrations):
   `wins`/`losses`, `win_streak`, `best_streak`.
 - `auth_tokens` — `token_hash` (PK), `user_id`, `expires_at`.
 - `rating_events` — per-match `(match_id, user_id)` delta (profile + reconnect).
-- `sessions.user_id` — links a live session to an account (null = guest).
+- `sessions.user_id` / `auth_token_hash` — live account binding and its revocable
+  app-token grant (null = guest).
+- `match_roster` + `matches.rating_eligible` — immutable match-start participant
+  identity and competitive disposition used by recovery, stats and settlement.
 
 ## Wire contract (frozen — additive only, no version bump)
 

@@ -32,8 +32,28 @@ test('adminStats counts today’s games, unique players, and total sign-ups', ()
   }
 
   // Two games today, in two rooms.
-  db.createMatch({ id: 'm1', roomId: 'r1', config, firstDealer: 0 });
-  db.createMatch({ id: 'm2', roomId: 'r2', config, firstDealer: 0 });
+  db.createMatch({
+    id: 'm1',
+    roomId: 'r1',
+    config,
+    firstDealer: 0,
+    roster: [
+      { seat: 0, kind: 'human', userId: 'uA', participantKey: 'user:uA' },
+      { seat: 1, kind: 'human', userId: null, participantKey: 'guest:g1' },
+      { seat: 2, kind: 'human', userId: null, participantKey: 'guest:g2' },
+      { seat: 3, kind: 'bot', userId: null, participantKey: 'bot:m1:3' },
+    ],
+  });
+  db.createMatch({
+    id: 'm2',
+    roomId: 'r2',
+    config,
+    firstDealer: 0,
+    roster: [
+      { seat: 0, kind: 'human', userId: 'uA', participantKey: 'user:uA' },
+      { seat: 1, kind: 'human', userId: 'uB', participantKey: 'user:uB' },
+    ],
+  });
 
   // r1: account uA + two guests, plus a bot and an unseated human (both ignored).
   seat(db, 'r1-uA', 'r1', 0, 'uA');
@@ -74,6 +94,9 @@ test('adminStats counts today’s games, unique players, and total sign-ups', ()
   expect(stats.guestPlayersToday).toBe(2); // g1 + g2
   expect(stats.uniquePlayersToday).toBe(4);
   expect(stats.registeredUsersTotal).toBe(3); // uA, uB, uC
+  db.deleteSessionsForRoom('r1');
+  db.deleteSessionsForRoom('r2');
+  expect(db.adminStats(since)).toEqual(stats); // room closure cannot erase today's players
   db.close();
 });
 
@@ -86,5 +109,21 @@ test('adminStats on an empty db is all zeros', () => {
     guestPlayersToday: 0,
     registeredUsersTotal: 0,
   });
+  db.close();
+});
+
+test('currentLossStreak counts only the suffix after the latest win', () => {
+  const db = new Db(':memory:');
+  const insert = db.raw.prepare(
+    `INSERT INTO rating_events
+       (match_id, user_id, seat, rating_before, rating_after, delta, streak_after, created_at)
+     VALUES (?, 'u', 0, 1000, 1000, 0, ?, ?)`,
+  );
+  insert.run('win-old', 1, 1);
+  insert.run('loss-1', 0, 2);
+  insert.run('loss-2', 0, 2); // tie exercises the rowid tiebreaker
+  expect(db.currentLossStreak('u')).toBe(2);
+  insert.run('win-new', 2, 3);
+  expect(db.currentLossStreak('u')).toBe(0);
   db.close();
 });

@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "postbuild": "node scripts/prerender-seo.mjs",
     "preview": "vite preview",
     "icons": "node scripts/generate-icons.mjs",
     "og": "node scripts/generate-og.mjs",

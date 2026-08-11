@@ -35,7 +35,7 @@ export function LearnGuide(): ReactElement | null {
           const sc = scenarioById(learn.scenarioId);
           if (sc !== undefined) startLearn(sc);
         }}
-        onBack={() => navigate('/learn')}
+        onBack={() => navigate('/opettele')}
       />
     );
   }
@@ -55,7 +55,7 @@ export function LearnGuide(): ReactElement | null {
       <button
         type="button"
         className="learn-guide__exit"
-        onClick={() => navigate('/learn')}
+        onClick={() => navigate('/opettele')}
         aria-label={t('learn.exit')}
       >
         ✕

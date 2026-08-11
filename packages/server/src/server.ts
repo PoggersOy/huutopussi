@@ -76,6 +76,7 @@ import {
   createRoom,
   generateRoomCode,
   hostSessionOf,
+  type MatchRosterEntry,
   ROOM_CODE_ALPHABET,
   type Room,
   type RoomMatchmaking,
@@ -90,6 +91,7 @@ import {
   rememberResponse,
   replayCachedResponse,
   type Session,
+  sendRawTo,
 } from './sessions.js';
 import {
   botDelayMs,
@@ -121,6 +123,11 @@ export interface ServerOpts {
   maxRooms?: number;
   /** Cap on sessions per room; new guest joins are refused past it. */
   maxSessionsPerRoom?: number;
+  /** Cap on rooms concurrently reserved by one trusted client IP. */
+  maxRoomsPerIp?: number;
+  /** Global and per-IP live WebSocket caps. */
+  maxSockets?: number;
+  maxSocketsPerIp?: number;
   /** Time allowed for a new WebSocket to send hello; tests may shorten it. */
   wsHelloTimeoutMs?: number;
   /** Per-socket inbound message flood guard; tests may lower the cap. */
@@ -283,11 +290,14 @@ function isKnownAppRoute(pathname: string): boolean {
   return (
     pathname === '/' ||
     pathname === '/history' ||
+    pathname === '/saannot' ||
     pathname === '/rules' ||
     pathname === '/privacy' ||
     pathname === '/profile' ||
+    pathname === '/opettele' ||
     pathname === '/learn' ||
     pathname.startsWith('/r/') ||
+    pathname.startsWith('/opettele/') ||
     pathname.startsWith('/learn/')
   );
 }
@@ -332,6 +342,9 @@ export function createServer(opts: ServerOpts = {}): HpServer {
   const staticDir = opts.staticDir ?? null;
   const maxRooms = opts.maxRooms ?? 1000;
   const maxSessionsPerRoom = opts.maxSessionsPerRoom ?? 64;
+  const maxRoomsPerIp = opts.maxRoomsPerIp ?? 20;
+  const maxSockets = opts.maxSockets ?? 4096;
+  const maxSocketsPerIp = opts.maxSocketsPerIp ?? 128;
   const wsHelloTimeoutMs = opts.wsHelloTimeoutMs ?? 10_000;
   const wsRateLimit = opts.wsRateLimit ?? { windowMs: 10_000, maxMessages: 120 };
   const db = new Db(opts.dbPath ?? './data/hp.db');
@@ -342,6 +355,10 @@ export function createServer(opts: ServerOpts = {}): HpServer {
   const rooms = new Map<string, Room>(); // by code
   const roomsById = new Map<string, Room>();
   const sessionsByToken = new Map<string, Session>();
+  const roomCreatorIp = new Map<string, string>();
+  const liveRoomsByIp = new Map<string, number>();
+  const liveSocketsByIp = new Map<string, number>();
+  const failedRoomJoinRate = new Map<string, { count: number; resetAt: number }>();
   /**
    * Matchmaking: one currently-accepting matchmade room per bucket. Keyed by
    * `bucketKey(players, ranked)` → room code. A find reuses the mapped room if
@@ -466,9 +483,16 @@ export function createServer(opts: ServerOpts = {}): HpServer {
     }
   }
 
+  function roomHistory(room: Room) {
+    room.historyCache ??= db.matchSummaries(room.id);
+    return room.historyCache;
+  }
+
   function sendHistory(room: Room): void {
-    const msg: ServerMsg = { t: 'history', matches: db.matchSummaries(room.id) };
-    for (const s of room.sessions.values()) sendTo(s, msg);
+    room.historyCache = null;
+    const msg: ServerMsg = { t: 'history', matches: roomHistory(room) };
+    const json = JSON.stringify(msg);
+    for (const s of room.sessions.values()) sendRawTo(s, json);
   }
 
   // ── turn/timer orchestration ────────────────────────────────────────────────
@@ -603,10 +627,35 @@ export function createServer(opts: ServerOpts = {}): HpServer {
     if (matchmakingOpen.get(key) === room.code) matchmakingOpen.delete(key);
   }
 
+  function reserveRoomForIp(roomId: string, ip: string): boolean {
+    const count = liveRoomsByIp.get(ip) ?? 0;
+    if (count >= maxRoomsPerIp) return false;
+    roomCreatorIp.set(roomId, ip);
+    liveRoomsByIp.set(ip, count + 1);
+    return true;
+  }
+
+  function releaseRoomReservation(roomId: string): void {
+    const ip = roomCreatorIp.get(roomId);
+    if (ip === undefined) return;
+    roomCreatorIp.delete(roomId);
+    const count = liveRoomsByIp.get(ip) ?? 0;
+    if (count <= 1) liveRoomsByIp.delete(ip);
+    else liveRoomsByIp.set(ip, count - 1);
+  }
+
+  function failedRoomJoinLimited(remoteIp: string, now = Date.now()): boolean {
+    return (
+      fixedWindowLimited(failedRoomJoinRate, `ip:${remoteIp}`, now, 60_000, 30) ||
+      fixedWindowLimited(failedRoomJoinRate, 'global', now, 60_000, 1000)
+    );
+  }
+
   /** Zero connected humans for idleCloseMs: persist as abandoned, close. */
   function closeRoom(room: Room): void {
     if (room.closed) return;
     room.closed = true;
+    releaseRoomReservation(room.id);
     unregisterMatchmaking(room);
     clearAllRoomTimers(room);
     if (room.matchId && room.status === 'playing') db.abandonMatch(room.matchId);
@@ -652,20 +701,20 @@ export function createServer(opts: ServerOpts = {}): HpServer {
   ): RatingPlan {
     const players = room.config.players;
     if (finalState.winnerSide === null) return UNRATED_PLAN;
-    // A matchmade room that opted out of ranking never counts, even if it
-    // happens to be all-signed-in. (Private code-rooms rate by composition.)
-    if (room.matchmaking !== null && !room.matchmaking.ranked) return UNRATED_PLAN;
+    if (!room.ratingEligible) return UNRATED_PLAN;
     const seats = activeSeats(players);
 
     // Eligibility + gather each seat's account, keyed by seat.
     const userBySeat = new Map<Seat, UserRow>();
     const seenUsers = new Set<string>();
     for (const seat of seats) {
-      const s = sessionAtSeat(room, seat);
-      if (!s || s.kind !== 'human' || s.userId === null) return UNRATED_PLAN;
-      if (seenUsers.has(s.userId)) return UNRATED_PLAN; // same account in two seats
-      seenUsers.add(s.userId);
-      const u = db.getUserById(s.userId);
+      const participant = room.matchRoster.find((p) => p.seat === seat);
+      if (!participant || participant.kind !== 'human' || participant.userId === null) {
+        return UNRATED_PLAN;
+      }
+      if (seenUsers.has(participant.userId)) return UNRATED_PLAN;
+      seenUsers.add(participant.userId);
+      const u = db.getUserById(participant.userId);
       if (!u) return UNRATED_PLAN;
       userBySeat.set(seat, u);
     }
@@ -698,7 +747,7 @@ export function createServer(opts: ServerOpts = {}): HpServer {
         const u = userBySeat.get(seat);
         const r = sideChanges?.[k];
         const s = sessionAtSeat(room, seat);
-        if (!u || !r || !s) throw new Error('planMatchRating: change/seat mismatch');
+        if (!u || !r) throw new Error('planMatchRating: change/seat mismatch');
         const isWin = side === finalState.winnerSide;
         updates.push({
           matchId,
@@ -712,11 +761,13 @@ export function createServer(opts: ServerOpts = {}): HpServer {
           createdAt: now,
         });
         perSeat.push({ seat, userId: u.id, before: u.rating, after: r.newRating, delta: r.delta });
-        cache.push({
-          session: s,
-          rating: r.newRating,
-          provisional: u.gamesPlayed + 1 < PROVISIONAL_GAMES,
-        });
+        if (s?.userId === u.id) {
+          cache.push({
+            session: s,
+            rating: r.newRating,
+            provisional: u.gamesPlayed + 1 < PROVISIONAL_GAMES,
+          });
+        }
       });
     });
     return { result: { rated: true, perSeat }, updates, cache };
@@ -730,12 +781,19 @@ export function createServer(opts: ServerOpts = {}): HpServer {
     }
   }
 
-  /** Seats held by a distinct signed-in human — the achievement-earning set. */
+  /** Distinct signed-in humans captured when the match started. */
   function signedInParticipants(room: Room): Array<{ seat: Seat; userId: string }> {
     const out: Array<{ seat: Seat; userId: string }> = [];
-    for (const seat of activeSeats(room.config.players)) {
-      const s = sessionAtSeat(room, seat);
-      if (s && s.kind === 'human' && s.userId !== null) out.push({ seat, userId: s.userId });
+    const counts = new Map<string, number>();
+    for (const p of room.matchRoster) {
+      if (p.kind === 'human' && p.userId !== null) {
+        counts.set(p.userId, (counts.get(p.userId) ?? 0) + 1);
+      }
+    }
+    for (const p of room.matchRoster) {
+      if (p.kind === 'human' && p.userId !== null && counts.get(p.userId) === 1) {
+        out.push({ seat: p.seat, userId: p.userId });
+      }
     }
     return out;
   }
@@ -861,14 +919,45 @@ export function createServer(opts: ServerOpts = {}): HpServer {
   function startNewMatch(room: Room, origin?: { token: string; actionId: string }): void {
     const firstDealer = randomInt(room.config.players) as Seat;
     const matchId = randomUUID();
+    const roster: MatchRosterEntry[] = activeSeats(room.config.players).map((seat) => {
+      const session = sessionAtSeat(room, seat);
+      if (!session) throw new Error(`startNewMatch: empty seat ${seat}`);
+      return {
+        seat,
+        kind: session.kind,
+        userId: session.kind === 'human' ? session.userId : null,
+        participantKey:
+          session.kind === 'human'
+            ? session.userId === null
+              ? `guest:${hashToken(session.token)}`
+              : `user:${session.userId}`
+            : `bot:${matchId}:${seat}`,
+      };
+    });
+    const signedUsers = roster.flatMap((p) =>
+      p.kind === 'human' && p.userId !== null ? [p.userId] : [],
+    );
+    const ratingEligible =
+      room.matchmaking?.ranked !== false &&
+      signedUsers.length === roster.length &&
+      new Set(signedUsers).size === signedUsers.length;
     room.match = initialMatchState(room.config, firstDealer);
     room.matchId = matchId;
     room.eventSeq = 0;
+    room.matchRoster = roster;
+    room.ratingEligible = ratingEligible;
     room.status = 'playing';
     // A started matchmade room no longer accepts finders.
     unregisterMatchmaking(room);
     db.transaction(() => {
-      db.createMatch({ id: matchId, roomId: room.id, config: room.config, firstDealer });
+      db.createMatch({
+        id: matchId,
+        roomId: room.id,
+        config: room.config,
+        firstDealer,
+        roster,
+        ratingEligible,
+      });
       db.setRoomStatus(room.id, 'playing');
     });
     try {
@@ -1141,6 +1230,7 @@ export function createServer(opts: ServerOpts = {}): HpServer {
         // dead-end and can go Home). closeRoom persists the match as abandoned.
         if (!isHost) return fail('error.notHost');
         if (room.status !== 'playing') return fail('error.noMatch');
+        if (room.ratingEligible) return fail('error.ratedCannotStop');
         closeRoom(room);
         return true;
       }
@@ -1204,6 +1294,7 @@ export function createServer(opts: ServerOpts = {}): HpServer {
       nickname: s.nickname,
       kind: s.kind,
       userId: s.userId,
+      authTokenHash: s.authTokenHash,
     };
   }
 
@@ -1245,7 +1336,7 @@ export function createServer(opts: ServerOpts = {}): HpServer {
     // device (or a reconnect after the fact) never saw a room's past results.
     // Sending the authoritative set on welcome keeps the History screen complete
     // per room, consistent with the full-snapshot-on-welcome model.
-    sendTo(session, { t: 'history', matches: db.matchSummaries(room.id) });
+    sendTo(session, { t: 'history', matches: roomHistory(room) });
   }
 
   function bindSocket(session: Session, sock: WebSocket, room: Room): void {
@@ -1264,32 +1355,67 @@ export function createServer(opts: ServerOpts = {}): HpServer {
     clearIdleTimer(room);
   }
 
+  interface AuthBinding {
+    user: UserRow;
+    tokenHash: string;
+  }
+
+  function resolveAuthBinding(token: string | undefined): AuthBinding | null {
+    if (token === undefined) return null;
+    const tokenHash = hashToken(token);
+    const userId = db.resolveAuthToken(tokenHash, Date.now());
+    if (userId === null) return null;
+    const user = db.getUserById(userId);
+    return user === null ? null : { user, tokenHash };
+  }
+
   /** Resolve an app auth token to its account, or null (absent/expired/unknown). */
   function resolveAuth(token: string | undefined): UserRow | null {
-    if (token === undefined) return null;
-    const userId = db.resolveAuthToken(hashToken(token), Date.now());
-    return userId === null ? null : db.getUserById(userId);
+    return resolveAuthBinding(token)?.user ?? null;
   }
 
   /**
    * Bind a resolved account onto a session: id, cached rating/provisional, and a
-   * default nickname from the Google name when the client sent none. A null user
-   * (guest, or an unresolvable token) leaves the session untouched — a stale
-   * token never signs an already-bound session out.
+   * default nickname from the Google name when the client sent none. Reconnect
+   * handles a null binding separately by downgrading an existing binding to a
+   * guest, so stale or revoked grants cannot preserve account attribution.
    */
   function applyAuthToSession(
     session: Session,
-    user: UserRow | null,
+    binding: AuthBinding | null,
     explicitNick: string | undefined,
   ): void {
-    if (!user) return;
+    if (!binding) return;
+    const { user, tokenHash } = binding;
     session.userId = user.id;
+    session.authTokenHash = tokenHash;
+    session.authCheckedAt = Date.now();
     session.rating = user.rating;
     session.provisional = user.gamesPlayed < PROVISIONAL_GAMES;
     if (explicitNick === undefined && session.nickname === null && user.name) {
       const nick = user.name.trim().slice(0, 20);
       if (nick.length > 0) session.nickname = nick;
     }
+  }
+
+  function clearSessionAuth(session: Session): void {
+    session.userId = null;
+    session.authTokenHash = null;
+    session.authCheckedAt = 0;
+    session.rating = null;
+    session.provisional = false;
+  }
+
+  /** Revalidate long-lived WebSocket authentication at most once per minute. */
+  function refreshSessionAuth(session: Session, now = Date.now()): void {
+    if (session.authTokenHash === null || now - session.authCheckedAt < 60_000) return;
+    const userId = db.resolveAuthToken(session.authTokenHash, now);
+    session.authCheckedAt = now;
+    if (userId === session.userId && userId !== null) return;
+    clearSessionAuth(session);
+    db.saveSession(sessionRow(session));
+    const room = roomsById.get(session.roomId);
+    if (room && !room.closed) broadcastRoom(room);
   }
 
   /**
@@ -1302,9 +1428,26 @@ export function createServer(opts: ServerOpts = {}): HpServer {
     const changedRooms = new Set<Room>();
     for (const session of sessionsByToken.values()) {
       if (session.userId !== userId) continue;
-      session.userId = null;
-      session.rating = null;
-      session.provisional = false;
+      clearSessionAuth(session);
+      db.saveSession(sessionRow(session));
+      const room = roomsById.get(session.roomId);
+      if (room && !room.closed) {
+        for (const participant of room.matchRoster) {
+          if (participant.userId === userId) participant.userId = null;
+        }
+        room.ratingEligible = false;
+        changedRooms.add(room);
+      }
+    }
+    for (const room of changedRooms) broadcastRoom(room);
+  }
+
+  function unlinkLiveAuthGrant(tokenHash: string): void {
+    const changedRooms = new Set<Room>();
+    for (const session of sessionsByToken.values()) {
+      if (session.authTokenHash !== tokenHash) continue;
+      clearSessionAuth(session);
+      db.saveSession(sessionRow(session));
       const room = roomsById.get(session.roomId);
       if (room && !room.closed) changedRooms.add(room);
     }
@@ -1324,9 +1467,14 @@ export function createServer(opts: ServerOpts = {}): HpServer {
    * host resolves to the first-seated human via hostSessionOf). Returns null if
    * the global room cap is hit.
    */
-  function createEmptyMatchmadeRoom(config: RuleConfig, matchmaking: RoomMatchmaking): Room | null {
+  function createEmptyMatchmadeRoom(
+    config: RuleConfig,
+    matchmaking: RoomMatchmaking,
+    remoteIp: string,
+  ): Room | null {
     if (rooms.size >= maxRooms) return null;
     const roomId = randomUUID();
+    if (!reserveRoomForIp(roomId, remoteIp)) return null;
     const code = generateRoomCode((c) => rooms.has(c));
     const room = createRoom({
       id: roomId,
@@ -1357,10 +1505,11 @@ export function createServer(opts: ServerOpts = {}): HpServer {
     sock: WebSocket,
     msg: Extract<ClientMsg, { t: 'hello' }>,
     mm: { players: 2 | 3 | 4; ranked: boolean },
-    authUser: UserRow | null,
+    auth: AuthBinding | null,
+    remoteIp: string,
     setBound: (s: Session) => void,
   ): void {
-    if (mm.ranked && authUser === null) {
+    if (mm.ranked && auth === null) {
       // Ranked needs a real account; the client also prevents this.
       sendJson(sock, { t: 'error', code: 'error.rankedNeedsLogin' });
       return;
@@ -1395,12 +1544,21 @@ export function createServer(opts: ServerOpts = {}): HpServer {
         sendJson(sock, { t: 'error', code: applied.code, params: applied.params });
         return;
       }
-      room = createEmptyMatchmadeRoom(applied.config, { ranked: mm.ranked });
+      room = createEmptyMatchmadeRoom(applied.config, { ranked: mm.ranked }, remoteIp);
       if (room === null) {
         sendJson(sock, { t: 'error', code: 'error.serverBusy' });
         return;
       }
       matchmakingOpen.set(key, room.code);
+    }
+
+    if (
+      mm.ranked &&
+      auth !== null &&
+      [...room.sessions.values()].some((s) => s.userId === auth.user.id)
+    ) {
+      sendJson(sock, { t: 'error', code: 'error.rankedDuplicateAccount' });
+      return;
     }
 
     const seat = firstFreeSeat(room);
@@ -1416,7 +1574,7 @@ export function createServer(opts: ServerOpts = {}): HpServer {
       nickname: msg.nickname ?? null,
       kind: 'human',
     });
-    applyAuthToSession(session, authUser, msg.nickname);
+    applyAuthToSession(session, auth, msg.nickname);
     room.sessions.set(session.token, session);
     sessionsByToken.set(session.token, session);
     bindSocket(session, sock, room);
@@ -1430,6 +1588,7 @@ export function createServer(opts: ServerOpts = {}): HpServer {
   function handleHello(
     sock: WebSocket,
     msg: Extract<ClientMsg, { t: 'hello' }>,
+    remoteIp: string,
     setBound: (s: Session) => void,
   ): void {
     if (msg.v !== PROTOCOL_VERSION) {
@@ -1444,7 +1603,7 @@ export function createServer(opts: ServerOpts = {}): HpServer {
 
     // Resolve the (optional) signed-in account once; a bad/expired token is
     // simply treated as a guest — it never rejects the join.
-    const authUser = resolveAuth(msg.auth);
+    const auth = resolveAuthBinding(msg.auth);
 
     // Resume an existing session (reconnect), last-connect-wins.
     if (msg.sessionToken !== undefined) {
@@ -1452,8 +1611,19 @@ export function createServer(opts: ServerOpts = {}): HpServer {
       if (existing && existing.kind === 'human') {
         const room = roomsById.get(existing.roomId);
         if (room && !room.closed && (msg.roomCode === undefined || msg.roomCode === room.code)) {
+          const accountChange =
+            (existing.userId !== null && auth !== null && auth.user.id !== existing.userId) ||
+            (existing.userId === null &&
+              auth !== null &&
+              (room.status !== 'lobby' || existing.seat !== null));
+          if (accountChange) {
+            sendJson(sock, { t: 'error', code: 'error.accountLocked' });
+            sock.close(1008, 'account locked');
+            return;
+          }
           if (msg.nickname !== undefined) existing.nickname = msg.nickname;
-          applyAuthToSession(existing, authUser, msg.nickname);
+          if (auth === null) clearSessionAuth(existing);
+          else applyAuthToSession(existing, auth, msg.nickname);
           db.saveSession(sessionRow(existing));
           bindSocket(existing, sock, room);
           setBound(existing);
@@ -1480,7 +1650,7 @@ export function createServer(opts: ServerOpts = {}): HpServer {
     // Matchmaking: the server picks/opens a matchmade room for the bucket and
     // auto-seats this player (auto-starting when the room fills).
     if (msg.matchmaking !== undefined) {
-      handleMatchmaking(sock, msg, msg.matchmaking, authUser, setBound);
+      handleMatchmaking(sock, msg, msg.matchmaking, auth, remoteIp, setBound);
       return;
     }
 
@@ -1491,8 +1661,9 @@ export function createServer(opts: ServerOpts = {}): HpServer {
       // (seat null).
       const room = rooms.get(msg.roomCode);
       if (!room || room.closed) {
-        sendJson(sock, { t: 'error', code: 'error.roomNotFound' });
-        sock.close(4004, 'room not found');
+        const limited = failedRoomJoinLimited(remoteIp);
+        sendJson(sock, { t: 'error', code: limited ? 'error.serverBusy' : 'error.roomNotFound' });
+        sock.close(limited ? 1008 : 4004, limited ? 'join rate exceeded' : 'room not found');
         return;
       }
       if (room.sessions.size >= maxSessionsPerRoom) {
@@ -1507,7 +1678,7 @@ export function createServer(opts: ServerOpts = {}): HpServer {
         nickname: msg.nickname ?? null,
         kind: 'human',
       });
-      applyAuthToSession(session, authUser, msg.nickname);
+      applyAuthToSession(session, auth, msg.nickname);
       room.sessions.set(session.token, session);
       sessionsByToken.set(session.token, session);
       bindSocket(session, sock, room);
@@ -1543,6 +1714,10 @@ export function createServer(opts: ServerOpts = {}): HpServer {
       config = applied.config;
     }
     const roomId = randomUUID();
+    if (!reserveRoomForIp(roomId, remoteIp)) {
+      sendJson(sock, { t: 'error', code: 'error.serverBusy' });
+      return;
+    }
     const code = generateRoomCode((c) => rooms.has(c));
     const session = createSession({
       token: randomUUID(),
@@ -1551,7 +1726,7 @@ export function createServer(opts: ServerOpts = {}): HpServer {
       nickname: msg.nickname ?? null,
       kind: 'human',
     });
-    applyAuthToSession(session, authUser, msg.nickname);
+    applyAuthToSession(session, auth, msg.nickname);
     const room = createRoom({
       id: roomId,
       code,
@@ -1703,8 +1878,14 @@ export function createServer(opts: ServerOpts = {}): HpServer {
           prevRoom.sessions.delete(prev.token);
           sessionsByToken.delete(prev.token);
           db.deleteSession(prev.token);
-          broadcastRoom(prevRoom);
-          armIdleTimerIfEmpty(prevRoom);
+          if ([...prevRoom.sessions.values()].some((s) => s.kind === 'human')) {
+            broadcastRoom(prevRoom);
+            armIdleTimerIfEmpty(prevRoom);
+          } else {
+            // A deliberate same-socket re-identification cannot reclaim this
+            // lobby. Close it now instead of retaining an attacker-created room.
+            closeRoom(prevRoom);
+          }
         } else {
           // Unseated guest, or a seated player in a live match: an unseated guest
           // left behind by the re-hello is garbage (drop it); a seated player in a
@@ -1714,13 +1895,14 @@ export function createServer(opts: ServerOpts = {}): HpServer {
           if (prevRoom) armIdleTimerIfEmpty(prevRoom);
         }
       }
-      handleHello(sock, msg, (s) => {
+      handleHello(sock, msg, ctx.remoteIp, (s) => {
         ctx.session = s;
         if (ctx.helloTimer !== null) {
           clearTimeout(ctx.helloTimer);
           ctx.helloTimer = null;
         }
       });
+      if (ctx.session === null && sock.readyState < 2) armHelloTimer(sock, ctx);
       return;
     }
 
@@ -1729,6 +1911,7 @@ export function createServer(opts: ServerOpts = {}): HpServer {
       sendJson(sock, { t: 'error', code: 'error.helloFirst' });
       return;
     }
+    refreshSessionAuth(session);
 
     switch (msg.t) {
       case 'action': {
@@ -1786,6 +1969,8 @@ export function createServer(opts: ServerOpts = {}): HpServer {
       return;
     }
     if (pathname === '/' || pathname === '') filePath = join(dir, 'index.html');
+    if (pathname === '/saannot') filePath = join(dir, 'saannot', 'index.html');
+    if (pathname === '/opettele') filePath = join(dir, 'opettele', 'index.html');
     fs.stat(filePath, (err, st) => {
       if (!err && st.isFile()) {
         streamFile(filePath, res);
@@ -1934,6 +2119,75 @@ export function createServer(opts: ServerOpts = {}): HpServer {
   const STATS_RATE_MAX = 6; // per IP per minute — far below auth's 30
   const STATS_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
   let statsCache: { since: number; body: string; computedAt: number } | null = null;
+  const roomProbeRate = new Map<string, { count: number; resetAt: number }>();
+  const ROOM_PROBE_WINDOW_MS = 60_000;
+  const ROOM_PROBE_PER_IP_MAX = 30;
+  const ROOM_PROBE_GLOBAL_MAX = 600;
+
+  async function handleRoomProbe(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+  ): Promise<void> {
+    if (req.method !== 'POST') {
+      res.writeHead(405, { 'content-type': 'text/plain' });
+      res.end('method not allowed');
+      return;
+    }
+    const now = Date.now();
+    if (
+      fixedWindowLimited(
+        roomProbeRate,
+        `ip:${clientIp(req)}`,
+        now,
+        ROOM_PROBE_WINDOW_MS,
+        ROOM_PROBE_PER_IP_MAX,
+      ) ||
+      fixedWindowLimited(roomProbeRate, 'global', now, ROOM_PROBE_WINDOW_MS, ROOM_PROBE_GLOBAL_MAX)
+    ) {
+      sendHttpJson(res, 429, { error: 'rate_limited' });
+      return;
+    }
+    let body: unknown;
+    try {
+      body = await readJsonBody(req, 4 * 1024);
+    } catch {
+      sendHttpJson(res, 400, { error: 'bad_request' });
+      return;
+    }
+    const requested =
+      typeof body === 'object' &&
+      body !== null &&
+      Array.isArray((body as { rooms?: unknown }).rooms)
+        ? (body as { rooms: unknown[] }).rooms.slice(0, 8)
+        : [];
+    const seen = new Set<string>();
+    const result: Array<{
+      code: string;
+      status: RoomStatus;
+      seatsFilled: number;
+      seatsTotal: number;
+    }> = [];
+    for (const raw of requested) {
+      if (typeof raw !== 'object' || raw === null) continue;
+      const codeRaw = (raw as { code?: unknown }).code;
+      const token = (raw as { sessionToken?: unknown }).sessionToken;
+      if (typeof codeRaw !== 'string' || typeof token !== 'string') continue;
+      const code = codeRaw.trim().toUpperCase();
+      if (seen.has(code) || !ROOM_CODE_RE.test(code)) continue;
+      seen.add(code);
+      const room = rooms.get(code);
+      const session = sessionsByToken.get(token);
+      if (!room || room.closed || !session || session.roomId !== room.id) continue;
+      const seats = activeSeats(room.config.players);
+      result.push({
+        code,
+        status: room.status,
+        seatsFilled: seats.filter((seat) => sessionAtSeat(room, seat) !== null).length,
+        seatsTotal: seats.length,
+      });
+    }
+    sendHttpJson(res, 200, { rooms: result });
+  }
 
   function bearerToken(req: http.IncomingMessage): string | null {
     const h = req.headers.authorization;
@@ -2063,7 +2317,11 @@ export function createServer(opts: ServerOpts = {}): HpServer {
 
     if (path === '/auth/logout' && req.method === 'POST') {
       const token = bearerToken(req);
-      if (token) db.deleteAuthToken(hashToken(token));
+      if (token) {
+        const tokenHash = hashToken(token);
+        db.deleteAuthToken(tokenHash);
+        unlinkLiveAuthGrant(tokenHash);
+      }
       res.writeHead(204);
       res.end();
       return;
@@ -2272,6 +2530,12 @@ export function createServer(opts: ServerOpts = {}): HpServer {
       res.end('{"ok":true}');
       return;
     }
+    if (url.pathname === '/api/rooms') {
+      void handleRoomProbe(req, res).catch(() => {
+        if (!res.headersSent) sendHttpJson(res, 500, { error: 'internal' });
+      });
+      return;
+    }
     // Auth + profile JSON API (handles its own methods, incl. POST).
     if (
       url.pathname === '/api/auth-config' ||
@@ -2289,41 +2553,6 @@ export function createServer(opts: ServerOpts = {}): HpServer {
     if (req.method !== 'GET' && req.method !== 'HEAD') {
       res.writeHead(405, { 'content-type': 'text/plain' });
       res.end('method not allowed');
-      return;
-    }
-    // Room-status probe for the History screen's "open games" list. The client
-    // sends the codes it remembers (localStorage); we answer with the live
-    // status of the ones that still exist. Knowing a code already lets you join
-    // and see everything, so returning status + seat counts for a KNOWN code
-    // leaks nothing new (we omit nicknames and never confirm unknown codes).
-    if (url.pathname === '/api/rooms') {
-      const rawCodes = (url.searchParams.get('codes') ?? '').split(',');
-      const seen = new Set<string>();
-      const result: Array<{
-        code: string;
-        status: RoomStatus;
-        seatsFilled: number;
-        seatsTotal: number;
-      }> = [];
-      for (const raw of rawCodes) {
-        const code = raw.trim().toUpperCase();
-        // Cap the probe so a crafted query can't scan the whole room space.
-        if (seen.size >= 20) break;
-        if (code === '' || seen.has(code) || !ROOM_CODE_RE.test(code)) continue;
-        seen.add(code);
-        const room = rooms.get(code);
-        if (!room || room.closed) continue;
-        const seats = activeSeats(room.config.players);
-        const seatsFilled = seats.filter((seat) => sessionAtSeat(room, seat) !== null).length;
-        result.push({
-          code,
-          status: room.status,
-          seatsFilled,
-          seatsTotal: seats.length,
-        });
-      }
-      res.writeHead(200, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ rooms: result }));
       return;
     }
     // Matchmaking waiting counts per bucket (players × ranked). Aggregate only —
@@ -2384,7 +2613,41 @@ export function createServer(opts: ServerOpts = {}): HpServer {
       res.end('bad request');
       return;
     }
-    serveStatic(pathname, res);
+    if (pathname.includes('\0')) {
+      res.writeHead(400, { 'content-type': 'text/plain' });
+      res.end('bad request');
+      return;
+    }
+    const canonicalRedirect =
+      pathname === '/rules' || pathname === '/rules/'
+        ? '/saannot'
+        : pathname === '/learn' || pathname === '/learn/'
+          ? '/opettele'
+          : pathname.startsWith('/learn/')
+            ? `/opettele/${pathname.slice('/learn/'.length)}`
+            : pathname === '/saannot/'
+              ? '/saannot'
+              : pathname === '/opettele/'
+                ? '/opettele'
+                : null;
+    if (canonicalRedirect !== null) {
+      res.writeHead(308, {
+        location: `${canonicalRedirect}${url.search}`,
+        'cache-control': 'public, max-age=86400',
+      });
+      res.end();
+      return;
+    }
+    try {
+      serveStatic(pathname, res);
+    } catch {
+      // Filesystem APIs can reject invalid decoded representations
+      // synchronously before their callback is registered.
+      if (!res.headersSent) {
+        res.writeHead(400, { 'content-type': 'text/plain' });
+        res.end('bad request');
+      }
+    }
   });
 
   // ── WebSocket endpoint at /ws ───────────────────────────────────────────────
@@ -2404,6 +2667,7 @@ export function createServer(opts: ServerOpts = {}): HpServer {
 
   interface SocketState {
     session: Session | null;
+    remoteIp: string;
     isAlive: boolean;
     helloTimer: NodeJS.Timeout | null;
     rateStartedAt: number;
@@ -2411,10 +2675,28 @@ export function createServer(opts: ServerOpts = {}): HpServer {
   }
   const socketStates = new Map<WebSocket, SocketState>();
 
-  wss.on('connection', (sock: WebSocket) => {
+  function armHelloTimer(sock: WebSocket, ctx: SocketState): void {
+    if (ctx.helloTimer !== null) clearTimeout(ctx.helloTimer);
+    ctx.helloTimer = setTimeout(() => {
+      ctx.helloTimer = null;
+      if (ctx.session === null) sock.close(1008, 'hello timeout');
+    }, wsHelloTimeoutMs);
+  }
+
+  wss.on('connection', (sock: WebSocket, req: http.IncomingMessage) => {
     const now = Date.now();
+    const remoteIp = clientIp(req);
+    const ipSockets = liveSocketsByIp.get(remoteIp) ?? 0;
+    if (socketStates.size >= maxSockets || ipSockets >= maxSocketsPerIp) {
+      // Do not wait for an attacker to acknowledge a close frame: rejected
+      // sockets are intentionally outside socketStates and must not accumulate
+      // during ws's close-handshake timeout.
+      sock.terminate();
+      return;
+    }
     const ctx: SocketState = {
       session: null,
+      remoteIp,
       isAlive: true,
       helloTimer: null,
       rateStartedAt: now,
@@ -2423,11 +2705,9 @@ export function createServer(opts: ServerOpts = {}): HpServer {
     // An upgraded socket that never identifies itself otherwise lives forever:
     // ws clients auto-pong, so the heartbeat cannot distinguish it from a real
     // player. Bound the unauthenticated resource lifetime.
-    ctx.helloTimer = setTimeout(() => {
-      ctx.helloTimer = null;
-      if (ctx.session === null) sock.close(1008, 'hello timeout');
-    }, wsHelloTimeoutMs);
+    armHelloTimer(sock, ctx);
     socketStates.set(sock, ctx);
+    liveSocketsByIp.set(remoteIp, ipSockets + 1);
     sock.on('pong', () => {
       ctx.isAlive = true;
     });
@@ -2452,6 +2732,9 @@ export function createServer(opts: ServerOpts = {}): HpServer {
     sock.on('close', () => {
       if (ctx.helloTimer !== null) clearTimeout(ctx.helloTimer);
       socketStates.delete(sock);
+      const remaining = liveSocketsByIp.get(ctx.remoteIp) ?? 0;
+      if (remaining <= 1) liveSocketsByIp.delete(ctx.remoteIp);
+      else liveSocketsByIp.set(ctx.remoteIp, remaining - 1);
       if (ctx.session) onSocketClosed(ctx.session, sock);
     });
     sock.on('error', () => {
@@ -2509,6 +2792,8 @@ export function createServer(opts: ServerOpts = {}): HpServer {
       room.matchId = rec.matchId;
       room.eventSeq = rec.eventSeq;
       room.seq = rec.eventSeq;
+      room.matchRoster = rec.roster;
+      room.ratingEligible = rec.ratingEligible;
       for (const sr of rec.sessions) {
         // All seats start disconnected; the reconnect flow handles the rest.
         const session = createSession(sr);

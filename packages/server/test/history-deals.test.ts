@@ -82,3 +82,20 @@ test('finishMatch without names → summary has no names but still has deal deta
   expect(s.dealResults).toHaveLength(1);
   db.close();
 });
+
+test('matchSummaries returns only the newest bounded window', () => {
+  const db = new Db(':memory:');
+  for (let i = 1; i <= 30; i++) {
+    const id = `m-${i}`;
+    db.createMatch({ id, roomId: 'r-limit', config: config(2), firstDealer: 0 });
+    db.finishMatch(id, 0, [i, 0]);
+    db.raw.prepare('UPDATE matches SET finished_at = ? WHERE id = ?').run(i, id);
+  }
+
+  const summaries = db.matchSummaries('r-limit');
+  expect(summaries).toHaveLength(25);
+  expect(summaries[0]?.finishedAt).toBe(6);
+  expect(summaries.at(-1)?.finishedAt).toBe(30);
+  expect(summaries.at(-1)?.finalScores).toEqual([30, 0]);
+  db.close();
+});

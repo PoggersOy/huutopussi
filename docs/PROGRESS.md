@@ -16,6 +16,20 @@ Plan: `docs/plan.md`. Rules: `docs/huutopussin-saannot.md`.
 
 ## Log
 
+- 2026-08-08: **Codex Security remediation and performance hardening.** Closed
+  the privileged `workflow_run` deploy trust bypass, NUL-path process crash,
+  anonymous room/socket exhaustion paths, room-code status oracle, mutable and
+  non-revocable WS account bindings, ranked duplicate-seat/abort flows, and the
+  lost-unranked recovery state. Match-start identity and rating eligibility now
+  live in an immutable persisted roster. Also bounded/cached/joined match
+  history, capped local history, made daily stats roster-based, bounded the loss
+  streak query, disconnected on browser navigation, and split secondary routes.
+  Regression coverage was added at each vulnerable boundary. Final gate:
+  typecheck + lint clean, **614 tests** green, 500-game seed-42 sim clean
+  (5,645 deals / 222,808 actions / 296,124 events), client+server production
+  builds green, and Playwright 5/5. Route splitting reduced the initial client
+  JS from 575.14 kB / 175.61 kB gzip to 485.10 kB / 151.69 kB gzip.
+
 - 2026-07-29: **Illisoft rule rulings pinned and every engine variation exposed.**
   The existing mandatory overtrump behavior was confirmed and documented: when
   void in the led suit after a trump, a higher trump is compulsory if held. The
@@ -324,6 +338,20 @@ Plan: `docs/plan.md`. Rules: `docs/huutopussin-saannot.md`.
 - Every addition has a `prefers-reduced-motion` branch that keeps the information
   and drops the travel. Engine untouched. Verified: `pnpm typecheck`/`lint`/`test`
   green, e2e green.
+
+## Search-indexable public guides
+
+- `/saannot` and `/opettele` are first-class Finnish search landing pages. The
+  client build emits route-specific pre-rendered HTML containing visible guide
+  copy plus unique title, description, canonical, Open Graph/Twitter metadata
+  and `WebPage` JSON-LD before JavaScript runs. React preserves the interactive
+  rules explorer and guided practice flows after startup.
+- Home now exposes crawlable links to both content areas; the sitemap lists all
+  three public canonical URLs. Legacy `/rules` and `/learn` URLs and trailing
+  slashes receive permanent canonical redirects. Private room/game-state routes
+  remain outside the sitemap.
+- Verified: `pnpm typecheck`, `pnpm lint`, `pnpm test`, targeted static-serving
+  tests and the client production build (including the SEO postbuild) are green.
 
 ## Backlog (post-MVP)
 

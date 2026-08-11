@@ -150,6 +150,13 @@ button[aria-disabled="true"] {
   color: var(--felt-950);
 }
 
+a.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
 .btn--danger {
   background: transparent;
   border-color: var(--danger);

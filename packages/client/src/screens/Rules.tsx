@@ -11,7 +11,7 @@
  */
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { ConnectionPill } from '../components/ConnectionPill';
 import { DEFAULT_CONFIG, RuleSections } from '../rules';
 
@@ -48,7 +48,6 @@ const STEPS: ReadonlyArray<{ icon: string; title: string; body: string; visual?:
 
 export function Rules() {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const [players, setPlayers] = useState<2 | 3 | 4>(4);
 
   return (
@@ -136,9 +135,9 @@ export function Rules() {
       </main>
 
       <footer className="screen__bottom">
-        <button type="button" style={{ width: '100%' }} onClick={() => navigate('/')}>
+        <Link className="btn" style={{ width: '100%' }} to="/">
           {t('common.back')}
-        </button>
+        </Link>
       </footer>
     </div>
   );

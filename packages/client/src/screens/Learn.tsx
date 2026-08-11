@@ -6,7 +6,7 @@
  */
 import { type ReactElement, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { exitLearn, startLearn } from '../localMatch';
 import { PUZZLES, SCENARIOS, scenarioById } from '../scenarios';
 import { Table } from './Table';
@@ -49,7 +49,7 @@ export function LearnMenu(): ReactElement {
             <button
               type="button"
               className="btn--primary"
-              onClick={() => navigate(`/learn/${tutorial.id}`)}
+              onClick={() => navigate(`/opettele/${tutorial.id}`)}
             >
               {t('learn.start')}
             </button>
@@ -69,15 +69,15 @@ export function LearnMenu(): ReactElement {
                 <p className="dim mode-card__desc">{t(`learn.scenarioDesc.${p.id}`)}</p>
               </div>
             </div>
-            <button type="button" onClick={() => navigate(`/learn/${p.id}`)}>
+            <button type="button" onClick={() => navigate(`/opettele/${p.id}`)}>
               {t('learn.play')}
             </button>
           </section>
         ))}
 
-        <button type="button" className="btn--ghost" onClick={() => navigate('/')}>
+        <Link className="btn btn--ghost" to="/">
           {t('common.back')}
-        </button>
+        </Link>
       </main>
     </div>
   );
@@ -90,7 +90,7 @@ export function LearnPlay(): ReactElement | null {
 
   useEffect(() => {
     if (scenario === undefined) {
-      navigate('/learn', { replace: true });
+      navigate('/opettele', { replace: true });
       return;
     }
     startLearn(scenario);

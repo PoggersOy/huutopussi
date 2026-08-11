@@ -42,15 +42,26 @@ test('healthz responds', async () => {
   expect(await res.json()).toEqual({ ok: true });
 });
 
-test('GET /api/rooms reports live rooms and omits unknown/invalid codes', async () => {
+test('POST /api/rooms requires a matching room-session proof', async () => {
   // A live room in the lobby: creating it auto-seats the host at seat 0, so it
   // has one occupant of four.
   const host = await TestClient.connect(port);
   await host.hello({ nickname: 'Ann', config: fullConfigPatch(DEFAULT_RULES) });
   const code = host.roomCode;
 
-  // Probe the live code, an unknown-but-valid code, and a malformed one.
-  const res = await fetch(`http://127.0.0.1:${port}/api/rooms?codes=${code},ZZZZZ,not-a-code`);
+  // A valid session capability confirms only its own room. Codes without a
+  // matching proof are not an existence oracle.
+  const res = await fetch(`http://127.0.0.1:${port}/api/rooms`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      rooms: [
+        { code, sessionToken: host.token },
+        { code: 'ZZZZZ', sessionToken: host.token },
+        { code: 'not-a-code', sessionToken: host.token },
+      ],
+    }),
+  });
   expect(res.status).toBe(200);
   expect(res.headers.get('content-type')).toContain('application/json');
   const body = (await res.json()) as {
@@ -60,12 +71,21 @@ test('GET /api/rooms reports live rooms and omits unknown/invalid codes', async 
   expect(body.rooms).toEqual([{ code, status: 'lobby', seatsFilled: 1, seatsTotal: 4 }]);
 
   // Lowercase input is normalized to the canonical upper-case code.
-  const lower = await fetch(`http://127.0.0.1:${port}/api/rooms?codes=${code.toLowerCase()}`);
+  const lower = await fetch(`http://127.0.0.1:${port}/api/rooms`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ rooms: [{ code: code.toLowerCase(), sessionToken: host.token }] }),
+  });
   const lowerBody = (await lower.json()) as { rooms: Array<{ code: string }> };
   expect(lowerBody.rooms.map((r) => r.code)).toEqual([code]);
 
-  // No codes → empty list, still a well-formed 200.
-  const none = await fetch(`http://127.0.0.1:${port}/api/rooms`);
+  // GET no longer accepts bare capability guesses; an empty POST remains valid.
+  expect((await fetch(`http://127.0.0.1:${port}/api/rooms`)).status).toBe(405);
+  const none = await fetch(`http://127.0.0.1:${port}/api/rooms`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ rooms: [] }),
+  });
   expect((await none.json()) as unknown).toEqual({ rooms: [] });
 
   host.close();
@@ -74,10 +94,11 @@ test('GET /api/rooms reports live rooms and omits unknown/invalid codes', async 
 test('a malformed percent-encoded path is a 400, not a process crash', async () => {
   // decodeURIComponent throws URIError on a lone/incomplete escape; uncaught in
   // the request listener it would terminate the whole server.
-  for (const bad of ['/%', '/%zz', '/%2', '/foo%']) {
+  for (const bad of ['/%', '/%zz', '/%2', '/foo%', '/%00']) {
     const res = await fetch(`http://127.0.0.1:${port}${bad}`);
     expect(res.status).toBe(400);
   }
+  expect((await fetch(`http://127.0.0.1:${port}/healthz`)).status).toBe(200);
   // The server is still alive and serving after the malformed requests.
   const ok = await fetch(`http://127.0.0.1:${port}/healthz`);
   expect(ok.status).toBe(200);

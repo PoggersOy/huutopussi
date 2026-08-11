@@ -18,7 +18,7 @@ import type { MatchSummary } from '@hp/protocol';
 import Database from 'better-sqlite3';
 import { STARTING_RATING } from './elo.js';
 import { shortenDisplayName } from './names.js';
-import type { RoomTableSettings } from './rooms.js';
+import type { MatchRosterEntry, RoomTableSettings } from './rooms.js';
 import type { SessionKind } from './sessions.js';
 
 export const EVENT_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
@@ -63,6 +63,15 @@ CREATE TABLE IF NOT EXISTS matches (
   finished_at  INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_matches_room ON matches(room_id, status);
+CREATE TABLE IF NOT EXISTS match_roster (
+  match_id        TEXT NOT NULL,
+  seat            INTEGER NOT NULL,
+  kind            TEXT NOT NULL,
+  user_id         TEXT,
+  participant_key TEXT NOT NULL,
+  PRIMARY KEY (match_id, seat)
+);
+CREATE INDEX IF NOT EXISTS idx_match_roster_user ON match_roster(user_id);
 CREATE TABLE IF NOT EXISTS deals (
   match_id    TEXT NOT NULL,
   deal_index  INTEGER NOT NULL,
@@ -176,6 +185,8 @@ export interface SessionRow {
   kind: SessionKind;
   /** Signed-in account behind this session, or null for a guest. */
   userId: string | null;
+  /** Hash of the app-token grant behind userId; null for guests/bots. */
+  authTokenHash?: string | null;
 }
 
 /** Max saved rule configurations per account (the lobby dropdown quota). */
@@ -302,6 +313,8 @@ export interface RecoveredMatch {
   eventSeq: number;
   events: GameEvent[];
   sessions: SessionRow[];
+  roster: MatchRosterEntry[];
+  ratingEligible: boolean;
 }
 
 export class Db {
@@ -335,11 +348,17 @@ export class Db {
         // that played THAT match (live seats change between matches). Nullable:
         // pre-feature matches simply have no names.
         this.addColumnIfMissing('matches', 'names', 'TEXT');
+        // Immutable match-start rating disposition. Legacy active matches default
+        // conservatively to unrated instead of guessing from recovered sessions.
+        this.addColumnIfMissing('matches', 'rating_eligible', 'INTEGER NOT NULL DEFAULT 0');
         // Turn pacing (autoplay + timeout); nullable so pre-feature rooms
         // recover with the server default (see activeMatches / server.ts).
         this.addColumnIfMissing('rooms', 'table_settings', 'TEXT');
         // Links a live session to a signed-in account; null = guest.
         this.addColumnIfMissing('sessions', 'user_id', 'TEXT');
+        // Links an account-bound room session to the app-token grant that created
+        // it so logout/expiry can revoke the derived WebSocket authentication.
+        this.addColumnIfMissing('sessions', 'auth_token_hash', 'TEXT');
         // Chosen display title id (achievements feature); null = derived from rating.
         this.addColumnIfMissing('users', 'selected_title', 'TEXT');
         // Starred saved ruleset, auto-selected for new games; null = built-in "Oletus".
@@ -521,13 +540,25 @@ export class Db {
     const now = Date.now();
     this.raw
       .prepare(
-        `INSERT INTO sessions (token, room_id, seat, nickname, kind, user_id, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO sessions
+           (token, room_id, seat, nickname, kind, user_id, auth_token_hash, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(token) DO UPDATE
            SET seat = excluded.seat, nickname = excluded.nickname,
-               user_id = excluded.user_id, updated_at = excluded.updated_at`,
+               user_id = excluded.user_id, auth_token_hash = excluded.auth_token_hash,
+               updated_at = excluded.updated_at`,
       )
-      .run(row.token, row.roomId, row.seat, row.nickname, row.kind, row.userId, now, now);
+      .run(
+        row.token,
+        row.roomId,
+        row.seat,
+        row.nickname,
+        row.kind,
+        row.userId,
+        row.authTokenHash ?? null,
+        now,
+        now,
+      );
   }
 
   deleteSession(token: string): void {
@@ -564,13 +595,36 @@ export class Db {
 
   // ── matches / deals / events ───────────────────────────────────────────────
 
-  createMatch(row: { id: string; roomId: string; config: RuleConfig; firstDealer: Seat }): void {
-    this.raw
-      .prepare(
-        `INSERT INTO matches (id, room_id, config, first_dealer, status, started_at)
-         VALUES (?, ?, ?, ?, 'active', ?)`,
-      )
-      .run(row.id, row.roomId, JSON.stringify(row.config), row.firstDealer, Date.now());
+  createMatch(row: {
+    id: string;
+    roomId: string;
+    config: RuleConfig;
+    firstDealer: Seat;
+    roster?: MatchRosterEntry[];
+    ratingEligible?: boolean;
+  }): void {
+    const insertMatch = this.raw.prepare(
+      `INSERT INTO matches
+         (id, room_id, config, first_dealer, rating_eligible, status, started_at)
+       VALUES (?, ?, ?, ?, ?, 'active', ?)`,
+    );
+    const insertRoster = this.raw.prepare(
+      `INSERT INTO match_roster (match_id, seat, kind, user_id, participant_key)
+       VALUES (?, ?, ?, ?, ?)`,
+    );
+    this.transaction(() => {
+      insertMatch.run(
+        row.id,
+        row.roomId,
+        JSON.stringify(row.config),
+        row.firstDealer,
+        row.ratingEligible ? 1 : 0,
+        Date.now(),
+      );
+      for (const p of row.roster ?? []) {
+        insertRoster.run(row.id, p.seat, p.kind, p.userId, p.participantKey);
+      }
+    });
   }
 
   appendEvent(matchId: string, seq: number, event: GameEvent): void {
@@ -665,20 +719,17 @@ export class Db {
       }
     ).n;
 
-    // Human players seated in a room that hosted a match started today, and who
-    // were themselves active today — the `updated_at` guard drops stale sessions
-    // lingering in a room reused across days. GROUP BY token collapses the
-    // duplicate rows a room with several matches today would otherwise produce.
+    // Immutable match-start roster. Unlike live sessions, these rows survive
+    // room closure and cannot be reassigned by rematches or reconnects.
     const players = this.raw
       .prepare(
-        `SELECT s.user_id AS userId
-           FROM sessions s
-           JOIN matches m ON m.room_id = s.room_id
-          WHERE s.kind = 'human' AND s.seat IS NOT NULL
-            AND m.started_at >= ? AND s.updated_at >= ?
-          GROUP BY s.token`,
+        `SELECT r.user_id AS userId, r.participant_key AS participantKey
+           FROM match_roster r
+           JOIN matches m ON m.id = r.match_id
+          WHERE r.kind = 'human' AND m.started_at >= ?
+          GROUP BY r.participant_key`,
       )
-      .all(sinceMs, sinceMs) as Array<{ userId: string | null }>;
+      .all(sinceMs) as Array<{ userId: string | null; participantKey: string }>;
     const registered = new Set<string>();
     let guestPlayersToday = 0;
     for (const p of players) {
@@ -699,13 +750,22 @@ export class Db {
     };
   }
 
-  matchSummaries(roomId: string): MatchSummary[] {
+  matchSummaries(roomId: string, limit = 25): MatchSummary[] {
     const rows = this.raw
       .prepare(
-        `SELECT id, winner_side, final_scores, names, config, deals, finished_at
-         FROM matches WHERE room_id = ? AND status = 'finished' ORDER BY finished_at ASC`,
+        `SELECT m.id, m.winner_side, m.final_scores, m.names, m.config,
+                m.deals, m.finished_at, d.result
+           FROM (
+             SELECT id, winner_side, final_scores, names, config, deals, finished_at
+               FROM matches
+              WHERE room_id = ? AND status = 'finished'
+              ORDER BY finished_at DESC
+              LIMIT ?
+           ) m
+           LEFT JOIN deals d ON d.match_id = m.id
+          ORDER BY m.finished_at ASC, d.deal_index ASC`,
       )
-      .all(roomId) as Array<{
+      .all(roomId, Math.max(1, Math.min(100, limit))) as Array<{
       id: string;
       winner_side: number;
       final_scores: string | null;
@@ -713,29 +773,29 @@ export class Db {
       config: string;
       deals: number;
       finished_at: number;
+      result: string | null;
     }>;
-    // Per-deal breakdowns for the history deal-browser. The full DealResult of
-    // every deal is already persisted; pull them in deal order per match.
-    const dealStmt = this.raw.prepare(
-      'SELECT result FROM deals WHERE match_id = ? ORDER BY deal_index ASC',
-    );
-    return rows.map((r) => {
-      const players = (JSON.parse(r.config) as RuleConfig).players;
-      const dealResults = (dealStmt.all(r.id) as Array<{ result: string }>).map(
-        (d) => JSON.parse(d.result) as DealResult,
-      );
-      return {
-        finishedAt: r.finished_at,
-        winnerSide: (r.winner_side === 0 || r.winner_side === 1 || r.winner_side === 2
-          ? r.winner_side
-          : 0) as Side,
-        finalScores: r.final_scores === null ? [] : (JSON.parse(r.final_scores) as number[]),
-        deals: r.deals,
-        players,
-        dealResults,
-        ...(r.names === null ? {} : { names: JSON.parse(r.names) as (string | null)[] }),
-      };
-    });
+    const summaries = new Map<string, MatchSummary>();
+    for (const r of rows) {
+      let summary = summaries.get(r.id);
+      if (!summary) {
+        const players = (JSON.parse(r.config) as RuleConfig).players;
+        summary = {
+          finishedAt: r.finished_at,
+          winnerSide: (r.winner_side === 0 || r.winner_side === 1 || r.winner_side === 2
+            ? r.winner_side
+            : 0) as Side,
+          finalScores: r.final_scores === null ? [] : (JSON.parse(r.final_scores) as number[]),
+          deals: r.deals,
+          players,
+          dealResults: [],
+          ...(r.names === null ? {} : { names: JSON.parse(r.names) as (string | null)[] }),
+        };
+        summaries.set(r.id, summary);
+      }
+      if (r.result !== null) summary.dealResults?.push(JSON.parse(r.result) as DealResult);
+    }
+    return [...summaries.values()];
   }
 
   /** All matches still marked active, newest first, with their full event logs. */
@@ -743,7 +803,7 @@ export class Db {
     const rows = this.raw
       .prepare(
         `SELECT m.id AS match_id, m.room_id, m.config AS match_config,
-                m.first_dealer, m.started_at,
+                m.first_dealer, m.started_at, m.rating_eligible,
                 r.code, r.host_token, r.config AS room_config, r.table_settings
          FROM matches m JOIN rooms r ON r.id = m.room_id
          WHERE m.status = 'active' ORDER BY m.started_at DESC`,
@@ -754,6 +814,7 @@ export class Db {
       match_config: string;
       first_dealer: number;
       started_at: number;
+      rating_eligible: number;
       code: string;
       host_token: string | null;
       room_config: string;
@@ -763,7 +824,12 @@ export class Db {
       'SELECT seq, event FROM deal_events WHERE match_id = ? ORDER BY seq ASC',
     );
     const sessionStmt = this.raw.prepare(
-      'SELECT token, room_id, seat, nickname, kind, user_id FROM sessions WHERE room_id = ?',
+      `SELECT token, room_id, seat, nickname, kind, user_id, auth_token_hash
+         FROM sessions WHERE room_id = ?`,
+    );
+    const rosterStmt = this.raw.prepare(
+      `SELECT seat, kind, user_id, participant_key
+         FROM match_roster WHERE match_id = ? ORDER BY seat ASC`,
     );
     return rows.map((r) => {
       const eventRows = eventStmt.all(r.match_id) as Array<{ seq: number; event: string }>;
@@ -774,6 +840,13 @@ export class Db {
         nickname: string | null;
         kind: string;
         user_id: string | null;
+        auth_token_hash: string | null;
+      }>;
+      const rosterRows = rosterStmt.all(r.match_id) as Array<{
+        seat: number;
+        kind: string;
+        user_id: string | null;
+        participant_key: string;
       }>;
       const last = eventRows[eventRows.length - 1];
       return {
@@ -796,7 +869,15 @@ export class Db {
           nickname: s.nickname,
           kind: s.kind === 'bot' ? 'bot' : 'human',
           userId: s.user_id,
+          authTokenHash: s.auth_token_hash,
         })),
+        roster: rosterRows.map((p) => ({
+          seat: p.seat as Seat,
+          kind: p.kind === 'bot' ? 'bot' : 'human',
+          userId: p.user_id,
+          participantKey: p.participant_key,
+        })),
+        ratingEligible: r.rating_eligible === 1,
       };
     });
   }
@@ -949,7 +1030,19 @@ export class Db {
       this.raw.prepare('DELETE FROM match_participants WHERE user_id = ?').run(userId);
       this.raw.prepare('DELETE FROM auth_tokens WHERE user_id = ?').run(userId);
       this.raw.prepare('DELETE FROM user_rule_configs WHERE user_id = ?').run(userId);
-      this.raw.prepare('UPDATE sessions SET user_id = NULL WHERE user_id = ?').run(userId);
+      this.raw
+        .prepare('UPDATE sessions SET user_id = NULL, auth_token_hash = NULL WHERE user_id = ?')
+        .run(userId);
+      // Remove the durable account link from immutable match-start rosters while
+      // preserving an anonymous participant key for aggregate activity counts.
+      this.raw
+        .prepare(
+          `UPDATE match_roster
+              SET user_id = NULL,
+                  participant_key = 'deleted:' || match_id || ':' || seat
+            WHERE user_id = ?`,
+        )
+        .run(userId);
       this.raw.prepare('DELETE FROM users WHERE id = ?').run(userId);
     });
   }
@@ -1226,15 +1319,29 @@ export class Db {
    * whose `streak_after` is 0 (a win always leaves it > 0, a non-win leaves 0).
    */
   currentLossStreak(userId: string): number {
-    const rows = this.raw
-      .prepare('SELECT streak_after FROM rating_events WHERE user_id = ? ORDER BY created_at DESC')
-      .all(userId) as Array<{ streak_after: number }>;
-    let n = 0;
-    for (const r of rows) {
-      if (r.streak_after === 0) n++;
-      else break;
-    }
-    return n;
+    // Walk the indexed history only as far back as the latest win, then count
+    // the bounded suffix in SQLite instead of materializing a lifetime array.
+    const row = this.raw
+      .prepare(
+        `WITH last_win AS (
+           SELECT created_at, rowid
+             FROM rating_events
+            WHERE user_id = ? AND streak_after > 0
+            ORDER BY created_at DESC, rowid DESC
+            LIMIT 1
+         )
+         SELECT COUNT(*) AS n
+           FROM rating_events r
+          WHERE r.user_id = ? AND r.streak_after = 0
+            AND (
+              NOT EXISTS (SELECT 1 FROM last_win)
+              OR r.created_at > (SELECT created_at FROM last_win)
+              OR (r.created_at = (SELECT created_at FROM last_win)
+                  AND r.rowid > (SELECT rowid FROM last_win))
+            )`,
+      )
+      .get(userId, userId) as { n: number };
+    return row.n;
   }
 
   getMatchDealResults(matchId: string): DealResult[] {

@@ -112,6 +112,47 @@ test('a full ranked bucket auto-starts and is rated (+20 / −20)', async () => 
   b.close();
 });
 
+test('ranked matchmaking rejects the same account in a second seat', async () => {
+  const user = makeUser('OneAccount');
+  const first = await TestClient.connect(port);
+  const welcome = await first.hello({
+    matchmaking: { players: 4, ranked: true },
+    auth: user.token,
+  });
+  expect(welcome.t).toBe('welcome');
+
+  const duplicate = await TestClient.connect(port);
+  const reply = await duplicate.hello({
+    matchmaking: { players: 4, ranked: true },
+    auth: user.token,
+  });
+  expect(reply.t === 'error' && reply.code).toBe('error.rankedDuplicateAccount');
+  const room = server.rooms.get(first.roomCode);
+  expect([...(room?.sessions.values() ?? [])].filter((s) => s.userId === user.id)).toHaveLength(1);
+  first.close();
+  duplicate.close();
+});
+
+test('the host cannot abandon a rated match before settlement', async () => {
+  const ua = makeUser('Host');
+  const ub = makeUser('Opponent');
+  const host = await TestClient.connect(port);
+  await host.hello({ matchmaking: { players: 2, ranked: true }, auth: ua.token });
+  const opponent = await TestClient.connect(port);
+  await opponent.hello({ matchmaking: { players: 2, ranked: true }, auth: ub.token });
+
+  const actionId = host.lobby({ type: 'stopMatch' });
+  const reply = await host.next(
+    (m) => m.t === 'error' && m.refActionId === actionId,
+    5_000,
+    'rated stop rejected',
+  );
+  expect(reply.t === 'error' && reply.code).toBe('error.ratedCannotStop');
+  expect(server.rooms.get(host.roomCode)?.status).toBe('playing');
+  host.close();
+  opponent.close();
+});
+
 test('an all-signed-in UNRANKED bucket auto-starts but is NOT rated', async () => {
   const ua = makeUser('CasA');
   const ub = makeUser('CasB');

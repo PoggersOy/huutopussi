@@ -1,0 +1,23 @@
+{
+  "/": {
+    "title": "Huutopussi – pelaa ilmaista suomalaista tikkipeliä verkossa",
+    "description": "Ilmainen Huutopussi verkossa – pelaa suomalaista tikkipeliä suoraan selaimessa. Aloita heti yksin botteja vastaan tai luo huone ja pelaa kavereiden kanssa.",
+    "canonical": "https://huutopussi.online/",
+    "ogTitle": "Huutopussi – ilmainen suomalainen tikkipeli verkossa",
+    "ogDescription": "Pelaa Huutopussia heti selaimessa, yksin botteja vastaan tai kavereiden kanssa. Ei asennusta."
+  },
+  "/saannot": {
+    "title": "Huutopussin säännöt – kortit, huutaminen, tikit ja pisteet",
+    "description": "Opi Huutopussin säännöt: korttien arvojärjestys, huutokauppa, vaihto, avioliitot, valtit, tikkien pelaaminen ja pisteiden laskeminen.",
+    "canonical": "https://huutopussi.online/saannot",
+    "ogTitle": "Huutopussin säännöt – selkeä peliopas",
+    "ogDescription": "Katso Huutopussin kortit, huutokauppa, valtit, avioliitot, tikit ja pisteytys yhdestä selkeästä oppaasta."
+  },
+  "/opettele": {
+    "title": "Opettele Huutopussi – ohjattu peli ja harjoitukset",
+    "description": "Opettele pelaamaan Huutopussia käytännössä. Pelaa ohjattu jako ja harjoittele huutokauppaa, avioliittoja, pakko tunnustaa -sääntöä ja pisteytystä.",
+    "canonical": "https://huutopussi.online/opettele",
+    "ogTitle": "Opettele pelaamaan Huutopussia askel askeleelta",
+    "ogDescription": "Ohjattu jako ja harjoituspulmat opettavat Huutopussin huudot, tikit, avioliitot ja pisteet käytännössä."
+  }
+}

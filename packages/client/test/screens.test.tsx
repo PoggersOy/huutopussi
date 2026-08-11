@@ -13,6 +13,7 @@ vi.mock('../src/socket', () => ({
   sendAction: vi.fn(),
   connect: vi.fn(),
   disconnect: vi.fn(),
+  loadSessionToken: vi.fn((code: string) => `session-${code}`),
   resync: vi.fn(),
 }));
 
@@ -103,7 +104,16 @@ describe('History screen', () => {
     expect(screen.getByText(/4\/4 seated/)).toBeTruthy();
     // Probed exactly the remembered codes (newest first), one request.
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock).toHaveBeenCalledWith('/api/rooms?codes=QWXYZ%2CAB2CD');
+    expect(fetchMock).toHaveBeenCalledWith('/api/rooms', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        rooms: [
+          { code: 'QWXYZ', sessionToken: 'session-QWXYZ' },
+          { code: 'AB2CD', sessionToken: 'session-AB2CD' },
+        ],
+      }),
+    });
   });
 
   it('shows no open-games section when the probe returns nothing', async () => {

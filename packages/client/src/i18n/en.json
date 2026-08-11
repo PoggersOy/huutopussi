@@ -46,7 +46,7 @@
     "join": "Join",
     "language": "Language",
     "historyLink": "Match history",
-    "rulesLink": "How to play",
+    "rulesLink": "Huutopussi rules",
     "privacyLink": "Privacy",
     "install": "Install the app",
     "builtBy": "Built by:",
@@ -293,7 +293,7 @@
     "winTiebreakHigher": "Highest score wins"
   },
   "rulesPage": {
-    "title": "How to play",
+    "title": "Huutopussi rules",
     "intro": "Huutopussi is a Finnish trick-taking game. Here's how it works — and the exact rules played here.",
     "howTitle": "How a game goes",
     "how": {
@@ -529,7 +529,7 @@
     "thanks": "Thanks!"
   },
   "learn": {
-    "menuTitle": "Learn to play",
+    "menuTitle": "Learn to play Huutopussi",
     "menuIntro": "A guided walkthrough plus practice puzzles — learn Huutopussi step by step against bots. Works offline.",
     "tutorialTitle": "Guided tutorial",
     "tutorialDesc": "Play one full deal from start to finish. The game guides you at every step with big instructions on what to do and why.",
@@ -607,6 +607,7 @@
     "badConfig": "Invalid rule setting ({{field}})",
     "badMessage": "Malformed message",
     "badSeat": "That seat doesn't exist in this game mode",
+    "accountLocked": "This game session belongs to a different account",
     "helloFirst": "Connection error — reload the page",
     "internal": "Server error",
     "matchInProgress": "The match is already in progress",
@@ -620,6 +621,8 @@
     "roomClosed": "This room has closed",
     "roomFull": "This room is full",
     "rankedNeedsLogin": "Sign in with Google to play ranked",
+    "rankedDuplicateAccount": "This account is already seated in that ranked game",
+    "ratedCannotStop": "A rated game cannot be stopped — leaving counts only when the game finishes",
     "serverBusy": "The server is busy — please try again shortly",
     "seatTaken": "That seat is already taken",
     "seatsNotFilled": "Not all seats are filled",

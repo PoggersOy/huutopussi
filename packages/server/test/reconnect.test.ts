@@ -8,6 +8,7 @@
 import type { Seat } from '@hp/engine';
 import type { ServerMsg } from '@hp/protocol';
 import { afterEach, beforeEach, expect, test } from 'vitest';
+import { WebSocket } from 'ws';
 import { createServer, type HpServer } from '../src/index.js';
 import type { Room } from '../src/rooms.js';
 import type { Session } from '../src/sessions.js';
@@ -119,6 +120,55 @@ test('re-hello on the same socket does not orphan the previous guest session', a
   guest.close();
 });
 
+test('re-hello cannot retain a chain of empty lobby rooms', async () => {
+  const client = await TestClient.connect(port);
+  await client.hello({ nickname: 'creator' });
+  expect(server.rooms.size).toBe(1);
+
+  for (let i = 0; i < 5; i++) {
+    await client.hello({ nickname: `creator-${i}` });
+    expect(server.rooms.size).toBe(1);
+  }
+  client.close();
+});
+
+test('a failed replacement hello is put back under the hello timeout', async () => {
+  await server.close();
+  server = createServer({
+    port: 0,
+    dbPath: ':memory:',
+    heartbeatMs: null,
+    wsHelloTimeoutMs: 40,
+  });
+  port = await server.listen();
+
+  const client = await TestClient.connect(port);
+  await client.hello({ nickname: 'guest' });
+  const reply = await client.hello({ matchmaking: { players: 2, ranked: true } });
+  expect(reply.t === 'error' && reply.code).toBe('error.rankedNeedsLogin');
+  expect(await client.waitClose(2_000, 'replacement hello timeout')).toBe(1008);
+});
+
+test('one IP cannot reserve more than its concurrent room allowance', async () => {
+  await server.close();
+  server = createServer({
+    port: 0,
+    dbPath: ':memory:',
+    heartbeatMs: null,
+    maxRoomsPerIp: 1,
+  });
+  port = await server.listen();
+
+  const first = await TestClient.connect(port);
+  expect((await first.hello({ nickname: 'first' })).t).toBe('welcome');
+  const second = await TestClient.connect(port);
+  const refused = await second.hello({ nickname: 'second' });
+  expect(refused.t === 'error' && refused.code).toBe('error.serverBusy');
+  expect(server.rooms.size).toBe(1);
+  first.close();
+  second.close();
+});
+
 test('a full room refuses further guests with error.roomFull', async () => {
   await server.close();
   server = createServer({ port: 0, dbPath: ':memory:', heartbeatMs: null, maxSessionsPerRoom: 3 });
@@ -145,6 +195,32 @@ test('a full room refuses further guests with error.roomFull', async () => {
   host.close();
   overflow.close();
   for (const g of guests) g.close();
+});
+
+test('one IP cannot retain sockets past its live connection allowance', async () => {
+  await server.close();
+  server = createServer({
+    port: 0,
+    dbPath: ':memory:',
+    heartbeatMs: null,
+    maxSocketsPerIp: 1,
+  });
+  port = await server.listen();
+
+  const first = await TestClient.connect(port);
+  const rejected = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+  const closeCode = await new Promise<number>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('timeout waiting for socket cap')), 2_000);
+    rejected.on('error', () => {
+      // Immediate termination is expected to surface as an abnormal close.
+    });
+    rejected.on('close', (code) => {
+      clearTimeout(timer);
+      resolve(code);
+    });
+  });
+  expect(closeCode).toBe(1006);
+  first.close();
 });
 
 test('unidentified and message-flooding WebSockets are closed', async () => {

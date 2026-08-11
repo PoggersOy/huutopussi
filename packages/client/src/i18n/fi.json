@@ -46,7 +46,7 @@
     "join": "Liity",
     "language": "Kieli",
     "historyLink": "Pelihistoria",
-    "rulesLink": "Peliohjeet",
+    "rulesLink": "Huutopussin säännöt",
     "privacyLink": "Tietosuoja",
     "install": "Asenna sovellus",
     "builtBy": "Toteutus:",
@@ -293,7 +293,7 @@
     "winTiebreakHigher": "Korkein pistemäärä voittaa"
   },
   "rulesPage": {
-    "title": "Peliohjeet",
+    "title": "Huutopussin säännöt",
     "intro": "Huutopussi on suomalainen tikkipeli. Näin se toimii — ja millä säännöillä täällä pelataan.",
     "howTitle": "Näin peli etenee",
     "how": {
@@ -529,7 +529,7 @@
     "thanks": "Kiitos!"
   },
   "learn": {
-    "menuTitle": "Opettele pelaamaan",
+    "menuTitle": "Opettele pelaamaan Huutopussia",
     "menuIntro": "Ohjattu läpipeluu ja harjoituspulmat — opi Huutopussi askel askeleelta botteja vastaan. Toimii offline.",
     "tutorialTitle": "Ohjattu opettelu",
     "tutorialDesc": "Pelaa yksi kokonainen jako alusta loppuun. Peli neuvoo joka vaiheessa isolla ohjeella mitä tehdä ja miksi.",
@@ -607,6 +607,7 @@
     "badConfig": "Virheellinen sääntöasetus ({{field}})",
     "badMessage": "Virheellinen viesti",
     "badSeat": "Paikkaa ei ole tässä pelimuodossa",
+    "accountLocked": "Tämä peli-istunto kuuluu toiselle käyttäjätilille",
     "helloFirst": "Yhteysvirhe — lataa sivu uudelleen",
     "internal": "Palvelinvirhe",
     "matchInProgress": "Peli on jo käynnissä",
@@ -620,6 +621,8 @@
     "roomClosed": "Tämä huone on suljettu",
     "roomFull": "Tämä huone on täynnä",
     "rankedNeedsLogin": "Kirjaudu Googlella pelataksesi rankattua",
+    "rankedDuplicateAccount": "Tämä käyttäjätili on jo mukana kyseisessä ranking-pelissä",
+    "ratedCannotStop": "Rankattua peliä ei voi lopettaa kesken",
     "serverBusy": "Palvelin on ruuhkautunut — yritä hetken kuluttua uudelleen",
     "seatTaken": "Paikka on jo varattu",
     "seatsNotFilled": "Kaikki paikat eivät ole täynnä",

@@ -2,6 +2,7 @@
 import type { MatchSummary } from '@hp/protocol';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
+  HISTORY_TOTAL_LIMIT,
   loadAllHistory,
   loadRecentRooms,
   loadRoomHistory,
@@ -48,10 +49,20 @@ describe('recent rooms', () => {
 });
 
 describe('room match history', () => {
-  it('replaces a room list wholesale and reads it back', () => {
+  it('merges a room history window and reads it back', () => {
     recordRoomHistory('abcde', [summary(1)]);
     recordRoomHistory('ABCDE', [summary(1), summary(2, 1)]);
     expect(loadRoomHistory('abcde')).toHaveLength(2);
+  });
+
+  it('caps total persisted summaries across rooms', () => {
+    for (let i = 0; i < HISTORY_TOTAL_LIMIT + 10; i++) {
+      recordRoomHistory(`ROOM-${i}`, [summary(i)]);
+    }
+    const all = loadAllHistory();
+    expect(all).toHaveLength(HISTORY_TOTAL_LIMIT);
+    expect(all[0]?.match.finishedAt).toBe(HISTORY_TOTAL_LIMIT + 9);
+    expect(all.at(-1)?.match.finishedAt).toBe(10);
   });
 
   it('aggregates all rooms newest first', () => {

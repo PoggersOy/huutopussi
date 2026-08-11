@@ -130,14 +130,14 @@ evaluation and the client presentation. It performs no I/O and owns no clock.
 
 | File | Responsibility |
 | --- | --- |
-| `server.ts` | `createServer(opts)`: HTTP static host (SPA fallback for `/r/*`) + `/healthz` + `GET /api/rooms` (live-room status probe for the History screen) + WS `/ws`. Implements the protocol: parse → idempotency → `validateAction` → `applyEvent` (persisted) → one redacted `update` per recipient. Hints only to the acting seat. |
-| `rooms.ts` | Room registry: 5-char crypto codes, seat bookkeeping, `RoomStatePublic` projection, per-room monotonic `seq`, the live `MatchState`, timer handles. |
-| `sessions.ts` | Sessions keyed by uuid token, bound to `(room, seat, nickname)`. Last-connect-wins rebinding. Per-session actionId LRU for idempotent replay. |
+| `server.ts` | `createServer(opts)`: HTTP static host (SPA fallback for app routes, route-specific pre-rendered HTML for `/saannot` and `/opettele`, canonical redirects from `/rules` and `/learn`) + `/healthz` + session-proofed `POST /api/rooms` (History live-room probe) + WS `/ws`. Implements the protocol: parse → idempotency → `validateAction` → `applyEvent` (persisted) → one redacted `update` per recipient. Hints only to the acting seat. |
+| `rooms.ts` | Room registry: 5-char crypto codes, seat bookkeeping, immutable match-start roster/rating disposition, bounded history cache, `RoomStatePublic` projection, per-room monotonic `seq`, live `MatchState`, timer handles. |
+| `sessions.ts` | Sessions keyed by uuid token, bound to `(room, seat, nickname)` and an optional revocable app-token grant. Last-connect-wins rebinding. Per-session actionId LRU for idempotent replay. |
 | `timers.ts` | Turn deadlines, disconnect grace, autoplay policy, idle-room reaper. Host-editable turn timeout (separate from `RuleConfig`). |
 | `botRunner.ts` | Bot actor selection + turn computation; submits through the same action pipeline as WS messages. |
 | `auth.ts` / `elo.ts` | Google ID-token verification, opaque app tokens, and pure Elo costing for 2/3/4-player games. |
 | `achievements.ts` | Match-end achievement evaluation and idempotent historical backfill using the pure catalogue. |
-| `db.ts` | `better-sqlite3` (WAL) persistence for rooms, sessions, matches, auth/Elo and achievements. Events appended in the action transaction → boot-time crash recovery replays unfinished matches; expired tokens/events/inactive rooms are pruned. |
+| `db.ts` | `better-sqlite3` (WAL) persistence for rooms, sessions, immutable match rosters/rating eligibility, auth/Elo and achievements. Events appended in the action transaction → boot-time crash recovery replays unfinished matches; expired tokens/events/inactive rooms are pruned. |
 | `index.ts` | Entry script (env: `PORT`, `DB_PATH`, `CLIENT_DIST`) + module exports for tests. |
 
 New WebSockets must identify with `hello` within 10 seconds and each socket has
@@ -153,14 +153,14 @@ comes **only** from `ActionHint`s.
 | Area | Files |
 | --- | --- |
 | Entry / routing | `App.tsx`, `main.tsx`, `screens/Room.tsx` (routes `/`, `/r/:code`; Lobby vs Table by room status) |
-| Network / state | `socket.ts` (typed WS client: backoff reconnect, per-room session tokens, uuid actionIds, wake-resync, ping), `api.ts` (stateless HTTP probes outside the WS protocol — e.g. `GET /api/rooms` for the History screen's open-games list), `store.ts` (two slices) |
+| Network / state | `socket.ts` (typed WS client: backoff reconnect, per-room session tokens, uuid actionIds, wake-resync, ping), `api.ts` (HTTP probes outside the WS protocol — e.g. session-proofed `POST /api/rooms` for the History open-games list), `store.ts` (two slices) |
 | Account | `auth.ts`, `screens/Profile.tsx`, `components/{AuthPanel,AchievementsPanel,TitleSelector}.tsx` |
 | Screens | `screens/{Home,Lobby,Table,History}.tsx` |
 | Table internals | `screens/table/{TableSheets,TableOverlays,tableUtils,talonMemory}.ts(x)` — hint-driven bottom sheets, score/end overlays, 2-3p talon-reveal memory |
 | Components | `components/{CardFace,ConnectionPill,ConnectionBanner,MatchList,Toasts}.tsx` |
 | i18n | `i18n/{index.ts,fi.json,en.json}` — **all** server codes are keys; fi is fallback |
 | PWA / install | `pwa.ts`, `install.ts` (registerType `prompt` — never silent mid-game reload) |
-| Local memory | `history.ts` (recent rooms + match summaries in localStorage) |
+| Local memory | `history.ts` (recent rooms + device-wide capped match summaries in localStorage) |
 | Styles | `styles/{tokens,base,table}.css` |
 
 ---
@@ -188,3 +188,11 @@ Fly volume → keep **exactly one machine** (`fly.toml`: `min_machines_running=1
 `auto_stop_machines=false`). In-flight matches survive deploys/crashes (events
 persisted per action, replayed on boot; clients resync on reconnect). Health:
 `GET /healthz`. Full runbook (domain, certs, secrets) is in [`../README.md`](../README.md).
+
+The client `postbuild` step derives `dist/saannot/index.html` and
+`dist/opettele/index.html` from the built SPA shell. Those files contain the
+route-specific title, description, canonical, social metadata, JSON-LD and
+Finnish guide content before JavaScript runs; React then replaces the static
+body with the interactive screen. Keep `client/src/seo-pages.json`, the public
+sitemap and the server's exact-route mapping in sync when adding another public
+search landing page.

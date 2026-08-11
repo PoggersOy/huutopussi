@@ -1,7 +1,7 @@
 /**
  * History: this device's game record in one place —
  *  1. Open games: rooms this device visited that the server confirms are still
- *     live (via GET /api/rooms), each with a one-tap rejoin.
+ *     live (via a session-token-protected /api/rooms probe), each with a one-tap rejoin.
  *  2. Finished matches: every summary received via 'history' messages,
  *     persisted per room in localStorage, newest first.
  * Live updates while connected: a fresh 'history' message re-reads the set.
@@ -13,6 +13,7 @@ import { fetchOpenRooms, type OpenRoom } from '../api';
 import { ConnectionPill } from '../components/ConnectionPill';
 import { MatchList } from '../components/MatchList';
 import { loadAllHistory, loadRecentRooms } from '../history';
+import { loadSessionToken } from '../socket';
 import { useStore } from '../store';
 
 /**
@@ -67,11 +68,14 @@ export function History() {
 
   // Probe the rooms this device remembers; keep only the ones still live.
   useEffect(() => {
-    const codes = loadRecentRooms().map((r) => r.code);
-    if (codes.length === 0) return;
+    const rooms = loadRecentRooms().flatMap((r) => {
+      const sessionToken = loadSessionToken(r.code);
+      return sessionToken === null ? [] : [{ code: r.code, sessionToken }];
+    });
+    if (rooms.length === 0) return;
     let cancelled = false;
-    void fetchOpenRooms(codes).then((rooms) => {
-      if (!cancelled) setOpenRooms(rooms);
+    void fetchOpenRooms(rooms).then((open) => {
+      if (!cancelled) setOpenRooms(open);
     });
     return () => {
       cancelled = true;

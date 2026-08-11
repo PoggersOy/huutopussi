@@ -21,6 +21,16 @@ beforeAll(async () => {
     'User-agent: *\nDisallow: /r/\n\nSitemap: https://huutopussi.online/sitemap.xml\n',
   );
   writeFileSync(join(dir, 'sitemap.xml'), '<?xml version="1.0"?><urlset></urlset>');
+  mkdirSync(join(dir, 'saannot'));
+  writeFileSync(
+    join(dir, 'saannot', 'index.html'),
+    '<!doctype html><title>Huutopussin säännöt</title><h1>Huutopussin säännöt</h1>',
+  );
+  mkdirSync(join(dir, 'opettele'));
+  writeFileSync(
+    join(dir, 'opettele', 'index.html'),
+    '<!doctype html><title>Opettele Huutopussi</title><h1>Opettele Huutopussia</h1>',
+  );
   writeFileSync(join(dir, 'og-image.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
   writeFileSync(join(dir, 'sw.js'), '/* service worker */');
   mkdirSync(join(dir, 'assets'));
@@ -81,8 +91,33 @@ test('a room deep-link falls back to the SPA shell (crawlable, no 404)', async (
   expect(res.headers.get('content-type')).toContain('text/html');
 });
 
-test('app-screen deep-links (incl. /privacy, /rules, /learn) fall back to the SPA shell', async () => {
-  for (const path of ['/privacy', '/rules', '/profile', '/history', '/learn', '/learn/tutorial']) {
+test('search landing pages serve their own pre-rendered HTML', async () => {
+  const rules = await fetch(`http://127.0.0.1:${port}/saannot`);
+  expect(rules.status).toBe(200);
+  expect(await rules.text()).toContain('<h1>Huutopussin säännöt</h1>');
+
+  const learn = await fetch(`http://127.0.0.1:${port}/opettele`);
+  expect(learn.status).toBe(200);
+  expect(await learn.text()).toContain('<h1>Opettele Huutopussia</h1>');
+});
+
+test('legacy and trailing-slash SEO routes redirect to their canonical URLs', async () => {
+  for (const [path, location] of [
+    ['/rules', '/saannot'],
+    ['/rules/', '/saannot'],
+    ['/learn', '/opettele'],
+    ['/learn/tutorial', '/opettele/tutorial'],
+    ['/saannot/', '/saannot'],
+    ['/opettele/', '/opettele'],
+  ]) {
+    const res = await fetch(`http://127.0.0.1:${port}${path}`, { redirect: 'manual' });
+    expect(res.status, path).toBe(308);
+    expect(res.headers.get('location'), path).toBe(location);
+  }
+});
+
+test('other app-screen deep-links fall back to the SPA shell', async () => {
+  for (const path of ['/privacy', '/profile', '/history', '/opettele/tutorial']) {
     const res = await fetch(`http://127.0.0.1:${port}${path}`);
     expect(res.status, path).toBe(200);
     expect(res.headers.get('content-type'), path).toContain('text/html');

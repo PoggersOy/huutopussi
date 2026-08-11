@@ -8,8 +8,8 @@ import { randomBytes } from 'node:crypto';
 import type { BotDifficulty } from '@hp/bots';
 import type { MatchState, RuleConfig, Seat } from '@hp/engine';
 import { activeSeats } from '@hp/engine';
-import type { RoomStatePublic, SeatInfo, TableSettings } from '@hp/protocol';
-import { isConnected, type Session } from './sessions.js';
+import type { MatchSummary, RoomStatePublic, SeatInfo, TableSettings } from '@hp/protocol';
+import { isConnected, type Session, type SessionKind } from './sessions.js';
 
 /**
  * Internal (ms-precision) form of the wire `TableSettings`. Kept in ms so the
@@ -50,6 +50,15 @@ export interface RoomMatchmaking {
   ranked: boolean;
 }
 
+/** Immutable participant identity captured when a match starts. */
+export interface MatchRosterEntry {
+  seat: Seat;
+  kind: SessionKind;
+  userId: string | null;
+  /** Stable, non-secret daily-stats key (`user:` id or hashed guest session). */
+  participantKey: string;
+}
+
 export interface Room {
   id: string;
   code: string;
@@ -72,6 +81,12 @@ export interface Room {
   matchId: string | null;
   /** Count of events persisted for the current match. */
   eventSeq: number;
+  /** Immutable match-start roster used by ratings, achievements and recovery. */
+  matchRoster: MatchRosterEntry[];
+  /** Rating disposition fixed at match start and persisted with the match. */
+  ratingEligible: boolean;
+  /** Recent finished-match summaries, loaded once and invalidated on finish. */
+  historyCache: MatchSummary[] | null;
   /** All sessions in the room (seated humans, bots, spectators/guests). */
   sessions: Map<string, Session>;
   timers: RoomTimerSlots;
@@ -105,6 +120,9 @@ export function createRoom(init: {
     match: null,
     matchId: null,
     eventSeq: 0,
+    matchRoster: [],
+    ratingEligible: false,
+    historyCache: null,
     sessions: new Map(),
     timers: { turn: null, bot: null, nextDeal: null, idle: null },
     turnDeadline: null,

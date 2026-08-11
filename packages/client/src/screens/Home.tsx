@@ -11,7 +11,7 @@
 import type { BotDifficulty, ConfigPatch } from '@hp/protocol';
 import { type FormEvent, useEffect, useState, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { fetchMatchmaking, type MatchmakingBucket } from '../api';
 import { AuthPanel } from '../components/AuthPanel';
 import { ConnectionPill } from '../components/ConnectionPill';
@@ -368,9 +368,9 @@ export function Home() {
               <p className="dim mode-card__desc">{t('learn.homeDesc')}</p>
             </div>
           </div>
-          <button type="button" onClick={() => navigate('/learn')}>
+          <Link className="btn" to="/opettele">
             {t('learn.homeAction')}
-          </button>
+          </Link>
         </section>
 
         {/* Device feedback: sound effects + haptics (this device only). */}
@@ -425,9 +425,9 @@ export function Home() {
           {t('home.historyLink')}
         </button>
 
-        <button type="button" className="btn--ghost" onClick={() => navigate('/rules')}>
+        <Link className="btn btn--ghost" to="/saannot">
           {t('home.rulesLink')}
-        </button>
+        </Link>
 
         <button type="button" className="btn--ghost" onClick={() => navigate('/privacy')}>
           {t('home.privacyLink')}

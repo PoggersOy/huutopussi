@@ -202,3 +202,40 @@ test('maintenance prunes old inactive rooms but preserves recoverable playing ro
   expect(db.raw.prepare('SELECT token FROM sessions').all()).toEqual([]);
   db.close();
 });
+
+test('recovery preserves an explicitly unranked match disposition and start roster', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hp-rating-recovery-'));
+  const dbPath = join(dir, 'hp.db');
+  const db = new Db(dbPath);
+  const settings = { autoplay: true, turnTimeoutMs: 90_000 };
+  db.createRoom({
+    id: 'room-unranked',
+    code: 'UNR4K',
+    hostToken: null,
+    config: { ...DEFAULT_RULES, players: 2 },
+    tableSettings: settings,
+  });
+  db.setRoomStatus('room-unranked', 'playing');
+  db.createMatch({
+    id: 'match-unranked',
+    roomId: 'room-unranked',
+    config: { ...DEFAULT_RULES, players: 2 },
+    firstDealer: 0,
+    ratingEligible: false,
+    roster: [
+      { seat: 0, kind: 'human', userId: 'u1', participantKey: 'user:u1' },
+      { seat: 1, kind: 'human', userId: 'u2', participantKey: 'user:u2' },
+    ],
+  });
+  db.close();
+
+  const recovered = createServer({ port: 0, dbPath, heartbeatMs: null });
+  try {
+    const room = recovered.rooms.get('UNR4K');
+    expect(room?.ratingEligible).toBe(false);
+    expect(room?.matchRoster.map((p) => p.userId)).toEqual(['u1', 'u2']);
+  } finally {
+    await recovered.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

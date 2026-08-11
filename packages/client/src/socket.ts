@@ -65,7 +65,13 @@ export const TERMINAL_CLOSE: Readonly<Record<number, string>> = {
  * 1006: the JSON error frame still arrives, so we can stop retrying on it
  * instead of reconnecting into the same gone room forever.
  */
-export const TERMINAL_ERROR_CODES: ReadonlySet<string> = new Set(Object.values(TERMINAL_CLOSE));
+export const TERMINAL_ERROR_CODES: ReadonlySet<string> = new Set([
+  ...Object.values(TERMINAL_CLOSE),
+  // A room-session capability is permanently bound to its original account
+  // while seated. Retrying with the current (different) login cannot succeed.
+  'error.accountLocked',
+  'error.rankedDuplicateAccount',
+]);
 
 /** sessionStorage key holding this tab's session token for a room. */
 export function sessionKey(roomCode: string): string {

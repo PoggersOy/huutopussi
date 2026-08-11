@@ -110,6 +110,66 @@ test('a signed-in hello shows the account rating in the lobby and defaults the n
   client.close();
 });
 
+test('a seated session cannot be rebound to a different valid account', async () => {
+  const first = makeUser('First');
+  const second = makeUser('Second');
+  const owner = await TestClient.connect(port);
+  await owner.hello({ auth: first.token });
+
+  const hijack = await TestClient.connect(port);
+  const reply = await hijack.hello({
+    roomCode: owner.roomCode,
+    sessionToken: owner.token,
+    auth: second.token,
+  });
+  expect(reply.t === 'error' && reply.code).toBe('error.accountLocked');
+  const room = server.rooms.get(owner.roomCode);
+  expect(room?.sessions.get(owner.token)?.userId).toBe(first.id);
+  owner.close();
+  hijack.close();
+});
+
+test('logout immediately removes authentication derived from that app token', async () => {
+  const user = makeUser('Logout');
+  const client = await TestClient.connect(port);
+  await client.hello({ auth: user.token });
+  const downgraded = client.next(
+    (m) => m.t === 'room' && m.room.seats[0]?.rating === null,
+    5_000,
+    'logout downgrade',
+  );
+  const response = await fetch(`http://127.0.0.1:${port}/auth/logout`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${user.token}` },
+  });
+  expect(response.status).toBe(204);
+  await downgraded;
+  const session = server.rooms.get(client.roomCode)?.sessions.get(client.token);
+  expect(session?.userId).toBeNull();
+  expect(session?.authTokenHash).toBeNull();
+  client.close();
+});
+
+test('reconnect with an expired or revoked app token downgrades to guest', async () => {
+  const user = makeUser('Expired');
+  const first = await TestClient.connect(port);
+  await first.hello({ auth: user.token });
+  const { roomCode, token: sessionToken } = first;
+  server.db.deleteAuthToken(hashToken(user.token));
+  first.close();
+
+  const reconnected = await TestClient.connect(port);
+  const welcome = (await reconnected.hello({
+    roomCode,
+    sessionToken,
+    auth: user.token,
+  })) as WelcomeMsg;
+  expect(welcome.t).toBe('welcome');
+  expect(welcome.room.seats[0]?.rating).toBeNull();
+  expect(server.rooms.get(roomCode)?.sessions.get(sessionToken)?.userId).toBeNull();
+  reconnected.close();
+});
+
 test('account deletion immediately downgrades live room sessions to guests', async () => {
   const u = makeUser('Erase Me');
   const client = await TestClient.connect(port);

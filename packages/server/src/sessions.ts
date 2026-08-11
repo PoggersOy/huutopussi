@@ -21,6 +21,10 @@ export interface Session {
   kind: SessionKind;
   /** Signed-in account behind this session, or null for a guest/bot. */
   userId: string | null;
+  /** Hash of the app token that granted userId; null for guests/bots. */
+  authTokenHash: string | null;
+  /** Last time the app-token grant was revalidated against SQLite. */
+  authCheckedAt: number;
   /**
    * Cached Elo of the signed-in account for lobby display. Refreshed at
    * sign-in and after each rated match; null for guests/bots.
@@ -52,6 +56,7 @@ export function createSession(init: {
   nickname: string | null;
   kind: SessionKind;
   userId?: string | null;
+  authTokenHash?: string | null;
   rating?: number | null;
   provisional?: boolean;
 }): Session {
@@ -62,6 +67,8 @@ export function createSession(init: {
     nickname: init.nickname,
     kind: init.kind,
     userId: init.userId ?? null,
+    authTokenHash: init.authTokenHash ?? null,
+    authCheckedAt: 0,
     rating: init.rating ?? null,
     provisional: init.provisional ?? false,
     socket: null,

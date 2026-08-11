@@ -58,6 +58,8 @@ export function recordRecentRoom(code: string, now = Date.now()): void {
 // ── Match history (from 'history' server messages) ──────────────────────────
 
 const HISTORY_PREFIX = 'hp:history:';
+/** Bound localStorage even when a device visits many long-running rematch rooms. */
+export const HISTORY_TOTAL_LIMIT = 100;
 
 export interface HistoryEntry {
   roomCode: string;
@@ -83,9 +85,42 @@ function isMatchSummary(m: unknown): m is MatchSummary {
   );
 }
 
-/** The server sends the room's FULL summary list each time; replace wholesale. */
+/** Merge the server's recent window and prune the device-wide oldest summaries. */
 export function recordRoomHistory(roomCode: string, matches: MatchSummary[]): void {
-  writeJson(HISTORY_PREFIX + roomCode.toUpperCase(), matches);
+  const code = roomCode.toUpperCase();
+  const byFinishedAt = new Map(loadRoomHistory(code).map((m) => [m.finishedAt, m]));
+  for (const match of matches) byFinishedAt.set(match.finishedAt, match);
+  writeJson(
+    HISTORY_PREFIX + code,
+    [...byFinishedAt.values()].sort((a, b) => a.finishedAt - b.finishedAt),
+  );
+  pruneHistory();
+}
+
+/** Retain the newest N summaries across every room, removing empty room keys. */
+function pruneHistory(): void {
+  try {
+    const rooms = new Map<string, MatchSummary[]>();
+    const all: Array<{ key: string; match: MatchSummary }> = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key === null || !key.startsWith(HISTORY_PREFIX)) continue;
+      const matches = loadRoomHistory(key.slice(HISTORY_PREFIX.length));
+      rooms.set(key, matches);
+      for (const match of matches) all.push({ key, match });
+    }
+    all.sort((a, b) => b.match.finishedAt - a.match.finishedAt);
+    const keep = new Set(
+      all.slice(0, HISTORY_TOTAL_LIMIT).map(({ key, match }) => `${key}\0${match.finishedAt}`),
+    );
+    for (const [key, matches] of rooms) {
+      const kept = matches.filter((m) => keep.has(`${key}\0${m.finishedAt}`));
+      if (kept.length === 0) localStorage.removeItem(key);
+      else writeJson(key, kept);
+    }
+  } catch {
+    // Private mode / quota — history already degrades to best-effort storage.
+  }
 }
 
 export function loadRoomHistory(roomCode: string): MatchSummary[] {
