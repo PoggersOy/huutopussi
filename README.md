@@ -1,15 +1,40 @@
 # Huutopussi Online
 
-Online multiplayer version of the Finnish card game **Huutopussi**, built for
-mobile browsers — no app install, just a room link. Play **2, 3, or 4 players**
-(the 4-player game is the 2v2 partnership form) with selectable rulesets
-(illisoft 2002 and the *päämuoto* main variant). TypeScript monorepo: a pure
-event-sourced game engine, an authoritative WebSocket server, and a mobile-first
-React PWA client, with AI bots, optional **Google sign-in with Elo ratings and
-matchmaking**, fi/en i18n, reconnection handling, and persistent score history.
+[**Play at huutopussi.online**](https://huutopussi.online) — no app install,
+just a mobile browser.
+
+Online multiplayer version of the Finnish card game **Huutopussi**. Play **2,
+3, or 4 players** (the 4-player game is the 2v2 partnership form) in public
+matchmaking, a private room shared by link, or an instant game against bots.
+Selectable rulesets include illisoft 2002 and the *päämuoto* main variant.
+
+The TypeScript monorepo contains a pure event-sourced game engine, an
+authoritative WebSocket server, and a mobile-first React PWA. The production
+game also includes optional Google sign-in, Elo-rated matchmaking, achievements
+and collectible titles, saved rule configurations, fi/en localization,
+reconnection with bot takeover, persistent match history, sound and haptics,
+and offline guided tutorials.
 
 Rules source of truth: [`docs/huutopussin-saannot.md`](docs/huutopussin-saannot.md).
 Architecture and plan: [`docs/plan.md`](docs/plan.md).
+
+## What is included
+
+- **Three ways to play:** public matchmaking, an instant bot game with three
+  difficulty levels, and private rooms for friends.
+- **Complete rules support:** 2–4 players, partnership play, illisoft and
+  päämuoto presets, plus editable and account-saved rule configurations.
+- **Accounts without an account wall:** guests can play every unranked mode;
+  Google sign-in adds Elo ratings, achievements, titles, and profile history.
+- **Resilient real-time play:** authoritative server validation, redacted
+  player views, automatic reconnect, and temporary bot control for absent
+  players.
+- **Learn before joining a table:** the pre-rendered
+  [rules](https://huutopussi.online/saannot) and
+  [learn-to-play](https://huutopussi.online/opettele) pages include guided
+  offline tutorials and practice situations.
+- **Production-ready PWA:** installable mobile UI, fi/en translations,
+  sound/haptics, animations and persistent room/match history.
 
 ## Working on the code (humans & AI agents)
 
@@ -31,6 +56,7 @@ one deep doc your task needs:
 | `packages/engine` | Pure TS, zero-dependency, deterministic event-sourced rules engine |
 | `packages/protocol` | zod schemas for the WebSocket wire contract |
 | `packages/bots` | Bot actors + simulation/fuzz CLI |
+| `packages/achievements` | Pure achievement predicates, progress and title catalogue |
 | `packages/server` | Node `ws` server: rooms, sessions, timers, SQLite persistence |
 | `packages/client` | React + Vite + PWA mobile client |
 
@@ -55,10 +81,13 @@ pnpm lint                         # Biome check (pnpm lint:fix to autofix)
 pnpm test                         # vitest across all packages
 pnpm sim -- --games 500 --seed 42 # seeded engine fuzz harness
 pnpm build:server                 # esbuild bundle -> packages/server/dist/server.js
+pnpm --filter @hp/client build    # Vite production build + SEO pre-render + PWA
+pnpm test:e2e                     # Playwright against a production-style server
 ```
 
 CI (`.github/workflows/ci.yml`) runs typecheck + lint + test + a 500-game
-seeded simulation on every push and PR.
+seeded simulation on every push and same-repository PR. The Playwright job runs
+when the repository variable `HOSTED_RUNNERS_AVAILABLE` is enabled.
 
 ## Playing
 
@@ -66,6 +95,10 @@ seeded simulation on every push and PR.
 a size (2/3/4 players): the server drops you into an open game for that bucket
 (or opens one) and auto-starts it the moment it fills — no codes to share.
 Signed-in players can choose **ranked** (Elo counts); guests play unranked.
+
+**Quick game against bots.** Pick 2, 3, or 4 players and an easy, medium, or
+hard bot level. The server creates the room, fills the empty seats and starts
+the game immediately. No account or room code is required.
 
 **Private room (the room-link flow).**
 
@@ -80,6 +113,15 @@ Signed-in players can choose **ranked** (Elo counts); guests play unranked.
 4. The host starts the match. If someone drops (phone locked, tunnel, …) the
    game never stalls: after a grace period a bot plays their seat until they
    reopen the link and reclaim it.
+
+**Learn and practise offline.** [`/opettele`](https://huutopussi.online/opettele)
+contains a guided first game and focused practice situations powered by the
+same deterministic engine. [`/saannot`](https://huutopussi.online/saannot)
+publishes the rules as indexable HTML.
+
+**Profiles and progression.** Signed-in players get rating history,
+achievements, progress tracking, collectible display titles and server-side
+saved rule configurations. Guest play remains available without registration.
 
 ## Deployment (Fly.io)
 
@@ -167,3 +209,12 @@ switch SSL/TLS mode to **Full (strict)** — the server sets `force_https`, so
   `fly.toml [env]` enables login + Elo ratings; unset ⇒ guest-only. The client
   reads it at runtime from `GET /api/auth-config`.
 - Logs / console: `fly logs`, `fly ssh console --app huutopussi`.
+
+## Source availability and licence
+
+The source repository is public at
+[`PoggersOy/huutopussi`](https://github.com/PoggersOy/huutopussi) for inspection
+and project transparency. Public visibility is not the same as an open-source
+licence: this repository currently has no `LICENSE` file, so no additional
+rights to use, modify or redistribute the code are granted. Add an explicit
+licence before accepting outside reuse or contributions.
