@@ -23,7 +23,15 @@ import {
   sideOf,
 } from '@hp/engine';
 import type { SeatInfo } from '@hp/protocol';
-import { type CSSProperties, type ReactElement, useEffect, useRef, useState } from 'react';
+import {
+  type CSSProperties,
+  type ReactElement,
+  type PointerEvent as ReactPointerEvent,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { CardBack, CardFace, CardStack } from '../components/CardFace';
@@ -32,6 +40,7 @@ import { LearnGuide } from '../components/LearnGuide';
 import { emoteById } from '../emotes';
 import { disconnect, sendAction, sendLobby } from '../socket';
 import { type CompletedTrick, type EmoteBubble, type SpeechBubble, useStore } from '../store';
+import { layoutFan } from './table/fanLayout';
 import {
   DealScoredOverlay,
   MatchEndedOverlay,
@@ -324,6 +333,7 @@ export function Table() {
   const [confirmLeave, setConfirmLeave] = useState(false);
   /** The on-demand full-standings overlay ("Näytä tilanne") is open. */
   const [showStandings, setShowStandings] = useState(false);
+  const feltRef = useFeltBottomInset();
 
   /** Tear down the connection and go home (used by leave / match-over exit). */
   const leaveToHome = (): void => {
@@ -487,7 +497,7 @@ export function Table() {
       {learn !== null && <LearnGuide />}
 
       {/* biome-ignore lint/a11y/useKeyWithClickEvents: tap-anywhere-to-lower is a touch affordance; keyboard users act via the card buttons */}
-      <main className="felt" onClick={onFeltTap}>
+      <main ref={feltRef} className="felt" onClick={onFeltTap}>
         {deal === null ? (
           <p className="felt__idle dim">{t('common.loading')}</p>
         ) : (
@@ -984,6 +994,34 @@ function LastTrickPeek({
   );
 }
 
+/**
+ * Publishes how far the felt's bottom edge sits above the viewport's bottom as
+ * `--felt-inset-bottom` on the document root, so screen-fixed controls (the
+ * reaction picker) can float just above the sheet/hand stack instead of over
+ * the fan — where they used to cover the rightmost card and steal its taps.
+ */
+function useFeltBottomInset(): (el: HTMLElement | null) => void {
+  const [felt, setFelt] = useState<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    if (felt === null) return;
+    const root = document.documentElement;
+    const update = (): void => {
+      const inset = Math.max(0, window.innerHeight - felt.getBoundingClientRect().bottom);
+      root.style.setProperty('--felt-inset-bottom', `${Math.round(inset)}px`);
+    };
+    update();
+    window.addEventListener('resize', update);
+    const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(update);
+    ro?.observe(felt);
+    return () => {
+      window.removeEventListener('resize', update);
+      ro?.disconnect();
+      root.style.removeProperty('--felt-inset-bottom');
+    };
+  }, [felt]);
+  return setFelt;
+}
+
 // ── Bottom: own hand fan (two-step play / exchange multi-select) ─────────────
 
 function HandFan({
@@ -1004,6 +1042,32 @@ function HandFan({
   const pending = useStore((s) => s.ui.pendingActionId) !== null;
   const selectedCards = useStore((s) => s.ui.selectedCards);
   const toggleSelectedCard = useStore((s) => s.toggleSelectedCard);
+  const ref = useRef<HTMLDivElement>(null);
+  const [box, setBox] = useState({ width: 0, cardW: 0 });
+  // The card under the finger while it is down (scrub preview), and where that
+  // press started — see onPointerUp for why the start matters.
+  const [preview, setPreview] = useState<Card | null>(null);
+  const press = useRef<{ id: number; start: Card | null } | null>(null);
+
+  // Measure the fan's real width (and the card width the tokens resolved to) so
+  // the geometry uses all the room there is — see table/fanLayout.ts.
+  // (Re-armed when the hand goes from empty to dealt: the card probe appears.)
+  const hasCards = hand.length > 0;
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el === null || !hasCards) return;
+    const measure = (): void => {
+      const probe = el.querySelector<HTMLElement>('.hand__card');
+      const width = el.clientWidth;
+      const cardW = probe?.offsetWidth ?? 0;
+      setBox((b) => (b.width === width && b.cardW === cardW ? b : { width, cardW }));
+    };
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [hasCards]);
 
   function onTap(card: Card): void {
     if (selectCount !== null) {
@@ -1022,30 +1086,129 @@ function HandFan({
     raiseCard(card);
   }
 
-  const density =
-    hand.length > 12 ? ' hand--dense hand--xdense' : hand.length > 9 ? ' hand--dense' : '';
+  /**
+   * The card a finger at (x, y) means. Exactly the card whose face is visible
+   * there (the browser's own hit-test honours the fan's rotation + overlap);
+   * a touch that lands in the fan's box but between/under cards snaps to the
+   * nearest card rather than doing nothing. Outside the fan (+ a little slop)
+   * it is null — dragging off the hand cancels the press.
+   */
+  function cardAt(x: number, y: number): Card | null {
+    const el = ref.current;
+    if (el === null) return null;
+    const hit = document.elementFromPoint(x, y)?.closest<HTMLElement>('[data-hand-card]');
+    if (hit != null && el.contains(hit)) return hit.dataset.handCard as Card;
+    const r = el.getBoundingClientRect();
+    const slop = 16;
+    if (x < r.left - slop || x > r.right + slop || y < r.top - slop * 3 || y > r.bottom + slop) {
+      return null;
+    }
+    let best: Card | null = null;
+    let bestD = Number.POSITIVE_INFINITY;
+    for (const b of el.querySelectorAll<HTMLElement>('[data-hand-card]')) {
+      const cr = b.getBoundingClientRect();
+      const dx = Math.max(cr.left - x, 0, x - cr.right);
+      const dy = Math.max(cr.top - y, 0, y - cr.bottom);
+      const d = dx + dy * 2;
+      if (d < bestD) {
+        bestD = d;
+        best = b.dataset.handCard as Card;
+      }
+    }
+    return best;
+  }
+
+  // Touch-and-slide ("scrub"): the card under the finger lifts as a preview and
+  // is the one chosen on release, so a narrow strip needs no precision — you
+  // see which card you are on before committing, above your thumb.
+  function onPointerDown(e: ReactPointerEvent<HTMLDivElement>): void {
+    if (e.button > 0 || press.current !== null) return;
+    const card = cardAt(e.clientX, e.clientY);
+    press.current = { id: e.pointerId, start: card };
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    setPreview(card);
+  }
+
+  function onPointerMove(e: ReactPointerEvent<HTMLDivElement>): void {
+    const p = press.current;
+    if (p === null || p.id !== e.pointerId) return;
+    const card = cardAt(e.clientX, e.clientY);
+    if (card !== preview) setPreview(card);
+  }
+
+  function onPointerUp(e: ReactPointerEvent<HTMLDivElement>): void {
+    const p = press.current;
+    if (p === null || p.id !== e.pointerId) return;
+    press.current = null;
+    setPreview(null);
+    const card = cardAt(e.clientX, e.clientY);
+    if (card === null) return;
+    // Sliding ONTO the raised card never plays it — only a press that began on
+    // it does. A scrub that happens to end there just leaves it raised.
+    if (card === raisedCard && p.start !== card) return;
+    onTap(card);
+  }
+
+  function onPointerCancel(e: ReactPointerEvent<HTMLDivElement>): void {
+    const p = press.current;
+    if (p === null || p.id !== e.pointerId) return;
+    press.current = null;
+    setPreview(null);
+  }
+
+  const fan = layoutFan(hand, box.width, box.cardW);
   const raisedIndex = raisedCard !== null ? hand.indexOf(raisedCard) : -1;
+  const raisedRow = raisedIndex >= 0 ? fan.slots[raisedIndex]?.row : undefined;
   return (
-    <div className={`hand${density}`} style={{ '--n': hand.length } as CSSProperties}>
+    <div
+      ref={ref}
+      className={`hand${fan.rows === 2 ? ' hand--rows' : ''}`}
+      style={{ '--n': hand.length, '--fan-h': `${fan.height}px` } as CSSProperties}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
+    >
       {hand.map((card, i) => {
+        const slot = fan.slots[i];
         const illegal =
           (playHint !== null && !playHint.legal.includes(card)) ||
           (selectCount !== null && selectLegal !== null && !selectLegal.includes(card));
         const raised = raisedCard === card;
         const picked = selectedCards.includes(card);
-        // Neighbours part around the raised card — the "peek" of a real hand.
-        const part = raisedIndex < 0 || raised ? 0 : i < raisedIndex ? -6 : 6;
+        // Neighbours in the same row part around the raised card — the "peek"
+        // of a real hand.
+        const part =
+          raisedIndex < 0 || raised || slot?.row !== raisedRow ? 0 : i < raisedIndex ? -6 : 6;
         return (
           <button
             type="button"
             key={card}
-            disabled={illegal}
+            data-hand-card={card}
+            // aria-disabled, not `disabled`: a disabled button swallows pointer
+            // events, which would break the scrub gesture passing over it.
+            aria-disabled={illegal || undefined}
             aria-pressed={raised || picked}
-            style={{ '--i': i, '--n': hand.length, '--part': `${part}px` } as CSSProperties}
+            style={
+              {
+                '--i': i,
+                '--fx': `${slot?.x ?? 0}px`,
+                '--fy': `${slot?.y ?? 0}px`,
+                '--fr': `${slot?.rot ?? 0}deg`,
+                '--part': `${part}px`,
+                zIndex: slot?.z ?? i + 1,
+              } as CSSProperties
+            }
             className={`hand__card${raised ? ' hand__card--raised' : ''}${
               picked ? ' hand__card--picked' : ''
-            }${illegal ? ' hand__card--dim' : ''}`}
-            onClick={() => onTap(card)}
+            }${illegal ? ' hand__card--dim' : ''}${
+              fan.rows === 2 && slot?.row === 0 ? ' hand__card--front' : ''
+            }${preview === card && !raised && !picked ? ' hand__card--preview' : ''}`}
+            // Pointer taps are resolved by the fan's pointer handlers above;
+            // this click only serves the keyboard (Enter/Space → detail 0).
+            onClick={(e) => {
+              if (e.detail === 0) onTap(card);
+            }}
           >
             <CardFace card={card} />
             {pending && raised && (

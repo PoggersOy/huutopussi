@@ -121,10 +121,11 @@ async function tryClick(loc: Locator): Promise<boolean> {
 }
 
 /**
- * Tap a hand-fan card on its VISIBLE LEFT SLIVER, not its centre. The portrait
- * fan overlaps cards by 62 % (.hand--dense) to 74 % (.hand--xdense) so they fit,
- * which means a card's centre is covered by the neighbour stacked on top of it —
- * a default (centre) click is intercepted by that neighbour and times out. Each
+ * Tap a hand-fan card on its VISIBLE LEFT SLIVER, not its centre. The fan
+ * overlaps cards (down to ~40 % of a card's width per strip before it splits
+ * into two rows), so a card's centre is usually covered by the neighbour
+ * stacked on top of it. The fan resolves a tap to the card whose face is
+ * visible under the finger, so a centre click would pick that neighbour. Each
  * card's left edge is on top of (and clear of) its neighbours, so that is where
  * a human taps and where we click. Mirrors tryClick's swallow-and-retry.
  */
@@ -257,7 +258,7 @@ export async function actOnce(page: Page, state: DriverState): Promise<void> {
  * simply leaves the next driver iteration to retry.
  */
 async function playAnyLegalCard(page: Page): Promise<void> {
-  const enabled = page.locator('footer .hand__card:not([disabled])');
+  const enabled = page.locator('footer .hand__card:not([aria-disabled])');
   if ((await enabled.count()) === 0) return;
   const card = await enabled
     .first()

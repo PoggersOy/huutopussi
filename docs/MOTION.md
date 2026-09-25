@@ -133,29 +133,48 @@ felt, so it can never leave it.
 ### 3.2 The hand (defects #4, #5)
 
 **Position the fan with `transform`, not `margin`.** This is the enabling change:
-margins cannot be transitioned across a reflow, transforms can. Each card gets an
-index `--i` and the fan is computed from it:
+margins cannot be transitioned across a reflow, transforms can. Each card gets its
+slot as `--fx` / `--fy` / `--fr` (px, px, deg), computed in JS from the fan's
+**measured** width by `screens/table/fanLayout.ts`, with
+`transition: transform var(--dur-2) var(--ease-out)`.
 
-```
-angle   = (i − (n−1)/2) × spread     spread ≈ 3.2° at n = 9, tightening as n grows
-lift    = ((i − (n−1)/2) / (n/2))² × 10px
-x       = (i − (n−1)/2) × step
-```
+**Every card stays visible and tappable** (the fan's usability contract):
 
-with `transition: transform var(--dur-2) var(--ease-out)`.
+- The fan spreads to use the width it has, up to a natural overlap
+  (`MAX_STEP` = 0.62 × card width), minus a small side margin so tilted corners
+  never touch the screen edge.
+- Suit groups get a gap (0.45 × step) while that still leaves a comfortable strip.
+- No card's visible strip ever drops below `MIN_STEP` (0.4 × card width, ≥ 26 px) —
+  that clears the corner index and a thumb. When one row can't honour it (13–14
+  cards on a 320–390 px phone), the hand **splits into two rows** (`.hand--rows`),
+  on a suit boundary near the middle when there is one; the back row peeks out
+  0.44 × card height above the front row, index band fully visible.
+- The arc (rotation up to 9°, middle rising 7 % of a card) is measured from the
+  outer cards, so the fan never dips below the footer.
+- Screen-fixed controls (reaction picker, "I'm back") float above the felt's
+  bottom edge (`--felt-inset-bottom`, published by `Table.tsx`), never over the fan.
 
-What that buys, for free:
+What transforms buy, for free:
 
 - **A real fan** — arc, rotation, the outer cards sitting lower.
 - **Gap-closing**: play a card, the neighbours glide into the space instead of
   snapping.
-- **Parting**: neighbours of the raised card shift ±6 px, the "peek" of a real hand.
+- **Parting**: same-row neighbours of the raised card shift ±6 px, the "peek" of
+  a real hand.
 
 On top:
 
-- **Raise** becomes `translateY(-26%) scale(1.06) rotate(0deg)` — the card
-  *straightens out of the fan* as it lifts. Far more tactile than a bare rise.
-- **Press ack**: `--dur-1` `scale(0.97)` on `:active`.
+- **Touch-and-slide picking.** Pointer input is resolved on `.hand`, not per
+  button: the card under the finger (the browser's own hit-test, so exactly the
+  visible face) lifts as a *preview* (`--dur-1`, 14 % of a card) and is the one
+  chosen on release; a touch between cards snaps to the nearest one; sliding off
+  the hand cancels. Sliding *onto* the raised card never plays it — only a press
+  that starts on it does. Buttons use `aria-disabled` (a `disabled` button would
+  swallow the slide) and their `click` serves the keyboard only.
+- **Raise** becomes `translateY(-30%) scale(1.04) rotate(0deg)` — the card
+  *straightens out of the fan* as it lifts. It keeps its stacking order, so it
+  never covers a neighbour's index. In two-row mode a front-row card lifts only
+  10 % (it would hide the back row's indices) and glows gold instead.
 - **Illegal cards** keep the brightness/saturate filter (never opacity — overlapping
   cards bleed through) and additionally sit 4 px lower, so legality is readable
   as *shape*, not only as colour.

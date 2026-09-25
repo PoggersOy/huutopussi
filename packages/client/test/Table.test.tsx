@@ -208,7 +208,9 @@ describe('two-step play', () => {
     render(<Table />, { wrapper: MemoryRouter });
 
     const illegal = screen.getByRole('button', { name: 'HA' });
-    expect((illegal as HTMLButtonElement).disabled).toBe(true);
+    expect(illegal.getAttribute('aria-disabled')).toBe('true');
+    fireEvent.click(illegal);
+    expect(illegal.className).not.toContain('hand__card--raised');
 
     const legal = screen.getByRole('button', { name: 'S6' });
     fireEvent.click(legal);
@@ -217,6 +219,80 @@ describe('two-step play', () => {
 
     fireEvent.click(legal);
     expect(sendAction).toHaveBeenCalledWith({ type: 'playCard', card: 'S6' });
+  });
+});
+
+describe('hand fan touch gesture', () => {
+  // jsdom has no layout: point elementFromPoint at whichever card the "finger"
+  // is on, the way the browser's hit-test would.
+  let under: string | null = null;
+  beforeEach(() => {
+    under = null;
+    document.elementFromPoint = (() =>
+      under === null
+        ? null
+        : document.querySelector(
+            `[data-hand-card="${under}"] svg`,
+          )) as typeof document.elementFromPoint;
+  });
+
+  function playTurn(): HTMLElement {
+    applyWelcome(
+      makeView(makeDeal({ phase: { name: 'lead', leader: 0, canDeclare: false } })),
+      myTurn([{ type: 'playCard', legal: ['HA', 'H10', 'S6'] }]),
+    );
+    render(<Table />, { wrapper: MemoryRouter });
+    return document.querySelector('.hand') as HTMLElement;
+  }
+
+  const down = (el: HTMLElement) => fireEvent.pointerDown(el, { pointerId: 1, button: 0 });
+  const move = (el: HTMLElement) => fireEvent.pointerMove(el, { pointerId: 1 });
+  const up = (el: HTMLElement) => fireEvent.pointerUp(el, { pointerId: 1 });
+  const card = (c: string) => screen.getByRole('button', { name: c });
+
+  it('previews the card under the finger while sliding and raises it on release', () => {
+    const hand = playTurn();
+    under = 'HA';
+    down(hand);
+    expect(card('HA').className).toContain('hand__card--preview');
+    under = 'H10';
+    move(hand);
+    expect(card('HA').className).not.toContain('hand__card--preview');
+    expect(card('H10').className).toContain('hand__card--preview');
+    up(hand);
+    expect(card('H10').className).toContain('hand__card--raised');
+    expect(card('H10').className).not.toContain('hand__card--preview');
+    expect(sendAction).not.toHaveBeenCalled();
+
+    // A press that starts and ends on the raised card plays it.
+    down(hand);
+    up(hand);
+    expect(sendAction).toHaveBeenCalledWith({ type: 'playCard', card: 'H10' });
+  });
+
+  it('never plays the raised card when a slide merely ends on it', () => {
+    const hand = playTurn();
+    under = 'S6';
+    down(hand);
+    up(hand);
+    expect(card('S6').className).toContain('hand__card--raised');
+
+    under = 'HA';
+    down(hand);
+    under = 'S6';
+    move(hand);
+    up(hand);
+    expect(sendAction).not.toHaveBeenCalled();
+    expect(card('S6').className).toContain('hand__card--raised');
+  });
+
+  it('does nothing when released on an illegal card', () => {
+    const hand = playTurn();
+    under = 'HK';
+    down(hand);
+    up(hand);
+    expect(card('HK').className).not.toContain('hand__card--raised');
+    expect(document.querySelector('.hand__card--raised')).toBeNull();
   });
 });
 

@@ -286,8 +286,9 @@
 
 /* An opponent's hand, as a real (small) fan rather than the flat overlapped row
  * it used to be — that read as a barcode, and when a card left the hand the
- * count simply ticked 9 → 6 with no motion at all. Same transform geometry as
- * your own fan (base.css), so the remaining backs glide into the gap. */
+ * count simply ticked 9 → 6 with no motion at all. The same transform approach
+ * as your own fan (base.css; a fixed CSS arc here, since the backs never need to
+ * be read or tapped), so the remaining backs glide into the gap. */
 .opp__hand {
   display: flex;
   align-items: center;
@@ -1021,9 +1022,12 @@
 /* Multi-select (exchange give/return, koini discard): a picked card rides above
    the fan with a gold outline. The fan geometry itself lives in base.css. */
 .hand__card--picked {
-  --lift: calc(var(--card-h) * -0.16);
+  --lift: calc(var(--card-h) * -0.2);
   --scale: 1.03;
-  z-index: 98;
+}
+
+.hand--rows .hand__card--front.hand__card--picked {
+  --lift: calc(var(--card-h) * -0.1);
 }
 
 .hand__card--picked svg {
@@ -1467,12 +1471,13 @@
 /* ── "I'm back" reclaim button ──
    Shown whenever the viewer's own seat has been handed to a fill-in bot: a
    floating control to take control back at once (server `reclaimSeat`). Pinned
-   to the screen's bottom-left corner (safe-area aware), above the sheet/hand but
-   under modal overlays, with a soft gold attention pulse. */
+   to the bottom-left of the FELT (`--felt-inset-bottom`, see Table.tsx) — just
+   above the sheet/hand, never on top of the fan's cards — under modal overlays,
+   with a soft gold attention pulse. */
 .table-reclaim {
   position: fixed;
   left: calc(var(--safe-left) + var(--space-3));
-  bottom: calc(var(--safe-bottom) + var(--space-3));
+  bottom: calc(var(--felt-inset-bottom, var(--safe-bottom)) + var(--space-3));
   z-index: 45;
   min-height: var(--touch-min);
   padding: var(--space-2) var(--space-4);
@@ -1698,11 +1703,15 @@
   }
 }
 
-/* ── Reaction picker (floating, bottom-right; mirror of the reclaim button) ── */
+/* ── Reaction picker (floating, right edge) ──
+   It floats just above the sheet/hand stack — `--felt-inset-bottom` is the
+   felt's bottom edge, published by Table.tsx — and clear of the last-trick
+   peek and the turn timer in the felt's bottom-right corner. Pinning it to the
+   SCREEN's bottom-right put it on top of the hand fan's rightmost card. */
 .emotebar {
   position: fixed;
-  right: calc(var(--safe-right) + var(--space-3));
-  bottom: calc(var(--safe-bottom) + var(--space-3));
+  right: calc(var(--safe-right) + var(--space-2));
+  bottom: calc(var(--felt-inset-bottom, var(--safe-bottom)) + var(--touch-min) * 2 + var(--space-4));
   z-index: 45;
   display: flex;
   flex-direction: column;
@@ -1725,7 +1734,9 @@
 
 .emotebar__palette {
   width: min(78vw, 320px);
-  max-height: 46vh;
+  /* Opens upward from a toggle that now floats above the sheet/hand stack:
+     never taller than the room left above it (≈ top bar + toggle + margins). */
+  max-height: min(46vh, calc(100dvh - var(--felt-inset-bottom, 0px) - var(--touch-min) * 2 - 10rem));
   overflow-y: auto;
   padding: var(--space-2);
   border-radius: var(--radius-2);
