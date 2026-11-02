@@ -70,12 +70,63 @@ const TRICK_LINGER_MS = 1_300;
 const SCORED_REVEAL_MS = 3_000;
 
 /**
- * Renders a speech bubble's text. The trump announcement gets special treatment:
- * its suit glyph is wrapped in a `suit--*` span so the bubble can tint it red/
- * black (see `.bubble--trump` in table.css); everything else is a plain string.
+ * A bubble's visual voice (table.css `.bubble--*`): a pass or a "no" is quiet,
+ * a bid/contract is a gold-rimmed number, a question asks, a redeal alarms and
+ * a made trump glows.
+ */
+export function bubbleKind(code: string): 'quiet' | 'bid' | 'ask' | 'alert' | 'trump' | null {
+  switch (code) {
+    case 'bubble.pass':
+    case 'bubble.noMarriage':
+    case 'bubble.answerNo':
+      return 'quiet';
+    case 'bubble.bid':
+    case 'bubble.contract':
+      return 'bid';
+    case 'bubble.askWhole':
+    case 'bubble.askHalf':
+      return 'ask';
+    case 'bubble.redeal':
+      return 'alert';
+    case 'bubble.trump':
+      return 'trump';
+    default:
+      return null;
+  }
+}
+
+function bubbleClass(bubble: SpeechBubble, me = false): string {
+  const kind = bubbleKind(bubble.code);
+  return `bubble${me ? ' bubble--me' : ''}${kind ? ` bubble--${kind}` : ''}`;
+}
+
+/** Placeholder swapped for a styled node after translation (never user-visible). */
+const SLOT = '\u0000';
+
+/**
+ * Translates `bubble` with the param `key` replaced by `node`, so a number or a
+ * suit glyph can be styled without putting markup into the catalogue strings
+ * (they are reused as plain button labels elsewhere).
+ */
+function withSlot(text: string, node: ReactElement): ReactElement {
+  const [before, after] = text.split(SLOT);
+  return (
+    <>
+      {before}
+      {node}
+      {after}
+    </>
+  );
+}
+
+/**
+ * Renders a speech bubble's text. The trump announcement and a half-ask tint
+ * their suit glyph (`suit--*`); bids and contracts set the amount as a
+ * display-font numeral; everything else is a plain string.
  */
 function BubbleText({ bubble }: { bubble: SpeechBubble }): ReactElement {
   const { t } = useTranslation();
+  const params = bubble.params ?? {};
   if (bubble.code === 'bubble.trump' && bubble.params) {
     return (
       <Trans
@@ -85,7 +136,23 @@ function BubbleText({ bubble }: { bubble: SpeechBubble }): ReactElement {
       />
     );
   }
-  return <>{t(bubble.code, bubble.params ?? {})}</>;
+  if ((bubble.code === 'bubble.bid' || bubble.code === 'bubble.contract') && 'amount' in params) {
+    return withSlot(
+      t(bubble.code, { ...params, amount: SLOT }),
+      <span className="bubble__num">{params.amount}</span>,
+    );
+  }
+  if (bubble.code === 'bubble.askHalf' && typeof params.card === 'string') {
+    const glyph = params.card.slice(0, 1);
+    return withSlot(
+      t(bubble.code, { ...params, card: SLOT }),
+      <span className="bubble__card">
+        <span className={`suit--${params.suitCode ?? ''}`}>{glyph}</span>
+        {params.card.slice(1)}
+      </span>,
+    );
+  }
+  return <>{t(bubble.code, params)}</>;
 }
 
 /** A reaction floating by a seat (opponent panel or, with `me`, the felt foot). */
@@ -549,9 +616,7 @@ export function Table() {
               <div className="felt-foot">
                 {myEmote !== null && <EmoteFloat emote={myEmote} me />}
                 {myBubble !== null && (
-                  <div
-                    className={`bubble bubble--me${myBubble.code === 'bubble.trump' ? ' bubble--trump' : ''}`}
-                  >
+                  <div className={bubbleClass(myBubble, true)}>
                     <BubbleText bubble={myBubble} />
                   </div>
                 )}
@@ -776,6 +841,8 @@ function TrickPile({ count, mine }: { count: number; mine?: boolean }): ReactEle
       key={count}
       className={`trick-pile trick-pile--grew${mine === true ? ' trick-pile--me' : ''}`}
       title={t('table.tricksWon', { n: count })}
+      aria-label={t('table.tricksWon', { n: count })}
+      role="img"
     >
       <CardStack count={count} width="var(--card-w-opp)" maxLayers={4} />
       <span className="trick-pile__n">{count}</span>
@@ -824,7 +891,12 @@ function OpponentPanel({
           </span>
         )}
       </div>
-      <div className="opp__hand">
+      <div
+        className="opp__hand"
+        title={t('table.cardsInHand', { n: count })}
+        aria-label={t('table.cardsInHand', { n: count })}
+        role="img"
+      >
         {/* A small fan, positioned by transform like your own hand, so playing a
             card makes the remaining backs glide into the gap instead of the
             count silently ticking down. `--i`/`--n` drive the geometry. */}
@@ -849,7 +921,7 @@ function OpponentPanel({
         {isDeclarer && <span className="chip chip--gold">{t('table.declarer')}</span>}
       </div>
       {bubble !== null && (
-        <div className={`bubble${bubble.code === 'bubble.trump' ? ' bubble--trump' : ''}`}>
+        <div className={bubbleClass(bubble)}>
           <BubbleText bubble={bubble} />
         </div>
       )}

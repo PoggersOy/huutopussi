@@ -318,7 +318,7 @@ export interface LastTrick {
 export async function tryReadLastTrick(page: Page): Promise<LastTrick | null> {
   const panel = page.locator('.peek__panel');
   if (!(await panel.isVisible().catch(() => false))) {
-    const btn = page.getByRole('button', { name: 'Last trick', exact: true });
+    const btn = page.getByRole('button', { name: 'Show last trick', exact: true });
     if (await btn.isVisible().catch(() => false)) {
       await btn.click({ timeout: 1_000 }).catch(() => {});
     }

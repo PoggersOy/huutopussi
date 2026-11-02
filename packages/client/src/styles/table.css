@@ -99,13 +99,26 @@
   display: flex;
   justify-content: space-between;
   gap: var(--space-2);
-  padding: var(--space-1) var(--space-3) 0;
+  padding: 0;
 }
 
+/* Edge tabs: each button hangs flush from the top bar into its screen corner
+   (no inset, no gap), so only its inner bottom corner is rounded. */
 .thostbar__btn {
   font-size: var(--fs-sm);
   padding: 2px var(--space-3);
+  border-top: 0;
   opacity: 0.8;
+}
+
+.thostbar__btn:first-child {
+  border-left: 0;
+  border-radius: 0 0 var(--radius-2) 0;
+}
+
+.thostbar__btn:last-child {
+  border-right: 0;
+  border-radius: 0 0 0 var(--radius-2);
 }
 
 .ttop__me {
@@ -341,17 +354,26 @@
 /* ── Speech bubbles ── */
 
 .bubble {
+  --bubble-bg: #fbf7ec;
+  --bubble-edge: rgba(4, 26, 18, 0.14);
   position: absolute;
   z-index: 5;
   max-width: 40vw;
-  padding: var(--space-1) var(--space-2);
-  border-radius: var(--radius-2);
-  background: var(--cream);
+  padding: 7px 16px 8px;
+  border: 1px solid var(--bubble-edge);
+  border-radius: 16px;
+  background: var(--bubble-bg);
   color: var(--felt-950);
-  font-size: var(--fs-sm);
-  font-weight: 600;
+  font-size: var(--fs-md);
+  font-weight: 650;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
   text-align: center;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  white-space: nowrap;
+  box-shadow:
+    0 8px 18px -8px rgba(0, 0, 0, 0.65),
+    0 2px 4px rgba(0, 0, 0, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7);
   pointer-events: none;
   /* Grows OUT OF its speaker: the origin is the tail, not the box's middle. */
   transform-origin: var(--tail-x, 50%) var(--tail-y, 0%);
@@ -363,29 +385,101 @@
     bubble-out 220ms var(--ease-in) 4780ms both;
 }
 
+/* The tail: a rotated square in the bubble's own fill + edge, tucked half under
+ * the body so only a crisp point shows. */
 .bubble::after {
   content: "";
   position: absolute;
-  top: -4px;
-  left: calc(50% - 5px);
-  width: 10px;
-  height: 10px;
-  background: inherit;
+  top: -6px;
+  left: calc(50% - 6px);
+  width: 12px;
+  height: 12px;
+  background: var(--bubble-bg);
+  border-top: 1px solid var(--bubble-edge);
+  border-left: 1px solid var(--bubble-edge);
   transform: rotate(45deg);
+}
+
+/* Quiet voice — "Ohi", "Ei ole": a passing remark, not news. Dark glass on the
+ * felt with cream text, so the table's eye stays on bids and cards. */
+.bubble--quiet {
+  --bubble-bg: #0e2f23;
+  --bubble-edge: rgba(246, 241, 227, 0.22);
+  color: rgba(246, 241, 227, 0.88);
+  font-weight: 600;
+  box-shadow:
+    0 8px 18px -8px rgba(0, 0, 0, 0.7),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+/* Bids and contracts: a gold rim and the amount set large in the display face. */
+.bubble--bid {
+  --bubble-edge: var(--gold);
+  border-width: 1.5px;
+  padding: 5px 16px 6px;
+}
+
+.bubble--bid::after {
+  border-width: 1.5px;
+}
+
+.bubble__num {
+  /* The UI face, not Georgia: Georgia's old-style figures drop below the line. */
+  font-size: 1.3em;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Questions lean in: a slightly warmer card with the asked card set apart. */
+.bubble--ask {
+  --bubble-bg: #fff6dd;
+}
+
+.bubble__card {
+  display: inline-block;
+  padding: 0 4px;
+  border-radius: 5px;
+  background: rgba(4, 26, 18, 0.07);
+  font-weight: 800;
+}
+
+.bubble--ask .suit--H {
+  color: var(--card-red);
+}
+
+.bubble--ask .suit--D {
+  color: var(--card-blue);
+}
+
+.bubble--ask .suit--C {
+  color: var(--card-green);
+}
+
+.bubble--ask .suit--S {
+  color: var(--felt-950);
+}
+
+/* A redeal demand interrupts the deal: an alarm-red voice. */
+.bubble--alert {
+  --bubble-bg: #fde8e8;
+  --bubble-edge: var(--danger);
+  color: #8f1d22;
+  font-weight: 750;
 }
 
 /* A trump was made: a gold, glowing bubble to tie in with the trump chip up top. */
 .bubble--trump {
+  /* The tail matches the gradient's top edge (it points up at the speaker). */
+  --bubble-bg: #f4d879;
+  --bubble-edge: rgba(4, 26, 18, 0.2);
   background: linear-gradient(180deg, #f4d879, var(--gold));
   color: var(--felt-950);
   font-weight: 700;
   box-shadow:
     0 0 12px rgba(212, 175, 55, 0.8),
     0 2px 8px rgba(0, 0, 0, 0.4);
-}
-
-.bubble--trump::after {
-  background: var(--gold);
 }
 
 /* Tint the suit glyph for the gold (light) bubble — the felt suit colours are
@@ -406,35 +500,45 @@
   color: var(--felt-950);
 }
 
-/* Centred under its panel. The shift uses the standalone `translate` property,
-   not `transform`, so the bubble's own transform stays free for the spring
-   in/out animation — the two compose (translate first, then transform). */
+/* Every bubble sits on the edge of its panel that FACES THE TABLE — where that
+   seat's cards land — with the tail pointing back at the speaker: under the top
+   seat, to the right of the left seat, to the left of the right seat (your own
+   line rides above your hand, see .bubble--me). The shift uses the standalone
+   `translate` property, not `transform`, so the bubble's own transform stays
+   free for the spring in/out animation — the two compose. */
 .opp .bubble {
   top: calc(100% + 8px);
   left: 50%;
   translate: -50% 0;
 }
 
-.opp--left .bubble {
-  left: 0;
+.opp--left .bubble,
+.opp--right .bubble {
+  /* Phone: the gap between the side seats is too narrow for a bubble beside
+   * the panel, so it hangs under the panel flush with its TABLE-SIDE edge,
+   * the tail at the inner corner. Desktop moves it beside the panel (below). */
   translate: none;
-  --tail-x: 14px;
+}
+
+.opp--left .bubble {
+  left: auto;
+  right: 0;
+  --tail-x: calc(100% - 16px);
 }
 
 .opp--left .bubble::after {
-  left: 14px;
+  left: auto;
+  right: 16px;
 }
 
 .opp--right .bubble {
-  left: auto;
-  right: 0;
-  translate: none;
-  --tail-x: calc(100% - 14px);
+  left: 0;
+  right: auto;
+  --tail-x: 16px;
 }
 
 .opp--right .bubble::after {
-  left: auto;
-  right: 14px;
+  left: 16px;
 }
 
 /* YOUR OWN line. It used to float at `bottom: 16%` — marooned in the middle of
@@ -450,7 +554,11 @@
 
 .bubble--me::after {
   top: auto;
-  bottom: -4px;
+  bottom: -6px;
+  border-top: 0;
+  border-left: 0;
+  border-right: 1px solid var(--bubble-edge);
+  border-bottom: 1px solid var(--bubble-edge);
 }
 
 @keyframes bubble-in {
@@ -1094,6 +1202,129 @@
   animation: overlay-in var(--dur-3) var(--ease-spring);
 }
 
+/* ── Points guide (bidding/contract turns) ── */
+
+.points__open {
+  align-self: center;
+  min-height: 32px;
+  padding: 2px var(--space-3);
+  border-radius: 999px;
+  border-color: var(--gold-soft);
+  background: transparent;
+  color: var(--gold);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.points {
+  gap: var(--space-3);
+}
+
+.points__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.points__heading {
+  margin: 0;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--gold-soft);
+}
+
+.points__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+}
+
+.points__rows > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-3);
+}
+
+.points__rows dt {
+  color: var(--text-dim);
+}
+
+.points__rows dd {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.points__total {
+  margin-top: 2px;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--line);
+  font-size: var(--fs-md);
+}
+
+.points__total dt {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.points__chip {
+  padding: 0 6px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.points__chip--maybe {
+  opacity: 0.7;
+  font-weight: 600;
+}
+
+.points__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.points__grid li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 4px var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-2);
+  background: rgba(0, 0, 0, 0.2);
+  font-variant-numeric: tabular-nums;
+}
+
+.points__grid--two {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.points__grid .points__wide {
+  grid-column: 1 / -1;
+}
+
+.points__label {
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
+.points__note {
+  margin: 0;
+  font-size: var(--fs-xs);
+  line-height: 1.4;
+}
+
 .overlay__panel h2 {
   text-align: center;
 }
@@ -1320,6 +1551,15 @@
     width: 100%;
     max-width: 960px;
     margin-inline: auto;
+    /* The phone caps (100/80/26px) left desktop cards tiny in a sea of felt.
+     * Still vmin-driven, so a short landscape window stays proportionate. */
+    --card-w: clamp(52px, min(15vw, 14vh), 150px);
+    --card-h: calc(var(--card-w) * var(--card-ratio));
+    --card-w-md: clamp(44px, min(13vw, 12.5vh), 140px);
+    --card-w-sm: clamp(36px, 9vmin, 80px);
+    --card-h-sm: calc(var(--card-w-sm) * var(--card-ratio));
+    --card-w-opp: clamp(14px, min(3.4vw, 3.4vh), 38px);
+    --card-radius: calc(var(--card-w) * 0.09);
   }
 
   /* Bigger, easier-to-read opponent panels. */
@@ -1330,33 +1570,87 @@
     max-width: 34%;
   }
 
-  /* Seats stay in the upper felt (base top: 21%, clear of the top-left pile
-   * counter); the centred board pulls them inward and the open felt below is
-   * the play area where the trick lands. */
+  /* The four seats ring the trick like a real table: the side seats sit level
+   * with it and the top seat hugs it from above (instead of bunching along the
+   * top edge with an empty band between them and the trick). --ring-y is the
+   * trick's centre, a little below the felt's middle so the gap above your
+   * hand doesn't dominate; the top seat sits just above the trick's top card. */
+  .felt {
+    --ring-y: 55%;
+  }
+
+  /* Bottom edge = the trick's top card minus room for the trick label. */
+  .opp--top {
+    top: max(var(--space-2), calc(var(--ring-y) - var(--card-w-md) * 1.33 - 170px));
+  }
+
   .opp--left {
     left: var(--space-4);
+    top: var(--ring-y);
+    transform: translateY(-50%);
   }
 
   .opp--right {
     right: var(--space-4);
+    top: var(--ring-y);
+    transform: translateY(-50%);
   }
 
   .opp__nick {
     font-size: var(--fs-md);
   }
 
-  .opp__fan > * + * {
-    margin-left: -14px;
-  }
-
   .opp__count {
     font-size: var(--fs-xs);
   }
 
+  .bubble {
+    padding: 8px 18px 9px;
+    font-size: var(--fs-lg);
+  }
+
+  /* Beside the panel, on the side facing the table, vertically centred. */
+  .opp--left .bubble {
+    top: 50%;
+    right: auto;
+    left: calc(100% + 12px);
+    translate: 0 -50%;
+    --tail-x: 0%;
+    --tail-y: 50%;
+  }
+
+  .opp--left .bubble::after {
+    top: calc(50% - 6px);
+    right: auto;
+    left: -6px;
+    border-top: 0;
+    border-bottom: 1px solid var(--bubble-edge);
+  }
+
+  .opp--right .bubble {
+    top: 50%;
+    left: auto;
+    right: calc(100% + 12px);
+    translate: 0 -50%;
+    --tail-x: 100%;
+    --tail-y: 50%;
+  }
+
+  .opp--right .bubble::after {
+    top: calc(50% - 6px);
+    left: auto;
+    right: -6px;
+    border-left: 0;
+    border-right: 1px solid var(--bubble-edge);
+  }
+
   /* Spread the played cards across the wider board. */
+  /* Sized to the played cards (top/bottom cards sit ±42% of a card height
+   * off centre), so the label above it hugs the top card. */
   .trick {
-    width: min(64vw, 460px);
-    height: min(48vh, 340px);
+    top: var(--ring-y);
+    width: min(64vw, 520px);
+    height: calc(var(--card-w-md) * var(--card-ratio) * 1.9);
   }
 }
 

@@ -395,9 +395,12 @@ describe('speech bubbles', () => {
       event: { type: 'bidPlaced', seat: 1, amount: 60 },
       turn: null,
     });
-    render(<Table />, { wrapper: MemoryRouter });
+    const { container } = render(<Table />, { wrapper: MemoryRouter });
 
-    expect(screen.getByText('60!')).toBeTruthy();
+    // The amount is set apart as a display numeral inside a gold-rimmed bid bubble.
+    const bubble = container.querySelector('.bubble--bid');
+    expect(bubble?.textContent).toBe('60!');
+    expect(bubble?.querySelector('.bubble__num')?.textContent).toBe('60');
   });
 
   it('shows a coloured trump bubble with a suit-tinted glyph when a marriage is made', () => {

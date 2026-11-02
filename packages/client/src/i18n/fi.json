@@ -423,8 +423,9 @@
     "talon": "Koinipakka",
     "dummy": "Kuollut käsi",
     "openTalon": "Avoin koini",
-    "tricksWon": "Tikkejä: {{n}}",
-    "lastTrickBtn": "Viime tikki",
+    "tricksWon": "Voitetut tikit tässä jaossa: {{n}}",
+    "cardsInHand": "Kortteja kädessä: {{n}}",
+    "lastTrickBtn": "Näytä viime tikki",
     "trickWonBy": "{{name}} vei tikin",
     "leadsNow": "{{name}} ajaa",
     "youLead": "Sinä ajat",
@@ -818,5 +819,19 @@
       "name": "Korttikuningas",
       "desc": "Voita 500 peliä."
     }
+  },
+  "points": {
+    "title": "Pisteet",
+    "open": "Pisteet",
+    "yourHand": "Kätesi",
+    "handCards": "Korttipisteet",
+    "handMarriages": "Avioliitot (K+Q)",
+    "handHalves": "Puolikkaat (voivat täydentyä)",
+    "handTotal": "Kädessä yhteensä",
+    "handNote": "Kädessä olevat pisteet eivät ole varmoja: tikit ratkaisevat, kuka ne kotiuttaa, ja avioliiton voi julistaa vasta voitetun tikin jälkeen.",
+    "marriages": "Valtit eli avioliitot",
+    "cards": "Korttien arvot",
+    "lastTrick": "Viimeinen tikki",
+    "dealTotal": "Jaossa on korttipisteitä {{cards}} (viimeinen tikki mukaan lukien), avioliittojen kanssa enintään {{max}}."
   }
 }

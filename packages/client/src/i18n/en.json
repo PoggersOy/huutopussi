@@ -423,8 +423,9 @@
     "talon": "Talon",
     "dummy": "Dummy",
     "openTalon": "Open talon",
-    "tricksWon": "Tricks won: {{n}}",
-    "lastTrickBtn": "Last trick",
+    "tricksWon": "Tricks won this deal: {{n}}",
+    "cardsInHand": "Cards in hand: {{n}}",
+    "lastTrickBtn": "Show last trick",
     "trickWonBy": "{{name}} took the trick",
     "leadsNow": "{{name}} leads",
     "youLead": "You lead",
@@ -818,5 +819,19 @@
       "name": "Card King",
       "desc": "Win 500 games."
     }
+  },
+  "points": {
+    "title": "Points",
+    "open": "Points",
+    "yourHand": "Your hand",
+    "handCards": "Card points",
+    "handMarriages": "Marriages (K+Q)",
+    "handHalves": "Halves (may complete)",
+    "handTotal": "In hand in total",
+    "handNote": "Points in your hand aren't guaranteed: the tricks decide who banks them, and a marriage can only be declared after winning a trick.",
+    "marriages": "Trumps (marriages)",
+    "cards": "Card values",
+    "lastTrick": "Last trick",
+    "dealTotal": "A deal holds {{cards}} card points (last trick included), up to {{max}} with every marriage."
   }
 }

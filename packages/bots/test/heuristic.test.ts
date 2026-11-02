@@ -181,6 +181,80 @@ describe('HeuristicBot declarations', () => {
     ];
     expect(bot().onTurn(view, hints)).toEqual({ type: 'askHalf', suit: 'H', rankHeld: 'Q' });
   });
+
+  // Regression: a bot asked "Onko avioliittoa?" when its partner held one card.
+  it('never asks the whole when the partner holds fewer than two cards', () => {
+    const hand: Card[] = ['DA', 'C9'];
+    const view = makeView(
+      hand,
+      { name: 'lead', leader: 0, canDeclare: true },
+      { handCounts: { 0: 2, 1: 2, 2: 1, 3: 2 }, tricksPlayed: 7 },
+    );
+    const hints: ActionHint[] = [
+      { type: 'declaration', ownSuits: [], canAskWhole: true, halfAsks: [] },
+      { type: 'playCard', legal: hand },
+    ];
+    expect(bot().onTurn(view, hints)).toEqual({ type: 'playCard', card: expect.any(String) });
+  });
+
+  it('never asks for a half that has already been played', () => {
+    const hand: Card[] = ['HQ', 'DA', 'C9'];
+    const view = makeView(
+      hand,
+      { name: 'lead', leader: 0, canDeclare: true },
+      {
+        handCounts: { 0: 3, 1: 3, 2: 3, 3: 3 },
+        tricksPlayed: 1,
+        lastTrick: {
+          plays: [
+            { seat: 0, card: 'SA' },
+            { seat: 1, card: 'HK' },
+            { seat: 2, card: 'S9' },
+            { seat: 3, card: 'S8' },
+          ],
+          winner: 0,
+        },
+      },
+    );
+    const hints: ActionHint[] = [
+      {
+        type: 'declaration',
+        ownSuits: [],
+        canAskWhole: false,
+        halfAsks: [{ suit: 'H', rankHeld: 'Q' }],
+      },
+      { type: 'playCard', legal: hand },
+    ];
+    // The heart king is gone, so asking for it would be a guaranteed "no".
+    expect(sharpBot().onTurn(view, hints).type).toBe('playCard');
+  });
+
+  it('never asks the whole when every undeclared marriage is already broken', () => {
+    // Our hand blocks hearts and diamonds; clubs/spades kings were played.
+    const hand: Card[] = ['HK', 'DQ', 'C9'];
+    const view = makeView(
+      hand,
+      { name: 'lead', leader: 0, canDeclare: true },
+      {
+        handCounts: { 0: 3, 1: 3, 2: 3, 3: 3 },
+        tricksPlayed: 1,
+        lastTrick: {
+          plays: [
+            { seat: 0, card: 'SA' },
+            { seat: 1, card: 'SK' },
+            { seat: 2, card: 'S9' },
+            { seat: 3, card: 'CK' },
+          ],
+          winner: 0,
+        },
+      },
+    );
+    const hints: ActionHint[] = [
+      { type: 'declaration', ownSuits: [], canAskWhole: true, halfAsks: [] },
+      { type: 'playCard', legal: hand },
+    ];
+    expect(sharpBot().onTurn(view, hints).type).toBe('playCard');
+  });
 });
 
 describe('HeuristicBot bidding', () => {

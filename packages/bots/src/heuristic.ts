@@ -358,7 +358,8 @@ export class HeuristicBot implements Actor {
 
     const declaration = findHint(hints, 'declaration');
     if (declaration) {
-      const action = declarationAction(declaration, view, deal, config);
+      const k = know ?? (view.viewer === 'spectator' ? null : knowledgeOf(view, this.memory));
+      const action = declarationAction(declaration, view, deal, config, k);
       if (action) return action;
     }
 
@@ -614,32 +615,63 @@ function returnCards(hand: readonly Card[], count: number, config: RuleConfig): 
   return [...hand].sort((a, b) => keepValue(a) - keepValue(b)).slice(0, count);
 }
 
-/** Declare the highest-value available option ASAP; null = just play a card. */
+/**
+ * Could the partner still hold `card`? Not if it has been played, sits in our
+ * own hand, or the memory has excluded it from the partner (a void, a failed
+ * head, a known holding elsewhere). Without knowledge, only own hand counts.
+ */
+function partnerMayHold(card: Card, me: Seat, deal: DealView, know: Knowledge | null): boolean {
+  if (deal.hand.includes(card)) return false;
+  if (!know) return true;
+  return !know.played.has(card) && !know.excluded[partnerOf(me)].has(card);
+}
+
+/**
+ * Declare the highest-value available option ASAP; null = just play a card.
+ * Asks are only made when the answer can be "yes": a half-ask needs the
+ * missing half to be possibly in the partner's hand, a whole-ask needs the
+ * partner to hold at least two cards and some undeclared marriage to be
+ * possibly complete there. A hopeless ask wastes the lead's one declaration
+ * attempt — and under illisoft lockouts a whole-ask also ends further asks.
+ */
 function declarationAction(
   hint: DeclarationHint,
   view: PlayerView,
   deal: DealView,
   config: RuleConfig,
+  know: Knowledge | null,
 ): PlayerAction | null {
   if (hint.ownSuits.length > 0) {
     return { type: 'declareOwn', suit: bestSuit(hint.ownSuits, config) };
   }
-  const loneHalves = hint.halfAsks.filter(
-    (h) =>
-      deal.hand.includes(makeCard(h.suit, h.rankHeld)) && holdsExactlyOneHalf(deal.hand, h.suit),
-  );
+  if (view.viewer === 'spectator') return null;
+  const me = view.viewer;
+  const partner = partnerOf(me);
+  const partnerCards = deal.handCounts[partner] ?? 0;
+  const declared = declaredSuits(deal);
+
+  const loneHalves = hint.halfAsks.filter((h) => {
+    if (!deal.hand.includes(makeCard(h.suit, h.rankHeld))) return false;
+    if (!holdsExactlyOneHalf(deal.hand, h.suit)) return false;
+    const missing = makeCard(h.suit, h.rankHeld === 'K' ? 'Q' : 'K');
+    return partnerCards >= 1 && partnerMayHold(missing, me, deal, know);
+  });
   const bestHalf = loneHalves.reduce<(typeof loneHalves)[number] | null>(
     (best, h) =>
       best === null || marriageValue(h.suit, config) > marriageValue(best.suit, config) ? h : best,
     null,
   );
   if (bestHalf) return { type: 'askHalf', suit: bestHalf.suit, rankHeld: bestHalf.rankHeld };
-  if (
-    hint.canAskWhole &&
-    view.viewer !== 'spectator' &&
-    !deal.askedWhole[view.viewer] &&
-    deal.declarations.length < SUITS.length
-  ) {
+
+  const wholePossible =
+    partnerCards >= 2 &&
+    SUITS.some(
+      (s) =>
+        !declared.includes(s) &&
+        partnerMayHold(makeCard(s, 'K'), me, deal, know) &&
+        partnerMayHold(makeCard(s, 'Q'), me, deal, know),
+    );
+  if (hint.canAskWhole && !deal.askedWhole[me] && wholePossible) {
     return { type: 'askWhole' };
   }
   return null;

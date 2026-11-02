@@ -18,6 +18,7 @@ import { useTranslation } from 'react-i18next';
 import { CardFace } from '../../components/CardFace';
 import { sendAction } from '../../socket';
 import { useStore } from '../../store';
+import { PointsGuideButton } from './PointsGuide';
 import { SUIT_GLYPH } from './tableUtils';
 import { useTalonCards } from './talonMemory';
 
@@ -158,6 +159,7 @@ export function BiddingSheet({
       {reopened && <p className="tsheet__notice">{t('sheet.biddingReopened')}</p>}
       {hint !== null ? (
         <>
+          <PointsGuideButton config={cfg} hand={view?.deal?.hand ?? []} />
           {hint.forced && (
             <p className="tsheet__notice">{t('sheet.forcedBid', { min: hint.min })}</p>
           )}
@@ -329,6 +331,7 @@ export function ContractSheet({
 }) {
   const { t } = useTranslation();
   const pending = usePending();
+  const view = useStore((s) => s.server.view);
   const min = hint?.min ?? 0;
   const [amount, setAmount] = useState(min);
   useEffect(() => setAmount(min), [min]);
@@ -338,6 +341,7 @@ export function ContractSheet({
       {hint !== null ? (
         <>
           <p className="dim tsheet__center">{t('sheet.contractMin', { min: hint.min })}</p>
+          <PointsGuideButton config={view?.config ?? null} hand={view?.deal?.hand ?? []} />
           <AmountStepper
             min={hint.min}
             max={hint.max}

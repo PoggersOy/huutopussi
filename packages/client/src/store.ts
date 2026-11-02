@@ -392,7 +392,8 @@ function deriveBubbles(
       out.push({
         seat: event.seat,
         code: 'bubble.askHalf',
-        params: { card: `${BUBBLE_GLYPH[event.suit]}${asked}` },
+        // `suitCode` (raw suit) lets the bubble tint the glyph by colour.
+        params: { card: `${BUBBLE_GLYPH[event.suit]}${asked}`, suitCode: event.suit },
       });
       // The truthful auto-answer is in the same chain; "yes" shows up as a new
       // declaration (trump bubble below), "no" as an explicit denial.
