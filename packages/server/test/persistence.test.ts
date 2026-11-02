@@ -239,3 +239,38 @@ test('recovery preserves an explicitly unranked match disposition and start rost
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('bot difficulty is persisted per match and restored on recovery', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hp-bot-level-'));
+  const dbPath = join(dir, 'hp.db');
+  const db = new Db(dbPath);
+  db.createRoom({
+    id: 'room-bots',
+    code: 'B0TS7',
+    hostToken: null,
+    config: { ...DEFAULT_RULES, players: 2 },
+    tableSettings: { autoplay: true, turnTimeoutMs: 90_000 },
+  });
+  db.setRoomStatus('room-bots', 'playing');
+  db.createMatch({
+    id: 'match-bots',
+    roomId: 'room-bots',
+    config: { ...DEFAULT_RULES, players: 2 },
+    firstDealer: 0,
+    botDifficulty: 'expert',
+    roster: [
+      { seat: 0, kind: 'human', userId: null, participantKey: 'guest:x' },
+      { seat: 1, kind: 'bot', userId: null, participantKey: 'bot:match-bots:1' },
+    ],
+  });
+  expect(db.activeMatches()[0]?.botDifficulty).toBe('expert');
+  db.close();
+
+  const recovered = createServer({ port: 0, dbPath, heartbeatMs: null });
+  try {
+    expect(recovered.rooms.get('B0TS7')?.botDifficulty).toBe('expert');
+  } finally {
+    await recovered.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

@@ -1458,6 +1458,14 @@ input::placeholder {
     background 180ms ease;
 }
 
+/* 4-up variant (bot level picker): tighter padding + type so the longest
+   Finnish label ("Keskitaso") fits a phone-width card without overflowing. */
+.seg--dense .seg__opt {
+  padding-inline: 2px;
+  font-size: 0.86rem;
+  letter-spacing: -0.01em;
+}
+
 .seg__opt[aria-pressed="true"] {
   background: linear-gradient(180deg, var(--gold) 0%, var(--gold-soft) 100%);
   color: var(--felt-950);

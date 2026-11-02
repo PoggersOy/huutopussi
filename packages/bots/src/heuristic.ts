@@ -1,40 +1,42 @@
 /**
- * HeuristicBot — a sensible baseline opponent (plan.md §Bots, rules doc §5).
- * Consumes ONLY PlayerView + ActionHints, never MatchState; deterministic for
- * a given injected PRNG (the stream is drawn from only to break exact ties).
+ * HeuristicBot — the opponent behind every difficulty level (plan.md §Bots,
+ * rules doc §5). Consumes ONLY PlayerView + ActionHints, never MatchState;
+ * deterministic for a given injected PRNG.
  *
- * A BotDifficulty (easy/medium/hard) tunes ONLY bidding/contract aggression via
- * the SKILL table; card play is identical at every level.
+ * Each BotDifficulty is a SkillProfile, and the levels form a strict ladder —
+ * each one adds a capability on top of the previous (verified by
+ * `pnpm arena`, see src/arena.ts):
  *
- * Strategy:
- *  - BIDDING: hand strength = marriage values held + 11/ace + 10/ten + long
- *    suit bonus, plus (by skill) a fraction of each lone marriage half the
- *    exchange/partner could complete; keep bidding while that covers the next
- *    amount + the skill's margin; respect forced-opening and bid-ban hints;
- *    redeal-eligible hands (>=3 sixes or nothing above jack) are trash by
- *    definition, so always redeal.
- *  - EXCHANGE give: pass the declarer aces, tens and lone marriage halves
- *    (the declarer may complete them); NEVER break an own complete marriage
- *    unless nothing else is left.
- *  - EXCHANGE contract: 12-card strength minus a safety margin, never below
- *    the winning bid.
- *  - EXCHANGE return: lowest-point junk, keeping complete-marriage halves.
- *  - EXCHANGE discard (2-3p koini): lowest non-point junk from the legal set
- *    (aces/tens are never offered), keeping complete-marriage halves.
- *  - DECLARATIONS: declare ASAP, highest marriage value first; own marriage
- *    beats asking; ask the half when holding exactly one half of a suit;
- *    ask the whole only when holding no useful half at all. Asks are 4p-only
- *    (2-3p hints never offer them; partner logic is gated on config.players).
- *  - PLAY: lead aces (or a high own-side trump to draw trump) early and junk
- *    otherwise; when obliged to head the trick — even over the partner — do
- *    it minimally; smear points when the partner has the trick and we play
- *    last; otherwise dump the lowest-point card. K/Q of undeclared suits we
- *    hold both of are saved for the declaration whenever a choice exists.
+ *   easy   — naive point-count bidding with a fat cushion, a safe low
+ *            contract, the basic memoryless card play, and a random legal
+ *            card over half the time.
+ *   medium — CALIBRATED bidding/contract (evaluate.ts: models fitted from
+ *            simulated deals, expected-value auction and contract) with a
+ *            caution margin, MEMORY-AWARE card play (memory.ts + play.ts:
+ *            played cards, voids, masters, safe winners, partner smears),
+ *            still slipping on some card plays.
+ *   hard   — the same calibrated EV bidding with no caution margin, the
+ *            EV-optimal contract, and flawless memory-aware play.
+ *   expert — hard's bidding plus determinized Monte Carlo search
+ *            (search.ts) for every card play and the contract: it imagines
+ *            the hidden hands consistent with everything it has seen, plays
+ *            each option out, and picks the best on average.
+ *
+ * Shared heuristics (all levels):
+ *  - redeal-eligible hands are trash by definition → always redeal;
+ *  - EXCHANGE give: pass the declarer aces, tens and lone marriage halves,
+ *    never breaking an own complete marriage unless nothing else is left;
+ *  - EXCHANGE return / 2-3p discard: lowest-point junk, keeping complete
+ *    marriage halves;
+ *  - DECLARATIONS: declare ASAP, highest marriage first; ask the half when
+ *    holding exactly one half; ask the whole only without a useful half;
+ *  - K/Q of undeclared suits we hold both of are saved whenever possible.
  */
 import type {
   ActionHint,
   Card,
   DealView,
+  MatchState,
   PlayerAction,
   PlayerView,
   RuleConfig,
@@ -43,6 +45,7 @@ import type {
   TrickPlay,
 } from '@hp/engine';
 import {
+  activeSeats,
   beats,
   cardPoints,
   makeCard,
@@ -50,62 +53,106 @@ import {
   partnerOf,
   rankIndex,
   rankOf,
+  redactViewFor,
   SUITS,
   sideOf,
   suitOf,
   winningPlay,
 } from '@hp/engine';
 import type { Actor } from './actor.js';
+import { bestContract, bidValues, estimateForContract } from './evaluate.js';
+import { ALL_CARDS, DealMemory, type Knowledge, knowledgeOf } from './memory.js';
+import { smartFollow, smartLead } from './play.js';
 import { type Prng, pick } from './prng.js';
+import { type RolloutPolicy, sampleStates, scoreCandidates, sideRawTotals } from './search.js';
 
 /**
- * Bot skill level, chosen per game (e.g. the Pikapeli "Bottien taso" setting).
- * Only bidding/contract aggression varies — card play is identical across
- * levels, so a weaker bot is a more cautious bidder, not a worse card-player.
+ * Bot skill level, chosen per game (the Pikapeli "Bottien taso" setting).
+ * Higher levels are strictly smarter — see the ladder in the header.
  */
-export type BotDifficulty = 'easy' | 'medium' | 'hard';
+export type BotDifficulty = 'easy' | 'medium' | 'hard' | 'expert';
 
-interface SkillProfile {
-  /** Bid only while bidding strength covers the next amount plus this margin. */
+export const BOT_DIFFICULTIES: readonly BotDifficulty[] = ['easy', 'medium', 'hard', 'expert'];
+
+export interface SkillProfile {
+  /** naive = point-count vs a margin; model = calibrated expected value. */
+  bidding: 'naive' | 'model';
+  /**
+   * naive: bid only while hand strength ≥ next amount + this.
+   * model: bid only while (declare value − defend value) ≥ this (points).
+   */
   bidMargin: number;
-  /**
-   * Fraction of a lone marriage half's value credited while bidding: optimism
-   * that the exchange or a partner ask completes it. 0 = ignore the potential.
-   */
+  /** naive only: fraction of a lone marriage half credited while bidding. */
   completionCredit: number;
-  /**
-   * Contract = 12-card strength minus this safety margin (never below the bid).
-   * Smaller = a tighter, higher contract that extracts more but risks Porvoo.
-   */
+  /** 4p model bidding: raw-total bonus when the partner has bid (strength signal). */
+  partnerBidBonus: number;
+  contract: 'naive' | 'model' | 'search';
+  /** naive: strength − margin; model: μ is lowered by this before the EV scan. */
   contractMargin: number;
-  /**
-   * Probability of throwing a random legal card instead of the heuristic pick.
-   * This is the reliable *strength* dial (a self-play sweep shows monotonic
-   * weakening); bidding aggression is not — in this scoring an over-bold bidder
-   * actually loses. So a weaker level plays looser cards, not just times its
-   * bids differently. 0 = always the full heuristic (the toughest opponent).
-   */
+  play: 'basic' | 'smart' | 'search';
+  /** Probability of a random legal card instead of the chosen one. */
   sloppiness: number;
+  /** Determinizations per search decision (expert). */
+  samples: number;
 }
 
-/**
- * Difficulty tracks how hard the bot is to BEAT. The reliable dial is card-play
- * quality (`sloppiness`); brave bidding is shared by medium and hard because,
- * in this scoring, pushing bids further would make a bot weaker, not stronger.
- *
- * easy   — a gentle opponent: times bids cautiously (undervalues completable
- *          marriages, needs a fat cushion, sets a safe low contract) AND plays
- *          loosely (a random legal card over half the time), so a human wins
- *          comfortably.
- * medium — brave, sensible bidding (cuts the "everyone passes" deals) but still
- *          slips on roughly a quarter of its card plays.
- * hard   — the same brave bidding, a slightly tighter contract, and ALWAYS the
- *          full heuristic card play: the toughest opponent the heuristics give.
- */
-const SKILL: Record<BotDifficulty, SkillProfile> = {
-  easy: { bidMargin: 30, completionCredit: 0, contractMargin: 40, sloppiness: 0.55 },
-  medium: { bidMargin: 12, completionCredit: 0.2, contractMargin: 20, sloppiness: 0.25 },
-  hard: { bidMargin: 12, completionCredit: 0.2, contractMargin: 18, sloppiness: 0 },
+const SKILL: Record<BotDifficulty | 'rollout', SkillProfile> = {
+  easy: {
+    bidding: 'naive',
+    bidMargin: 30,
+    completionCredit: 0,
+    partnerBidBonus: 0,
+    contract: 'naive',
+    contractMargin: 40,
+    play: 'basic',
+    sloppiness: 0.55,
+    samples: 0,
+  },
+  medium: {
+    bidding: 'model',
+    bidMargin: 20,
+    completionCredit: 0,
+    partnerBidBonus: 10,
+    contract: 'model',
+    contractMargin: 15,
+    play: 'smart',
+    sloppiness: 0.15,
+    samples: 0,
+  },
+  hard: {
+    bidding: 'model',
+    bidMargin: 0,
+    completionCredit: 0,
+    partnerBidBonus: 15,
+    contract: 'model',
+    contractMargin: 0,
+    play: 'smart',
+    sloppiness: 0,
+    samples: 0,
+  },
+  expert: {
+    bidding: 'model',
+    bidMargin: 0,
+    completionCredit: 0,
+    partnerBidBonus: 15,
+    contract: 'search',
+    contractMargin: 0,
+    play: 'search',
+    sloppiness: 0,
+    samples: 24,
+  },
+  /** The policy that plays out the expert's imagined deals. */
+  rollout: {
+    bidding: 'model',
+    bidMargin: 0,
+    completionCredit: 0,
+    partnerBidBonus: 15,
+    contract: 'model',
+    contractMargin: 0,
+    play: 'smart',
+    sloppiness: 0,
+    samples: 0,
+  },
 };
 
 type BidHint = Extract<ActionHint, { type: 'bid' }>;
@@ -131,8 +178,9 @@ function holdsExactlyOneHalf(hand: readonly Card[], suit: Suit): boolean {
 }
 
 /**
- * Bidding/contract strength estimate: marriages held (their marriage value)
- * + 11 per ace + 10 per ten + a small bonus for the longest suit.
+ * Naive strength (easy level): marriages held + 11/ace + 10/ten + a small
+ * long-suit bonus. Systematically low — it ignores K/Q/J points, the last
+ * trick, the exchange and opponents' points won in tricks.
  */
 function handStrength(hand: readonly Card[], config: RuleConfig): number {
   let strength = 0;
@@ -149,14 +197,6 @@ function handStrength(hand: readonly Card[], config: RuleConfig): number {
   return strength;
 }
 
-/**
- * Bidding strength: the plain `handStrength` plus optimism the auction can
- * afford but a contract can't. A lone marriage half (one of K/Q) is often
- * completed by the exchange or a partner ask, so it is worth a fraction of the
- * marriage while bidding — this keeps bolder bots from folding decent hands
- * into contract-less deals, without inflating the (separately estimated)
- * contract. `credit` is the skill level's `completionCredit` (0 disables it).
- */
 function bidStrength(hand: readonly Card[], config: RuleConfig, credit: number): number {
   let strength = handStrength(hand, config);
   if (credit > 0) {
@@ -217,44 +257,97 @@ function weakest(cards: readonly Card[]): Card {
   return cards.reduce((a, b) => (rankIndex(rankOf(b)) > rankIndex(rankOf(a)) ? b : a));
 }
 
+/**
+ * Knowledge for a seat in one of the expert's HYPOTHETICAL states: in that
+ * imagined world every card captured or on the table has been seen played.
+ * Only that public history and the seat's own hand are used — the policy does
+ * not peek at the imagined hidden hands.
+ */
+function rolloutKnowledge(state: MatchState, seat: Seat): Knowledge {
+  const deal = state.deal;
+  if (!deal) throw new Error('rolloutKnowledge: no deal');
+  const played = new Set<Card>();
+  for (const s of activeSeats(state.config.players))
+    for (const c of deal.captured[s]) played.add(c);
+  if (deal.phase.name === 'follow') for (const p of deal.phase.plays) played.add(p.card);
+  const empty = (): Record<Seat, Set<Card>> => ({
+    0: new Set(),
+    1: new Set(),
+    2: new Set(),
+    3: new Set(),
+  });
+  const held = empty();
+  const excluded = empty();
+  const hand = new Set(deal.hands[seat]);
+  for (const c of hand) held[seat].add(c);
+  for (const c of ALL_CARDS) if (!hand.has(c)) excluded[seat].add(c);
+  return { me: seat, played, held, excluded };
+}
+
 export class HeuristicBot implements Actor {
   private readonly rng: Prng;
   private readonly skill: SkillProfile;
+  private readonly memory = new DealMemory();
+  private policyBot: HeuristicBot | null = null;
 
-  constructor(rng: Prng, difficulty: BotDifficulty = 'medium') {
+  /** `tune` overrides profile fields — for the arena's parameter sweeps. */
+  constructor(
+    rng: Prng,
+    difficulty: BotDifficulty | 'rollout' = 'medium',
+    tune: Partial<SkillProfile> = {},
+  ) {
     this.rng = rng;
-    this.skill = SKILL[difficulty];
+    this.skill = { ...(SKILL[difficulty] ?? SKILL.medium), ...tune };
+  }
+
+  /**
+   * Feed every snapshot this seat receives (not only its own turns) so the
+   * memory never misses a card — exactly what a human watching the table
+   * sees. Optional: onTurn observes too, and with showLastTrick the memory is
+   * complete from turns alone.
+   */
+  observe(view: PlayerView): void {
+    this.memory.observe(view);
   }
 
   onTurn(view: PlayerView, hints: ActionHint[]): PlayerAction {
+    this.memory.observe(view);
+    return this.decide(view, hints, null);
+  }
+
+  /** The policy used to play out imagined deals (expert search). */
+  private rolloutPolicy(): RolloutPolicy {
+    this.policyBot ??= new HeuristicBot(this.rng, 'rollout');
+    const bot = this.policyBot;
+    return (state, seat, hints) =>
+      bot.decide(redactViewFor(state, seat), hints, rolloutKnowledge(state, seat));
+  }
+
+  /** `know` = injected knowledge (rollouts); null = derive it from memory. */
+  private decide(view: PlayerView, hints: ActionHint[], know: Knowledge | null): PlayerAction {
     const deal = view.deal;
     if (!deal) throw new Error('HeuristicBot: no deal in view');
     const config = view.config;
     const hand = deal.hand;
 
     const bid = findHint(hints, 'bid');
-    if (bid) return this.bidAction(bid, hand, config);
+    if (bid) return this.bidAction(bid, view, deal, config);
 
-    // Exchange-window redeal (redealWindow 'bidAndExchange'): a hand that
-    // qualifies is trash by the same argument as in bidding — always redeal.
     if (findHint(hints, 'demandRedeal')) return { type: 'demandRedeal' };
 
     const give = findHint(hints, 'giveCards');
     if (give) return { type: 'giveCards', cards: giveCards(hand, give.count, config) };
 
-    // 2-3p koini discard: same junk ordering as the 4p return, restricted to
-    // the hinted legal set (hand minus aces and tens).
     const discard = findHint(hints, 'discardCards');
     if (discard) {
-      return { type: 'discardCards', cards: returnCards(discard.legal, discard.count, config) };
+      const cards = returnCards(discard.legal, discard.count, config);
+      if (know === null) this.memory.recordDiscards(cards);
+      return { type: 'discardCards', cards };
     }
 
     const contract = findHint(hints, 'setContract');
     if (contract) {
-      return {
-        type: 'setContract',
-        amount: contractAmount(contract, hand, config, this.skill.contractMargin),
-      };
+      return { type: 'setContract', amount: this.contractAction(contract, view, know) };
     }
 
     const ret = findHint(hints, 'returnCards');
@@ -270,58 +363,173 @@ export class HeuristicBot implements Actor {
     }
 
     const play = findHint(hints, 'playCard');
-    if (play) return { type: 'playCard', card: this.cardToPlay(play.legal, view, deal, config) };
+    if (play) return { type: 'playCard', card: this.cardToPlay(play.legal, view, deal, know) };
 
     throw new Error(`HeuristicBot: no playable hint in ${JSON.stringify(hints)}`);
   }
 
-  private bidAction(hint: BidHint, hand: readonly Card[], config: RuleConfig): PlayerAction {
-    // A redeal-eligible hand (>=3 sixes / nothing above jack) is always trash.
+  // ── Bidding ────────────────────────────────────────────────────────────
+
+  private bidAction(
+    hint: BidHint,
+    view: PlayerView,
+    deal: DealView,
+    config: RuleConfig,
+  ): PlayerAction {
+    const hand = deal.hand;
     if (hint.canDemandRedeal) return { type: 'demandRedeal' };
-    // Forced opening: the hint guarantees `min` is the (only) legal bid.
     if (!hint.canPass) return { type: 'bid', amount: hint.min };
-    // Bid ban without forced opening: min > max signals "no legal bid".
     if (hint.min > hint.max) return { type: 'pass' };
+
+    if (this.skill.bidding === 'model') {
+      const decision = this.modelBid(hint, view, deal, config);
+      if (decision !== null) return decision ? { type: 'bid', amount: hint.min } : { type: 'pass' };
+    }
     if (bidStrength(hand, config, this.skill.completionCredit) >= hint.min + this.skill.bidMargin) {
       return { type: 'bid', amount: hint.min };
     }
     return { type: 'pass' };
   }
 
+  /** true = bid, false = pass, null = no model for this mode (fall back). */
+  private modelBid(
+    hint: BidHint,
+    view: PlayerView,
+    deal: DealView,
+    config: RuleConfig,
+  ): boolean | null {
+    let bonus = 0;
+    if (config.players === 4 && view.viewer !== 'spectator') {
+      const partner = partnerOf(view.viewer);
+      if (deal.bidLog.some((e) => e.seat === partner && e.kind === 'bid')) {
+        bonus = this.skill.partnerBidBonus;
+      }
+    }
+    const values = bidValues(deal.hand, config, hint.min, bonus);
+    if (!values) return null;
+    return values.declare - values.pass >= this.skill.bidMargin;
+  }
+
+  // ── Contract ───────────────────────────────────────────────────────────
+
+  private contractAction(hint: ContractHint, view: PlayerView, know: Knowledge | null): number {
+    const deal = view.deal as DealView;
+    const config = view.config;
+    const hand = deal.hand;
+    if (this.skill.contract === 'search' && know === null && view.viewer !== 'spectator') {
+      const amount = this.searchContract(hint, view);
+      if (amount !== null) return amount;
+    }
+    if (this.skill.contract !== 'naive') {
+      const est = estimateForContract(hand, config);
+      if (est) {
+        return bestContract(
+          est.mu - this.skill.contractMargin,
+          est.sigma,
+          hint.min,
+          hint.max,
+          hint.step,
+        ).amount;
+      }
+    }
+    return contractAmount(hint, hand, config, this.skill.contractMargin);
+  }
+
+  /** EV-optimal contract over the empirical distribution of rollouts. */
+  private searchContract(hint: ContractHint, view: PlayerView): number | null {
+    const me = view.viewer as Seat;
+    const know = knowledgeOf(view, this.memory);
+    const samples = sampleStates(view, know, this.memory, this.rng, this.skill.samples * 2);
+    if (samples.length < 8) return null;
+    const outcomes = sideRawTotals(
+      samples,
+      me,
+      { type: 'setContract', amount: hint.min },
+      this.rolloutPolicy(),
+    );
+    if (outcomes.length < 8) return null;
+    const config = view.config;
+    const bid = view.deal?.bid?.amount ?? hint.min;
+    const cap = Math.floor(hint.max / hint.step) * hint.step;
+    let best = hint.min;
+    let bestEv = Number.NEGATIVE_INFINITY;
+    for (let c = hint.min; c <= cap; c += hint.step) {
+      let ev = 0;
+      for (const o of outcomes) {
+        if (o.tricks === 0) ev -= 2 * (config.declarerPorvooBasis === 'bid' ? bid : c);
+        else ev += o.raw >= c ? c : -c;
+      }
+      if (ev > bestEv) {
+        bestEv = ev;
+        best = c;
+      }
+    }
+    return best;
+  }
+
+  // ── Card play ──────────────────────────────────────────────────────────
+
   private cardToPlay(
     legal: readonly Card[],
     view: PlayerView,
     deal: DealView,
-    config: RuleConfig,
+    injected: Knowledge | null,
   ): Card {
     const first = legal[0];
     if (first === undefined) throw new Error('HeuristicBot: empty legal set');
     if (legal.length === 1) return first;
     if (view.viewer === 'spectator') throw new Error('HeuristicBot: spectator has no turn');
     const me = view.viewer;
+    const config = view.config;
 
-    // Weaker levels sometimes just play a random legal card — the strength dial.
     if (this.skill.sloppiness > 0 && this.rng() < this.skill.sloppiness) {
       return pick(this.rng, legal);
     }
 
-    // Save undeclared marriage halves we fully hold, whenever a choice exists.
+    if (this.skill.play === 'search' && injected === null) {
+      const card = this.searchCard(legal, view);
+      if (card !== null) return card;
+    }
+
     const reserved = reservedCards(deal.hand, declaredSuits(deal));
+    const phase = deal.phase;
+    if (this.skill.play !== 'basic') {
+      const know = injected ?? knowledgeOf(view, this.memory);
+      const ctx = { deal, me, config, know, reserved };
+      if (phase.name === 'follow' && phase.plays.length > 0) {
+        return smartFollow(ctx, legal, phase.plays);
+      }
+      return smartLead(ctx, legal);
+    }
+
     const free = legal.filter((c) => !reserved.has(c));
     const pool = free.length > 0 ? free : [...legal];
-
-    const phase = deal.phase;
     if (phase.name === 'follow' && phase.plays.length > 0) {
-      return this.followCard(legal, pool, phase.plays, deal, me, config);
+      return this.basicFollow(legal, pool, phase.plays, deal, me, config);
     }
-    return this.leadCard(pool, deal, me, config);
+    return this.basicLead(pool, deal, me, config);
   }
 
-  private leadCard(pool: readonly Card[], deal: DealView, me: Seat, config: RuleConfig): Card {
-    // Ace leads: an ace led almost always takes 11+ points.
+  /** Expert: score every legal card over shared determinizations. */
+  private searchCard(legal: readonly Card[], view: PlayerView): Card | null {
+    const me = view.viewer as Seat;
+    const know = knowledgeOf(view, this.memory);
+    const samples = sampleStates(view, know, this.memory, this.rng, this.skill.samples);
+    if (samples.length === 0) return null;
+    const scored = scoreCandidates(
+      samples,
+      me,
+      legal,
+      (card) => ({ type: 'playCard', card }),
+      this.rolloutPolicy(),
+    );
+    const best = scored[0];
+    return best && Number.isFinite(best.mean) ? best.candidate : null;
+  }
+
+  private basicLead(pool: readonly Card[], deal: DealView, me: Seat, config: RuleConfig): Card {
     const aces = pool.filter((c) => rankOf(c) === 'A');
     if (aces.length > 0) return pick(this.rng, aces);
-    // Trump-drawing lead when our side owns the trump and we hold its ten.
     const trump = deal.trump;
     if (
       trump !== null &&
@@ -335,7 +543,7 @@ export class HeuristicBot implements Actor {
     return lowestJunk(pool, config);
   }
 
-  private followCard(
+  private basicFollow(
     legal: readonly Card[],
     pool: readonly Card[],
     plays: readonly TrickPlay[],
@@ -348,24 +556,16 @@ export class HeuristicBot implements Actor {
     const ledSuit = suitOf(firstPlay.card);
     const winning = winningPlay(plays, deal.trump);
     const winners = legal.filter((c) => beats(c, winning.card, ledSuit, deal.trump));
-    // Partnership logic is 4p-only: in 2-3p every other seat is an opponent.
     const partnerWinning = config.players === 4 && winning.seat === partnerOf(me);
 
     if (winners.length === legal.length) {
-      // Obliged to head the trick (also over the partner): do it minimally,
-      // sparing reserved marriage halves when possible.
       const cheap = winners.filter((c) => pool.includes(c));
       return weakest(cheap.length > 0 ? cheap : winners);
     }
-
     if (winners.length === 0) {
-      // Cannot win: smear points onto the partner's certain trick, else dump.
       if (partnerWinning && plays.length === config.players - 1) return highestPoints(pool, config);
       return lowestJunk(pool, config);
     }
-
-    // Defensive: engine legality makes winners all-or-nothing, but if a mixed
-    // set ever appears, win cheaply against opponents and dump under partner.
     if (!partnerWinning) return weakest(winners);
     const losers = pool.filter((c) => !winners.includes(c));
     return lowestJunk(losers.length > 0 ? losers : pool, config);
@@ -381,13 +581,13 @@ function giveCards(hand: readonly Card[], count: number, config: RuleConfig): Ca
     let p = cardPoints(c, config);
     if (rank === 'A') p += 50;
     else if (rank === '10') p += 40;
-    else if (rank === 'K' || rank === 'Q') p += 30; // lone half: declarer may complete it
+    else if (rank === 'K' || rank === 'Q') p += 30;
     return p;
   };
   return [...hand].sort((a, b) => priority(b) - priority(a)).slice(0, count);
 }
 
-/** Contract from the 12-card hand: bid + a raise trimmed by the skill margin. */
+/** Naive contract (easy): bid + a raise from strength trimmed by the margin. */
 function contractAmount(
   hint: ContractHint,
   hand: readonly Card[],
@@ -396,7 +596,6 @@ function contractAmount(
 ): number {
   const estimate = handStrength(hand, config) - margin;
   const steps = Math.max(0, Math.floor((estimate - hint.min) / hint.step));
-  // Contracts must be absolute step multiples; floor the cap accordingly.
   const cap = Math.floor(hint.max / hint.step) * hint.step;
   return Math.min(cap, hint.min + steps * hint.step);
 }
@@ -410,7 +609,6 @@ function returnCards(hand: readonly Card[], count: number, config: RuleConfig): 
   const protectedHalves = reservedCards(hand, []);
   const keepValue = (c: Card): number => {
     const boost = protectedHalves.has(c) ? 1000 : 0;
-    // Points dominate; among zero-point cards prefer returning the weakest.
     return boost + cardPoints(c, config) * 10 + (8 - rankIndex(rankOf(c)));
   };
   return [...hand].sort((a, b) => keepValue(a) - keepValue(b)).slice(0, count);
@@ -426,7 +624,6 @@ function declarationAction(
   if (hint.ownSuits.length > 0) {
     return { type: 'declareOwn', suit: bestSuit(hint.ownSuits, config) };
   }
-  // Ask the half when holding exactly one half of an undeclared suit.
   const loneHalves = hint.halfAsks.filter(
     (h) =>
       deal.hand.includes(makeCard(h.suit, h.rankHeld)) && holdsExactlyOneHalf(deal.hand, h.suit),
@@ -437,7 +634,6 @@ function declarationAction(
     null,
   );
   if (bestHalf) return { type: 'askHalf', suit: bestHalf.suit, rankHeld: bestHalf.rankHeld };
-  // No usable half of our own: ask the partner for a whole marriage (once).
   if (
     hint.canAskWhole &&
     view.viewer !== 'spectator' &&

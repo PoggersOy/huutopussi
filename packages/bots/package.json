@@ -10,7 +10,9 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
-    "sim": "tsx src/sim.ts"
+    "sim": "tsx src/sim.ts",
+    "calibrate": "tsx src/calibrate.ts",
+    "arena": "tsx src/arena.ts"
   },
   "dependencies": {
     "@hp/engine": "workspace:*"

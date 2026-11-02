@@ -45,6 +45,7 @@ import {
   validateAction,
 } from '@hp/engine';
 import {
+  botDifficultySchema,
   type ClientMsg,
   type ConfigPatch,
   clientMsgSchema,
@@ -480,6 +481,11 @@ export function createServer(opts: ServerOpts = {}): HpServer {
       const json = JSON.stringify(msg);
       if (isOrigin && options.origin) rememberResponse(s, options.origin.actionId, json);
       if (connected && s.socket) s.socket.send(json);
+    }
+    // Bots watch the table like a human does: every snapshot of their own
+    // seat feeds their card memory (never another seat's view).
+    for (const s of room.sessions.values()) {
+      if (s.bot?.observe && s.seat !== null) s.bot.observe(redactViewFor(state, s.seat));
     }
   }
 
@@ -957,6 +963,7 @@ export function createServer(opts: ServerOpts = {}): HpServer {
         firstDealer,
         roster,
         ratingEligible,
+        botDifficulty: roster.some((p) => p.kind === 'bot') ? room.botDifficulty : null,
       });
       db.setRoomStatus(room.id, 'playing');
     });
@@ -2794,6 +2801,8 @@ export function createServer(opts: ServerOpts = {}): HpServer {
       room.seq = rec.eventSeq;
       room.matchRoster = rec.roster;
       room.ratingEligible = rec.ratingEligible;
+      const level = botDifficultySchema.safeParse(rec.botDifficulty);
+      if (level.success) room.botDifficulty = level.data;
       for (const sr of rec.sessions) {
         // All seats start disconnected; the reconnect flow handles the rest.
         const session = createSession(sr);

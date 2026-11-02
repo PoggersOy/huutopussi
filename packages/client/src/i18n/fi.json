@@ -33,7 +33,8 @@
       "level": {
         "easy": "Helppo",
         "medium": "Keskitaso",
-        "hard": "Vaikea"
+        "hard": "Vaikea",
+        "expert": "Mestari"
       }
     },
     "friends": {

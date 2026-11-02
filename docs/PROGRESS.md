@@ -353,6 +353,31 @@ Plan: `docs/plan.md`. Rules: `docs/huutopussin-saannot.md`.
 - Verified: `pnpm typecheck`, `pnpm lint`, `pnpm test`, targeted static-serving
   tests and the client production build (including the SEO postbuild) are green.
 
+## Bot difficulty ladder rebuilt (easy / medium / hard / expert)
+
+- Four strictly ordered levels (`packages/bots`), each adding a capability:
+  **medium** gets calibrated expected-value bidding and contracts
+  (`evaluate.ts`, models fitted offline by `pnpm --filter @hp/bots calibrate`
+  into `calibration.ts`) and memory-aware card play (`memory.ts` + `play.ts`:
+  played cards, voids inferred from the engine's own `legalPlays`, known
+  holdings, safe masters, trump draws, partner ruffs, smears). **hard** drops
+  the caution margin and every random slip. **expert** (new, "Mestari") adds
+  determinized Monte Carlo search (`search.ts`) for card play and the contract.
+- Measured with the new duplicate-deal arena (`pnpm --filter @hp/bots arena`):
+  medium > easy by +19…+25 pts/deal, hard > medium by +4…+6, expert > hard by
+  +14…+18 (2/3/4p). Against the previous bots: new hard +15…+25 pts/deal over the
+  old hard, winning 62% of 4p matches; expert beats hard in 67% of 4p matches.
+- Finding: under illisoft rules an all-pass deal is played contract-less with
+  uncapped points, so passing is usually right; extra bidding and "baiting"
+  (bidding up an opponent) both measured as losses — stronger bots bid less.
+- Server: the bot level is persisted (`matches.bot_difficulty`) and restored on
+  recovery; bots receive every snapshot of their seat (`Actor.observe`) so the
+  memory never misses a card. Protocol `botDifficultySchema` gained `expert`;
+  the lobby picker shows four levels. Expert costs ~3–5 ms per card (p95
+  35–50 ms, max ~85 ms, synchronous) — fine at current load; move to a worker
+  if traffic grows.
+- Verified: `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm sim -- --games 500 --seed 42` green.
+
 ## Backlog (post-MVP)
 
 - Erlangen variant preset (rules doc §9).

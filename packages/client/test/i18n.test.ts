@@ -90,7 +90,7 @@ function collectUsedKeys(): Set<string> {
   for (const suit of ['H', 'D', 'C', 'S']) used.add(`suit.${suit}`);
 
   // 3b. Dynamic `home.bots.level.${difficulty}` labels (Pikapeli level picker).
-  for (const level of ['easy', 'medium', 'hard']) used.add(`home.bots.level.${level}`);
+  for (const level of ['easy', 'medium', 'hard', 'expert']) used.add(`home.bots.level.${level}`);
 
   // 3b'. Dynamic `emote.cat.${category}` labels (reaction picker group headers).
   for (const cat of EMOTE_CATEGORIES) used.add(`emote.cat.${cat}`);

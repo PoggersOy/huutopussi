@@ -120,9 +120,14 @@ evaluation and the client presentation. It performs no I/O and owns no clock.
 
 | File | Responsibility |
 | --- | --- |
-| `actor.ts` | The `Actor` interface: `onTurn(view, hints) → PlayerAction`. Bots see exactly what a human client sees — never `MatchState`. |
+| `actor.ts` | The `Actor` interface: `onTurn(view, hints) → PlayerAction`, plus optional `observe(view)` (the server feeds every snapshot of the bot's seat). Bots see exactly what a human client sees — never `MatchState`. |
 | `random.ts` | `RandomLegalBot` — the fuzzing workhorse (uniform over hint options). |
-| `heuristic.ts` | `HeuristicBot` — the sensible baseline opponent shipped in the MVP. Deterministic given its injected PRNG. |
+| `heuristic.ts` | `HeuristicBot` — every difficulty level (`easy`/`medium`/`hard`/`expert` `SkillProfile`s). Deterministic given its injected PRNG. |
+| `memory.ts` | `DealMemory` + `knowledgeOf`: played cards, per-seat exclusions (voids etc. inferred via the engine's `legalPlays`) and known holdings — built only from the seat's own snapshots. |
+| `play.ts` | Memory-aware card play (medium+): draw trumps, cash safe masters, partner ruffs, safe winners, smears. |
+| `evaluate.ts` / `calibration.ts` | Hand features + linear models fitted offline (`calibrate.ts`, generated `calibration.ts`); EV-based bidding and contract. |
+| `search.ts` | Expert level: determinized Monte Carlo — samples hidden hands consistent with the view + memory, plays candidates out with the engine. |
+| `arena.ts` / `calibrate.ts` | CLIs: duplicate-deal level-vs-level strength measurement; model fitting. |
 | `prng.ts` | Seeded `mulberry32` + sampling helpers. All fuzz randomness flows through here → games reproduce from `(seed, gameIndex)`. |
 | `sim.ts` | The **fuzz/sim CLI** (`pnpm sim`). Plays full bot matches through the engine's public entry points and checks 9 invariants after **every** event. See [`TESTING.md`](TESTING.md). |
 

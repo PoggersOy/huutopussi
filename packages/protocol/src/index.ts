@@ -226,7 +226,7 @@ export const tableSettingsPatchSchema = z
   .partial();
 
 /** Bot skill level for a Pikapeli game (the lobby "Bottien taso" setting). */
-export const botDifficultySchema = z.enum(['easy', 'medium', 'hard']);
+export const botDifficultySchema = z.enum(['easy', 'medium', 'hard', 'expert']);
 
 export const lobbyCmdSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('takeSeat'), seat: seatSchema }),

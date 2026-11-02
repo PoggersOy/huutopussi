@@ -13,11 +13,13 @@ import {
   type DealPhase,
   type DealView,
   expectedActor,
+  ILLISOFT_RULES,
   initialMatchState,
   isRuleError,
   makeDeck,
   nextDealEvent,
   type PlayerView,
+  type RuleConfig,
   redactViewFor,
   SEATS,
   type Seat,
@@ -76,6 +78,40 @@ function sharpBot(): HeuristicBot {
 }
 
 describe('HeuristicBot fuzz', () => {
+  for (const [level, players, budget] of [
+    ['easy', 4, 300],
+    ['hard', 3, 300],
+    ['expert', 4, 120],
+    ['expert', 3, 120],
+    ['expert', 2, 120],
+  ] as const) {
+    it(`${level} picks hinted-legal actions (${players}p, ${budget} turns)`, () => {
+      const config: RuleConfig = { ...ILLISOFT_RULES, players, talonSize: 3 };
+      const deck = makeDeck();
+      const rng = mulberry32(0xc0de + players);
+      let state = initialMatchState(config, 0);
+      const bots = SEATS.slice(0, players).map((s) => new HeuristicBot(mulberry32(s + 1), level));
+      let turns = 0;
+      for (let guard = 0; turns < budget && state.winnerSide === null && guard < 20_000; guard++) {
+        const actor = expectedActor(state);
+        if (actor === null) {
+          state = applyEvent(state, nextDealEvent(state, shuffle(rng, deck)));
+          continue;
+        }
+        for (const s of SEATS.slice(0, players)) {
+          if (s !== actor) (bots[s] as HeuristicBot).observe(redactViewFor(state, s));
+        }
+        const hints = allowedActions(state, actor);
+        const action = (bots[actor] as HeuristicBot).onTurn(redactViewFor(state, actor), hints);
+        const res = validateAction(state, actor, action);
+        if (isRuleError(res)) throw new Error(`illegal ${JSON.stringify(action)} (${res.code})`);
+        turns++;
+        for (const ev of res) state = applyEvent(state, ev);
+      }
+      expect(turns).toBeGreaterThan(0);
+    });
+  }
+
   it('always picks hinted-legal actions across 500 fuzzed turns', () => {
     const deck = makeDeck();
     let turns = 0;
@@ -195,15 +231,16 @@ describe('HeuristicBot bidding', () => {
     expect(bot().onTurn(view, hints)).toEqual({ type: 'pass' });
   });
 
-  it('bids braver at higher difficulty (easy folds a hand hard contests)', () => {
-    // Clubs marriage (60) + the club ace (11) = strength 71: clears hard's
-    // 55+12 threshold but not easy's fatter 55+30 cushion.
-    const hand: Card[] = ['CK', 'CQ', 'CA', 'H9', 'H8', 'D9', 'D8', 'S9', 'S8'];
-    const view = makeView(hand, biddingPhase, { bid: { seat: 1, amount: 50 }, declarer: null });
-    const easy = new HeuristicBot(mulberry32(42), 'easy');
-    const hard = new HeuristicBot(mulberry32(42), 'hard');
-    expect(easy.onTurn(view, bidHint())).toEqual({ type: 'pass' });
-    expect(hard.onTurn(view, bidHint())).toEqual({ type: 'bid', amount: 55 });
+  it('calibrated levels bid a dominant hand and pass junk', () => {
+    const strong: Card[] = ['HA', 'HK', 'HQ', 'H10', 'DA', 'D10', 'SA', 'CA', 'C10'];
+    const junk: Card[] = ['H9', 'H8', 'H7', 'D9', 'D8', 'C9', 'C8', 'S9', 'S8'];
+    for (const level of ['medium', 'hard', 'expert'] as const) {
+      const b = new HeuristicBot(mulberry32(42), level);
+      const strongView = makeView(strong, biddingPhase, { bid: null, declarer: null });
+      const junkView = makeView(junk, biddingPhase, { bid: null, declarer: null });
+      expect(b.onTurn(strongView, bidHint())).toEqual({ type: 'bid', amount: 55 });
+      expect(b.onTurn(junkView, bidHint())).toEqual({ type: 'pass' });
+    }
   });
 });
 
@@ -250,6 +287,23 @@ describe('HeuristicBot trick play', () => {
   });
 
   it('smears points when the partner has the trick and it plays last', () => {
+    // The ten is not a master (the diamond ace is out), so it goes on the
+    // partner's sure trick; a master ace would be kept to win a trick itself.
+    const hand: Card[] = ['D10', 'D6'];
+    const view = makeView(hand, {
+      name: 'follow',
+      leader: 1,
+      plays: [
+        { seat: 1, card: 'S9' },
+        { seat: 2, card: 'SA' },
+        { seat: 3, card: 'S6' },
+      ],
+    });
+    const hints: ActionHint[] = [{ type: 'playCard', legal: hand }];
+    expect(sharpBot().onTurn(view, hints)).toEqual({ type: 'playCard', card: 'D10' });
+  });
+
+  it('keeps a master ace instead of smearing it', () => {
     const hand: Card[] = ['DA', 'D6'];
     const view = makeView(hand, {
       name: 'follow',
@@ -261,7 +315,32 @@ describe('HeuristicBot trick play', () => {
       ],
     });
     const hints: ActionHint[] = [{ type: 'playCard', legal: hand }];
-    expect(sharpBot().onTurn(view, hints)).toEqual({ type: 'playCard', card: 'DA' });
+    expect(sharpBot().onTurn(view, hints)).toEqual({ type: 'playCard', card: 'D6' });
+  });
+
+  it('leads a safe master instead of junk', () => {
+    // Spade ace already played: the spade ten is the master and nobody has
+    // shown a void, so it is cashed rather than leading the low club.
+    const hand: Card[] = ['S10', 'C7', 'C8'];
+    const view = makeView(
+      hand,
+      { name: 'lead', leader: 0, canDeclare: false },
+      {
+        tricksPlayed: 1,
+        handCounts: { 0: 3, 1: 3, 2: 3, 3: 3 },
+        lastTrick: {
+          plays: [
+            { seat: 0, card: 'SA' },
+            { seat: 1, card: 'S9' },
+            { seat: 2, card: 'S8' },
+            { seat: 3, card: 'S7' },
+          ],
+          winner: 0,
+        },
+      },
+    );
+    const hints: ActionHint[] = [{ type: 'playCard', legal: hand }];
+    expect(sharpBot().onTurn(view, hints)).toEqual({ type: 'playCard', card: 'S10' });
   });
 
   it('saves undeclared marriage halves it fully holds', () => {
@@ -297,12 +376,40 @@ describe('HeuristicBot exchange', () => {
     expect([...action.cards].sort()).toEqual(['C6', 'C7', 'S6']);
   });
 
-  it('sets a conservative contract from the 12-card hand', () => {
+  it('easy sets a naive conservative contract from the 12-card hand', () => {
     // Strength: H marriage 100 + 4 aces 44 + 2 tens 20 + length bonus 5 = 169;
-    // margin 20 => 145 (bid 50 raised in 5-steps, capped at 440).
+    // easy's margin 40 => 129, floored to the 5-step 125.
     const hand: Card[] = ['HA', 'H10', 'HK', 'HQ', 'DA', 'D10', 'CA', 'SA', 'C6', 'C7', 'C8', 'S6'];
     const view = makeView(hand, { name: 'exchangeContract' });
     const hints: ActionHint[] = [{ type: 'setContract', min: 50, max: 440, step: 5 }];
-    expect(bot().onTurn(view, hints)).toEqual({ type: 'setContract', amount: 145 });
+    const easy = new HeuristicBot(mulberry32(42), 'easy');
+    expect(easy.onTurn(view, hints)).toEqual({ type: 'setContract', amount: 125 });
+  });
+
+  it('calibrated contracts rise with the hand and respect the floor', () => {
+    const strong: Card[] = [
+      'HA',
+      'H10',
+      'HK',
+      'HQ',
+      'DA',
+      'D10',
+      'CA',
+      'SA',
+      'C6',
+      'C7',
+      'C8',
+      'S6',
+    ];
+    const weak: Card[] = ['H6', 'H7', 'H8', 'D6', 'D7', 'D8', 'C6', 'C7', 'C8', 'S6', 'S7', 'SJ'];
+    const hints: ActionHint[] = [{ type: 'setContract', min: 50, max: 440, step: 5 }];
+    const amount = (hand: Card[]): number => {
+      const action = sharpBot().onTurn(makeView(hand, { name: 'exchangeContract' }), hints);
+      if (action.type !== 'setContract') throw new Error('expected a contract');
+      return action.amount;
+    };
+    expect(amount(strong)).toBeGreaterThan(amount(weak));
+    expect(amount(weak)).toBe(50);
+    expect(amount(strong) % 5).toBe(0);
   });
 });

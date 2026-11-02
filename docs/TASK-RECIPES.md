@@ -103,15 +103,35 @@ strings are keys too.
 
 ## Recipe E — Tune or extend the bot
 
-1. **`packages/bots/src/heuristic.ts`** — the strategy lives here. **Hard
-   constraint:** a bot may consume only `PlayerView` + `ActionHint[]` — never
-   `MatchState`. This is what proves the redacted view is sufficient.
-2. Keep it deterministic given the injected PRNG (`prng.ts`) — only draw from the
-   stream to break exact ties.
-3. Add/adjust `packages/bots/test/heuristic.test.ts`.
-4. Verify with a bigger sim to check win-rate/behavior:
-   `pnpm sim -- --games 5000 --seed 31337 --bots mixed`
-   (the log reports heuristic vs random average scores).
+The four levels (`easy < medium < hard < expert`) are `SkillProfile`s in
+`packages/bots/src/heuristic.ts`; each level must stay **measurably stronger**
+than the one below it.
+
+1. **Where the logic lives:** `heuristic.ts` (decision routing + the level
+   table), `play.ts` (memory-aware card play), `memory.ts` (played cards,
+   voids, known holdings — from snapshots only), `evaluate.ts` (calibrated
+   bidding/contract EV), `search.ts` (expert Monte Carlo). **Hard constraint:**
+   a bot consumes only `PlayerView` + `ActionHint[]` — never the real
+   `MatchState`. The expert's hypothetical states are built from its own view
+   and memory (`determinize`), never from hidden hands.
+2. Keep it deterministic given the injected PRNG (`prng.ts`); search budgets are
+   sample counts, never wall-clock.
+3. **Changed card play, features or rule defaults?** Re-fit the models and
+   commit the result: `pnpm --filter @hp/bots calibrate -- --deals 60000 --seed 7`
+   (~6 min; rewrites `src/calibration.ts`).
+4. **Measure, don't guess.** Duplicate-deal arena (same decks, seats swapped):
+   `pnpm --filter @hp/bots arena -- --a hard --b medium --players 4 --deals 3000`
+   (add `--mode matches --games 300` for match win rates, `--tune k=v,…` to
+   sweep a `SkillProfile` field on level A). A change ships only if it doesn't
+   break the ladder.
+5. Add/adjust `packages/bots/test/` (`heuristic`, `memory`, `evaluate`, `search`).
+6. Sanity-check the engine gate still passes: `pnpm sim -- --games 500 --seed 42`.
+
+**Finding worth knowing before "make the bots bid more":** under the default
+illisoft rules an all-pass deal is played contract-less and every side keeps
+its uncapped raw points, while a declarer is capped at its contract. Measured
+in the arena, extra bidding (and bidding-up to bait an opponent) *loses* points
+at every tested margin, so the calibrated levels pass most hands on purpose.
 
 ---
 

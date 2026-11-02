@@ -41,13 +41,13 @@ export function savedNickname(): string {
   }
 }
 
-const BOT_LEVELS: readonly BotDifficulty[] = ['easy', 'medium', 'hard'];
+const BOT_LEVELS: readonly BotDifficulty[] = ['easy', 'medium', 'hard', 'expert'];
 
 /** The persisted Pikapeli bot level; medium if unset/invalid. */
 function savedDifficulty(): BotDifficulty {
   try {
     const v = localStorage.getItem(DIFFICULTY_KEY);
-    if (v === 'easy' || v === 'medium' || v === 'hard') return v;
+    if (v === 'easy' || v === 'medium' || v === 'hard' || v === 'expert') return v;
   } catch {
     // Private mode — fall through to the default.
   }
@@ -305,7 +305,7 @@ export function Home() {
           </div>
           <div className="stack">
             <span className="dim">{t('home.bots.difficulty')}</span>
-            <div className="seg">
+            <div className="seg seg--dense">
               {BOT_LEVELS.map((level) => (
                 <button
                   type="button"

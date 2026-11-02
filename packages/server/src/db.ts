@@ -315,6 +315,8 @@ export interface RecoveredMatch {
   sessions: SessionRow[];
   roster: MatchRosterEntry[];
   ratingEligible: boolean;
+  /** Bot skill level persisted at match start; null = no bots / legacy row. */
+  botDifficulty: string | null;
 }
 
 export class Db {
@@ -351,6 +353,9 @@ export class Db {
         // Immutable match-start rating disposition. Legacy active matches default
         // conservatively to unrated instead of guessing from recovered sessions.
         this.addColumnIfMissing('matches', 'rating_eligible', 'INTEGER NOT NULL DEFAULT 0');
+        // Bot skill level of matches that seat bots (null = no bots / legacy),
+        // so bot strength can be measured per level and recovers on restart.
+        this.addColumnIfMissing('matches', 'bot_difficulty', 'TEXT');
         // Turn pacing (autoplay + timeout); nullable so pre-feature rooms
         // recover with the server default (see activeMatches / server.ts).
         this.addColumnIfMissing('rooms', 'table_settings', 'TEXT');
@@ -602,11 +607,12 @@ export class Db {
     firstDealer: Seat;
     roster?: MatchRosterEntry[];
     ratingEligible?: boolean;
+    botDifficulty?: string | null;
   }): void {
     const insertMatch = this.raw.prepare(
       `INSERT INTO matches
-         (id, room_id, config, first_dealer, rating_eligible, status, started_at)
-       VALUES (?, ?, ?, ?, ?, 'active', ?)`,
+         (id, room_id, config, first_dealer, rating_eligible, bot_difficulty, status, started_at)
+       VALUES (?, ?, ?, ?, ?, ?, 'active', ?)`,
     );
     const insertRoster = this.raw.prepare(
       `INSERT INTO match_roster (match_id, seat, kind, user_id, participant_key)
@@ -619,6 +625,7 @@ export class Db {
         JSON.stringify(row.config),
         row.firstDealer,
         row.ratingEligible ? 1 : 0,
+        row.botDifficulty ?? null,
         Date.now(),
       );
       for (const p of row.roster ?? []) {
@@ -803,7 +810,7 @@ export class Db {
     const rows = this.raw
       .prepare(
         `SELECT m.id AS match_id, m.room_id, m.config AS match_config,
-                m.first_dealer, m.started_at, m.rating_eligible,
+                m.first_dealer, m.started_at, m.rating_eligible, m.bot_difficulty,
                 r.code, r.host_token, r.config AS room_config, r.table_settings
          FROM matches m JOIN rooms r ON r.id = m.room_id
          WHERE m.status = 'active' ORDER BY m.started_at DESC`,
@@ -815,6 +822,7 @@ export class Db {
       first_dealer: number;
       started_at: number;
       rating_eligible: number;
+      bot_difficulty: string | null;
       code: string;
       host_token: string | null;
       room_config: string;
@@ -878,6 +886,7 @@ export class Db {
           participantKey: p.participant_key,
         })),
         ratingEligible: r.rating_eligible === 1,
+        botDifficulty: r.bot_difficulty,
       };
     });
   }

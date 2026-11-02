@@ -23,7 +23,8 @@ pnpm test:e2e                         # Playwright (iPhone-14 viewport)
 | **Engine unit** | `packages/engine/test/` (11 suites) | rules, scoring, legality, declarations, redaction, per-mode/talon behavior, bidding, regressions |
 | **Engine property/fuzz** | `packages/bots/src/sim.ts` (`pnpm sim`) | invariants over whole random games; a legality oracle cross-check |
 | **Achievements** | `packages/achievements/test/` | pure predicates, counters, title tiers |
-| **Bots** | `packages/bots/test/` | heuristic strategy |
+| **Bots** | `packages/bots/test/` | per-level legality fuzz (all levels incl. expert, 2/3/4p), scenario play, card memory inference, EV math, determinization consistency, an arena ladder smoke test |
+| **Bot strength** | `packages/bots/src/arena.ts` (`pnpm --filter @hp/bots arena`) | duplicate-deal level-vs-level measurement (not a CI gate; run when changing bots) |
 | **Server** | `packages/server/test/` | integration (scripted full deal over WS), chaos (drops/dup actions), hidden-info scan, reconnect, persistence/recovery, autoplay, modes |
 | **Client** | `packages/client/test/` | store, socket, screens, i18n key parity, CardFace |
 | **E2E** | `e2e/*.spec.ts` (Playwright) | full game vs bots, two humans, reconnect/seat-reclaim, PWA |
