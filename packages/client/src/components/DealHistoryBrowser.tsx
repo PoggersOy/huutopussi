@@ -74,7 +74,15 @@ export function DealHistoryBrowser({
   const scores = scoresByDeal[idx] ?? [];
 
   return (
-    <div className="overlay" role="dialog" aria-modal="true">
+    // biome-ignore lint/a11y/useKeyWithClickEvents: Escape is handled above; the backdrop click is the touch affordance
+    <div
+      className="overlay"
+      role="dialog"
+      aria-modal="true"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
       <div className="overlay__panel stack">
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
           <h2 style={{ margin: 0 }}>{t('history.dealTitle', { n: idx + 1, total: count })}</h2>

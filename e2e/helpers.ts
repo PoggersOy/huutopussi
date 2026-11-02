@@ -153,7 +153,7 @@ export async function ownHand(page: Page): Promise<string[]> {
 }
 
 /**
- * This viewer's own running match total, read from the bold "<name> <score>" in
+ * This viewer's own running match total, read from the bold "<side>: <score>" in
  * the top bar (the header now shows only this device's own score — the full
  * standings are behind the "Standings" button). Partners share a side, so two
  * partners' own scores match; a player's own score survives a reconnect.

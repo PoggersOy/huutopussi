@@ -51,6 +51,8 @@ const STATS = { a: blank(), b: blank(), none: blank() };
 
 /** --tune k=v,k=v: SkillProfile overrides applied to level A only. */
 let TUNE_A: Partial<SkillProfile> = {};
+/** --tuneB k=v,…: overrides for level B (e.g. an eager opener as the opponent). */
+let TUNE_B: Partial<SkillProfile> = {};
 
 function configOf(name: string, players: 2 | 3 | 4): RuleConfig {
   const base = name === 'default' ? DEFAULT_RULES : ILLISOFT_RULES;
@@ -96,7 +98,7 @@ function run(
     const lvl = levelAt(s, v, players, a, b);
     const rng = mulberry32(botSeed * 7919 + s);
     const isA = levelAt(s, v, players, 'expert', 'easy') === 'expert';
-    return new HeuristicBot(rng, lvl, isA ? TUNE_A : {});
+    return new HeuristicBot(rng, lvl, isA ? TUNE_A : TUNE_B);
   });
   let state: MatchState = initialMatchState(config, (deckSeed % players) as Seat);
   const me = aSeat(v, players);
@@ -239,8 +241,18 @@ function main(): void {
       seed: { type: 'string' },
       rules: { type: 'string' },
       tune: { type: 'string' },
+      tuneB: { type: 'string' },
     },
   });
+  const parseTune = (raw: string): Partial<SkillProfile> =>
+    Object.fromEntries(
+      raw.split(',').map((kv) => {
+        const [k, v] = kv.split('=');
+        const n = Number(v);
+        return [k, Number.isNaN(n) ? v : n];
+      }),
+    ) as Partial<SkillProfile>;
+  if (values.tuneB) TUNE_B = parseTune(values.tuneB);
   if (values.tune) {
     TUNE_A = Object.fromEntries(
       values.tune.split(',').map((kv) => {

@@ -14,6 +14,7 @@ import {
   type ActionHint,
   activeSeats,
   type Card,
+  type DealPhase,
   type DealView,
   type PlayerView,
   partnerOf,
@@ -37,6 +38,7 @@ import { useNavigate } from 'react-router-dom';
 import { CardBack, CardFace, CardStack } from '../components/CardFace';
 import { EmoteBar } from '../components/EmoteBar';
 import { LearnGuide } from '../components/LearnGuide';
+import { useDismiss } from '../components/useDismiss';
 import { emoteById } from '../emotes';
 import { disconnect, sendAction, sendLobby } from '../socket';
 import { type CompletedTrick, type EmoteBubble, type SpeechBubble, useStore } from '../store';
@@ -108,13 +110,13 @@ const SLOT = '\u0000';
  * suit glyph can be styled without putting markup into the catalogue strings
  * (they are reused as plain button labels elsewhere).
  */
-function withSlot(text: string, node: ReactElement): ReactElement {
+function withSlot(text: string, node: ReactElement, afterClass?: string): ReactElement {
   const [before, after] = text.split(SLOT);
   return (
     <>
       {before}
       {node}
-      {after}
+      {after && afterClass ? <span className={afterClass}>{after}</span> : after}
     </>
   );
 }
@@ -140,6 +142,7 @@ function BubbleText({ bubble }: { bubble: SpeechBubble }): ReactElement {
     return withSlot(
       t(bubble.code, { ...params, amount: SLOT }),
       <span className="bubble__num">{params.amount}</span>,
+      'bubble__mark',
     );
   }
   if (bubble.code === 'bubble.askHalf' && typeof params.card === 'string') {
@@ -398,6 +401,9 @@ export function Table() {
   const [confirmStop, setConfirmStop] = useState(false);
   /** A non-host's "Leave game" confirmation dialog is open. */
   const [confirmLeave, setConfirmLeave] = useState(false);
+  // Both confirmations close on Escape / a backdrop tap (= Cancel).
+  const dismissStop = useDismiss(() => setConfirmStop(false), confirmStop);
+  const dismissLeave = useDismiss(() => setConfirmLeave(false), confirmLeave);
   /** The on-demand full-standings overlay ("Näytä tilanne") is open. */
   const [showStandings, setShowStandings] = useState(false);
   const feltRef = useFeltBottomInset();
@@ -593,6 +599,9 @@ export function Table() {
               })}
             <FeltPiles deal={deal} />
             {deal.talonSeen !== null && <TalonStrip cards={deal.talonSeen} />}
+            {deal.phase.name === 'bidding' && (
+              <AuctionCenter phase={deal.phase} me={me} nameOf={nameOf} />
+            )}
             <TrickArea
               deal={deal}
               me={me}
@@ -699,7 +708,7 @@ export function Table() {
         />
       )}
       {confirmStop && (
-        <div className="overlay" role="dialog" aria-modal="true">
+        <div className="overlay" role="dialog" aria-modal="true" {...dismissStop}>
           <div className="overlay__panel stack">
             <h2>{t('table.stopTitle')}</h2>
             <p className="tsheet__center">{t('table.stopConfirm')}</p>
@@ -727,7 +736,7 @@ export function Table() {
         </div>
       )}
       {confirmLeave && (
-        <div className="overlay" role="dialog" aria-modal="true">
+        <div className="overlay" role="dialog" aria-modal="true" {...dismissLeave}>
           <div className="overlay__panel stack">
             <h2>{t('table.leaveTitle')}</h2>
             <p className="tsheet__center">{t('table.leaveConfirm')}</p>
@@ -779,6 +788,9 @@ function TopBar({
   // Only THIS device's own running total; the full standings for every side are
   // a tap away via "Näytä tilanne" in the strip below.
   const myScore = view.scores[mySide] ?? 0;
+  // 4p scores belong to the partnership: "Bertta & Maija: 200"; 2-3p: "Bertta: 200".
+  const myLabel =
+    view.config.players === 4 ? `${nameOf(me)} & ${nameOf(partnerOf(me))}` : nameOf(me);
 
   let contractLabel: string | null = null;
   if (deal !== null) {
@@ -796,32 +808,66 @@ function TopBar({
 
   return (
     <header className="ttop">
-      {/* Grid `1fr auto 1fr`: the two side columns are equal, so the trump label
-          in the middle sits dead-centre on the screen whatever the name/deal
-          widths are. */}
-      <div className="ttop__row ttop__row--main">
-        <strong className="ttop__me-score">
-          {nameOf(me)} {myScore}
-        </strong>
-        {/* key on `trump` remounts the chip when trump changes, restarting the
-            attention flash (see `.ttop__trump--on` in table.css). */}
-        <span
-          key={trump ?? 'none'}
-          className={`ttop__trump${trump !== null ? ` ttop__trump--on suit--${trump}` : ' ttop__trump--off dim'}`}
-        >
-          {trump !== null ? `${SUIT_GLYPH[trump]} ${t(`suit.${trump}`)}` : t('table.noTrump')}
-        </span>
-        <span className="ttop__deal dim">{t('table.deal', { n: view.dealIndex + 1 })}</span>
-      </div>
-      <div className="ttop__row">
-        <span className="dim">{contractLabel ?? t('sheet.noBids')}</span>
-        <span className={myTurn ? 'ttop__me' : 'dim'}>
-          {view.winnerSide === null &&
-            actor !== null &&
-            (myTurn ? t('table.yourTurn') : nameOf(actor))}
-        </span>
-      </div>
+      {/* One grid `1fr auto 1fr` × two rows: the trump label owns the middle
+          column across BOTH rows, so it sits dead-centre on the screen and
+          vertically centred in the header, whatever the side texts are; the
+          side columns are equal and truncate instead of crowding it. */}
+      <strong className="ttop__me-score">
+        {t('table.sideScore', { name: myLabel, score: myScore })}
+      </strong>
+      {/* key on `trump` remounts the chip when trump changes, restarting the
+          attention flash (see `.ttop__trump--on` in table.css). */}
+      <span key={trump ?? 'none'} className={`ttop__trump${trump === null ? ' dim' : ''}`}>
+        {trump !== null ? (
+          <>
+            <span className="ttop__trump-label">{t('table.trumpLabel')}</span>
+            <span className={`ttop__trump--on suit--${trump}`}>
+              {SUIT_GLYPH[trump]} {t(`suit.${trump}`)}
+            </span>
+          </>
+        ) : (
+          t('table.noTrump')
+        )}
+      </span>
+      <span className="ttop__deal dim">{t('table.deal', { n: view.dealIndex + 1 })}</span>
+      <span className="ttop__contract dim">{contractLabel ?? t('sheet.noBids')}</span>
+      <span className={`ttop__turn${myTurn ? ' ttop__me' : ' dim'}`}>
+        {view.winnerSide === null &&
+          actor !== null &&
+          (myTurn ? t('table.yourTurn') : t('table.turnOf', { name: nameOf(actor) }))}
+      </span>
     </header>
+  );
+}
+
+// ── Auction centre ───────────────────────────────────────────────────────────
+
+/**
+ * During bidding the felt's centre is where the trick will be — empty. It shows
+ * the auction state as one quiet line: "Korkein huuto: 85 — Matti" (or "Ei
+ * vielä huutoja"). Keyed on the amount so each raise fades the line in anew.
+ * The bidding sheet no longer repeats this line, so it stays short.
+ */
+function AuctionCenter({
+  phase,
+  me,
+  nameOf,
+}: {
+  phase: Extract<DealPhase, { name: 'bidding' }>;
+  me: Seat;
+  nameOf: (seat: Seat) => string;
+}): ReactElement {
+  const { t } = useTranslation();
+  const high = phase.highBid;
+  return (
+    <div className="auction" key={high?.amount ?? 'none'}>
+      {high === null
+        ? t('sheet.noBids')
+        : t('table.highBidLine', {
+            amount: high.amount,
+            name: high.seat === me ? t('common.you') : nameOf(high.seat),
+          })}
+    </div>
   );
 }
 
@@ -1047,7 +1093,7 @@ function LastTrickPeek({
 
   return (
     <>
-      <button type="button" className="peek" onClick={() => setOpen((o) => !o)}>
+      <button type="button" className="btn--ghost peek" onClick={() => setOpen((o) => !o)}>
         {t('table.lastTrickBtn')}
       </button>
       {open && (

@@ -50,7 +50,15 @@ export function ProfileScorecard({ event, onClose }: { event: RatingEvent; onClo
   const sides = Array.from({ length: sideCount }, (_, i) => i as Side);
 
   return (
-    <div className="overlay" role="dialog" aria-modal="true">
+    // biome-ignore lint/a11y/useKeyWithClickEvents: Escape is handled above; the backdrop click is the touch affordance
+    <div
+      className="overlay"
+      role="dialog"
+      aria-modal="true"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
       <div className="overlay__panel stack">
         <h2 style={{ margin: 0 }}>{t('profile.scorecardTitle')}</h2>
 

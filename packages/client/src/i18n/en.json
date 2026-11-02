@@ -408,12 +408,15 @@
     "us": "Us",
     "them": "Them",
     "noTrump": "No trump",
+    "trumpLabel": "Trump:",
+    "sideScore": "{{name}}: {{score}}",
     "contract": "Contract",
     "bid": "Bid",
     "dealer": "Dealer",
     "deal": "Deal {{n}}",
     "seat": "Seat {{seat}}",
     "yourTurn": "Your turn",
+    "turnOf": "Turn: {{name}}",
     "tapAgain": "Tap the raised card again to play it",
     "pending": "Waiting for the server…",
     "porvoo": "No tricks!",
@@ -438,7 +441,8 @@
     "leaveTitle": "Leave the game?",
     "leaveConfirm": "A bot will play your hand. You can rejoin any time with the room link.",
     "imBack": "I'm back",
-    "standings": "Standings"
+    "standings": "Standings",
+    "highBidLine": "High bid: {{amount}} — {{name}}"
   },
   "bubble": {
     "bid": "{{amount}}!",
@@ -452,7 +456,6 @@
     "trump": "Trump <suit>{{suit}}</suit> +{{points}}"
   },
   "sheet": {
-    "highBid": "High bid {{amount}} — {{name}}",
     "noBids": "No bids yet",
     "bidBanSkipped": "Bid-banned: {{names}}",
     "biddingReopened": "No one bid — bidding reopens",

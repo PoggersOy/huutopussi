@@ -1228,6 +1228,17 @@ export function createServer(opts: ServerOpts = {}): HpServer {
         for (const seat of activeSeats(room.config.players)) {
           if (!sessionAtSeat(room, seat)) addBotToSeat(room, seat);
         }
+        // Solo vs bots (Pikapeli): nobody is waiting on the human, so there is
+        // no turn time limit — autoplay off means no deadline and the seat is
+        // never handed to a bot while its player is present. With other humans
+        // at the table (matchmaking "Start with bots") the timer stays.
+        const humans = activeSeats(room.config.players).filter(
+          (seat) => sessionAtSeat(room, seat)?.kind === 'human',
+        ).length;
+        if (humans === 1 && room.tableSettings.autoplay) {
+          room.tableSettings = { ...room.tableSettings, autoplay: false };
+          db.setRoomTableSettings(room.id, room.tableSettings);
+        }
         startNewMatch(room, { token: session.token, actionId });
         return true;
       }

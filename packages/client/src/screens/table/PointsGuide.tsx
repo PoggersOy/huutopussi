@@ -20,6 +20,7 @@ import {
 } from '@hp/engine';
 import { type ReactElement, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useDismiss } from '../../components/useDismiss';
 import { SUIT_GLYPH } from './tableUtils';
 
 export interface HandTally {
@@ -55,6 +56,7 @@ function PointsOverlay({
   onClose: () => void;
 }): ReactElement {
   const { t } = useTranslation();
+  const dismiss = useDismiss(onClose);
   const tally = tallyHand(hand, config);
   const marriagePts = tally.marriages.reduce((sum, s) => sum + marriageValue(s, config), 0);
   const allMarriages = SUITS.reduce((sum, s) => sum + marriageValue(s, config), 0);
@@ -62,7 +64,13 @@ function PointsOverlay({
   const scoring = RANKS.filter((r) => cardPoints(makeCard('S', r), config) > 0);
 
   return (
-    <div className="overlay" role="dialog" aria-modal="true" aria-labelledby="points-title">
+    <div
+      className="overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="points-title"
+      {...dismiss}
+    >
       <div className="overlay__panel stack points">
         <h2 id="points-title">{t('points.title')}</h2>
 

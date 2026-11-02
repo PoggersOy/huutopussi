@@ -30,7 +30,7 @@ import {
   cardPoints,
   makeCard,
   marriageValue,
-  type RANKS,
+  RANKS,
   rankOf,
   SUITS,
   suitOf,
@@ -53,6 +53,9 @@ export const FEATURE_NAMES = [
   'voids',
   'trumpLen',
   'cards',
+  'topSeq',
+  'aceTenKing',
+  'longTop',
 ] as const;
 
 export interface LinearModel {
@@ -69,6 +72,8 @@ export interface Calibration {
   contract: Record<string, LinearModel>;
   declare: Record<string, LinearModel>;
   pass: Record<string, LinearModel>;
+  /** Passing while an opponent holds the high bid (that opponent then declares). */
+  passContested?: Record<string, LinearModel>;
 }
 
 /** Config-normalized features of a hand (see FEATURE_NAMES). */
@@ -85,6 +90,13 @@ export function handFeatures(hand: readonly Card[], config: RuleConfig): number[
   let kqjPts = 0;
   let voids = 0;
   let trumpLen = 0;
+  // Sure tricks: per suit, the unbroken run from the ace down (A, A-10,
+  // A-10-K…); suits holding A-10-K; and length beyond three behind an ace.
+  // These separate a hand that can run the table (läpi: every trick, 120+20)
+  // from the same aces and tens scattered across suits.
+  let topSeq = 0;
+  let aceTenKing = 0;
+  let longTop = 0;
   const lengths: number[] = [];
   for (const s of SUITS) {
     const cards = bySuit[s];
@@ -111,6 +123,14 @@ export function handFeatures(hand: readonly Card[], config: RuleConfig): number[
       const r = rankOf(c);
       if (r === 'K' || r === 'Q' || r === 'J') kqjPts += cardPoints(c, config);
     }
+    let run = 0;
+    for (const r of RANKS) {
+      if (!has(r)) break;
+      run++;
+    }
+    topSeq += run;
+    if (has('A') && has('10') && has('K')) aceTenKing++;
+    if (has('A')) longTop += Math.max(0, cards.length - 3);
   }
   lengths.sort((a, b) => b - a);
   return [
@@ -128,6 +148,9 @@ export function handFeatures(hand: readonly Card[], config: RuleConfig): number[
     voids,
     trumpLen,
     hand.length,
+    topSeq,
+    aceTenKing,
+    longTop,
   ];
 }
 
@@ -221,6 +244,24 @@ export function priceLoss(mu: number, sigma: number, price: number, config: Rule
   return Math.max(0, free - forced);
 }
 
+/**
+ * Probability that this hand, as declarer, collects at least `price` (the
+ * contract can't go below the winning bid), from the bidding-time estimate and
+ * σ. `muBonus` shifts the estimate (negative when an opponent's bid signals
+ * strength against us). null without calibration.
+ */
+export function makeProbability(
+  hand: readonly Card[],
+  config: RuleConfig,
+  price: number,
+  muBonus = 0,
+): number | null {
+  const est = estimateAsDeclarer(hand, config);
+  if (!est) return null;
+  // Bidding-time σ: the exchange/talon is still unknown when we decide.
+  return 1 - normCdf((price - (est.mu + muBonus)) / Math.max(1, est.sigma));
+}
+
 export interface BidValues {
   /** Expected differential of declaring at the current price. */
   declare: number;
@@ -231,17 +272,22 @@ export interface BidValues {
 /**
  * Both sides of the bidding decision for `hand` at winning price `price`.
  * `muBonus` shifts the declarer's expected raw total (e.g. a partner who bid
- * signals strength). null when this mode has no calibration.
+ * signals strength). `contested` = an opponent holds the high bid, so passing
+ * hands them the contract (the `passContested` model). null when this mode has
+ * no calibration.
  */
 export function bidValues(
   hand: readonly Card[],
   config: RuleConfig,
   price: number,
   muBonus = 0,
+  contested = false,
 ): BidValues | null {
   const key = String(config.players);
   const decl = modelFor(CALIBRATION.declare, key);
-  const pass = modelFor(CALIBRATION.pass, key);
+  const pass =
+    (contested && CALIBRATION.passContested ? modelFor(CALIBRATION.passContested, key) : null) ??
+    modelFor(CALIBRATION.pass, key);
   const est = estimateAsDeclarer(hand, config);
   if (!decl || !pass || !est) return null;
   const x = handFeatures(hand, config);

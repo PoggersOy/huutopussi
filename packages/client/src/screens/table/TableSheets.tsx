@@ -146,11 +146,6 @@ export function BiddingSheet({
 
   return (
     <SheetShell title={t('phase.bidding')}>
-      <p className="dim tsheet__center">
-        {phase.highBid !== null
-          ? t('sheet.highBid', { amount: phase.highBid.amount, name: nameOf(phase.highBid.seat) })
-          : t('sheet.noBids')}
-      </p>
       {phase.excluded.length > 0 && (
         <p className="dim tsheet__center">
           {t('sheet.bidBanSkipped', { names: phase.excluded.map(nameOf).join(', ') })}

@@ -6,6 +6,16 @@
 /* ── Screen grid: top bar / felt / (sheet) / hand ── */
 
 .screen--table {
+  /* Card sizes for the table, HEIGHT-aware as well as width-aware: the global
+   * tokens scale with vmin only, which on a tall phone leaves the felt half
+   * empty. min(vw, vh) lets a tall phone grow the cards while a short or
+   * landscape window stays as it was. Desktop (≥768px) overrides these below.
+   * Scoped here, not in tokens.css, so other screens keep their sizes. */
+  --card-w: clamp(52px, min(19vw, 9.5vh), 100px);
+  --card-h: calc(var(--card-w) * var(--card-ratio));
+  --card-w-md: clamp(44px, min(17vw, 8.5vh), 90px);
+  --card-w-opp: clamp(14px, min(4vw, 2vh), 26px);
+  --card-radius: calc(var(--card-w) * 0.09);
   /* Flex column instead of a fixed grid: the felt (flex: 1 below) fills all
    * remaining height whether or not the optional host bar and bidding sheet are
    * present. A fixed grid-template-rows breaks when those optional children
@@ -18,51 +28,57 @@
 /* ── Top bar ── */
 
 .ttop {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+  /* Three columns × two rows. The side columns are equal (1fr), so the auto
+   * middle column — the trump label, spanning both rows — is always centred
+   * on the screen horizontally and in the header vertically. */
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  grid-template-rows: auto auto;
+  align-items: baseline;
+  column-gap: var(--space-2);
+  row-gap: 2px;
   padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--line);
   background: rgba(0, 0, 0, 0.18);
   font-size: var(--fs-sm);
 }
 
-.ttop__row {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: var(--space-2);
+/* Side texts truncate rather than push into the trump column. */
+.ttop__me-score,
+.ttop__deal,
+.ttop__contract,
+.ttop__turn {
   min-width: 0;
-}
-
-/* The primary row centres the trump label on the SCREEN: the two side columns
-   are equal width (1fr), so the auto middle column is always dead-centre,
-   whatever the name/deal widths are. */
-.ttop__row--main {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-}
-
-.ttop__row > span {
-  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-/* This device's own player/team + running total (bold), left-aligned, truncating. */
+/* This device's own player/team + running total (bold), left-aligned. */
 .ttop__me-score {
+  grid-area: 1 / 1;
   justify-self: start;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+}
+
+.ttop__contract {
+  grid-area: 2 / 1;
+  justify-self: start;
 }
 
 .ttop__deal {
+  grid-area: 1 / 3;
+  justify-self: end;
+}
+
+.ttop__turn {
+  grid-area: 2 / 3;
   justify-self: end;
 }
 
 .ttop__trump {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
   justify-self: center;
   font-weight: 700;
   white-space: nowrap;
@@ -70,13 +86,46 @@
 
 /* A trump is set: the gold chip with a soft resting glow; the flash burst below
    plays on mount / trump change. The "no trump" state stays plain dim text. */
+/* "Valtti:" sits quietly before the chip; the chip carries the colour. */
+.ttop__trump-label {
+  margin-right: var(--space-1);
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
 .ttop__trump--on {
+  position: relative;
+  display: inline-block;
   padding: 1px var(--space-2);
   border-radius: var(--radius-1);
   background: rgba(212, 175, 55, 0.16);
   border: 1px solid var(--gold-soft);
   box-shadow: 0 0 6px rgba(212, 175, 55, 0.35);
   animation: trump-flash 760ms ease-out 3;
+}
+
+/* After the arrival flash, the set trump keeps a slow, quiet heartbeat so it
+   stays noticeable all deal long. A static halo whose OPACITY breathes (no
+   repainting box-shadow animation), starting once the flash has finished. */
+.ttop__trump--on::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: 0 0 12px 2px rgba(212, 175, 55, 0.7);
+  opacity: 0;
+  animation: trump-breathe 3.2s ease-in-out 2.3s infinite;
+}
+
+@keyframes trump-breathe {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  50% {
+    opacity: 0.85;
+  }
 }
 
 /* Attention burst: blink the gold highlight a few times, then settle into the
@@ -164,6 +213,8 @@
 /* ── Felt (center play area) ── */
 
 .felt {
+  /* The trick's centre; the seats ring it (see .opp--* and .trick). */
+  --ring-y: 48%;
   position: relative;
   overflow: hidden;
   min-height: 150px;
@@ -197,19 +248,25 @@
 }
 
 .opp--top {
-  top: var(--space-2);
+  /* Just above the trick's top card (room for the trick label), never above
+   * the felt's top edge. */
+  top: max(var(--space-2), calc(var(--ring-y) - var(--card-w-md) * 1.33 - 128px));
   left: 50%;
   transform: translateX(-50%);
 }
 
+/* Side seats sit level with the trick, so the four seats ring the play area
+ * instead of bunching at the top with empty felt below. */
 .opp--left {
   left: var(--space-2);
-  top: 21%;
+  top: var(--ring-y);
+  transform: translateY(-50%);
 }
 
 .opp--right {
   right: var(--space-2);
-  top: 21%;
+  top: var(--ring-y);
+  transform: translateY(-50%);
 }
 
 /* The seat the table is waiting on gets a breathing gold glow so it's obvious
@@ -423,6 +480,18 @@
   border-width: 1.5px;
 }
 
+/* The "!" of a bid: matched to the numeral (same size, weight and baseline)
+   and set in gold with a slight lean, so "100!" reads as one shout. */
+.bubble__mark {
+  display: inline-block;
+  margin-left: 1px;
+  font-size: 1.3em;
+  font-weight: 900;
+  line-height: 1;
+  color: #a8801a;
+  transform: rotate(8deg) translateY(-1px);
+}
+
 .bubble__num {
   /* The UI face, not Georgia: Georgia's old-style figures drop below the line. */
   font-size: 1.3em;
@@ -594,16 +663,57 @@
   pointer-events: none;
 }
 
+.screen--table:has(.table-reclaim) .felt-foot {
+  bottom: calc(var(--space-3) + var(--touch-min) + var(--space-3));
+}
+
+/* ── Auction centre (bidding phase) ──
+ * One quiet line where the trick will land: the high bid (or "no bids yet"),
+ * fading in on every raise. Pointer-transparent. */
+.auction {
+  position: absolute;
+  z-index: 1;
+  left: 50%;
+  /* Phone: a bubble's height below the trick spot — the top seat sits close
+   * above it there and its "Ohi" bubble hangs into the centre. Desktop (where
+   * the top seat is far enough away) centres it on the trick spot. */
+  top: calc(var(--ring-y) + 2.75rem);
+  translate: -50% -50%;
+  max-width: 80%;
+  font-size: var(--fs-md);
+  color: var(--text-dim);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  animation: auction-pop var(--dur-2) var(--ease-out);
+}
+
+@keyframes auction-pop {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auction {
+    animation: none;
+  }
+}
+
 /* ── Current trick ── */
 
 .trick {
   position: absolute;
   z-index: 1;
   left: 50%;
-  top: 52%;
+  top: var(--ring-y);
   transform: translate(-50%, -50%);
   width: min(76vw, 300px);
-  height: min(42vh, 250px);
+  /* Sized to the played cards (top/bottom cards sit ±42% of a card height off
+   * centre), so the label above it hugs the top card. */
+  height: calc(var(--card-w-md) * var(--card-ratio) * 1.9);
 }
 
 /* Wraps just the played cards (not the label) so the whole group can slide to
@@ -637,7 +747,7 @@
 }
 
 .trick__card--p1 {
-  --ox: -72%;
+  --ox: -64%;
   --rot: -7deg;
   --dx: -130px;
 }
@@ -649,7 +759,7 @@
 }
 
 .trick__card--p3 {
-  --ox: 72%;
+  --ox: 64%;
   --rot: 7deg;
   --dx: 130px;
 }
@@ -805,15 +915,20 @@
 
 /* ── Last-trick peek ── */
 
+/* Same edge-tab style as the top strip's "Näytä tilanne" / "Lopeta peli"
+   (.thostbar__btn), mirrored into the felt's bottom-right corner: flush with
+   both edges, only the inner top corner rounded. */
 .peek {
   position: absolute;
   z-index: 3;
-  right: var(--space-2);
-  bottom: var(--space-2);
-  padding: var(--space-1) var(--space-3);
-  font-size: var(--fs-xs);
-  font-weight: 600;
-  background: rgba(0, 0, 0, 0.35);
+  right: 0;
+  bottom: 0;
+  padding: 2px var(--space-3);
+  border-right: 0;
+  border-bottom: 0;
+  border-radius: var(--radius-2) 0 0 0;
+  font-size: var(--fs-sm);
+  opacity: 0.8;
 }
 
 .peek__panel {
@@ -1645,12 +1760,21 @@
   }
 
   /* Spread the played cards across the wider board. */
-  /* Sized to the played cards (top/bottom cards sit ±42% of a card height
-   * off centre), so the label above it hugs the top card. */
   .trick {
-    top: var(--ring-y);
     width: min(64vw, 520px);
-    height: calc(var(--card-w-md) * var(--card-ratio) * 1.9);
+  }
+
+  .auction {
+    top: var(--ring-y);
+  }
+
+  /* The wider board has room for the full side spread. */
+  .trick__card--p1 {
+    --ox: -72%;
+  }
+
+  .trick__card--p3 {
+    --ox: 72%;
   }
 }
 
@@ -1768,9 +1892,13 @@
    to the bottom-left of the FELT (`--felt-inset-bottom`, see Table.tsx) — just
    above the sheet/hand, never on top of the fan's cards — under modal overlays,
    with a soft gold attention pulse. */
+/* Centred above your hand/sheet (it used to hug the left edge). While it shows,
+   the felt-foot rail (your own bubble) rises above it so the two never collide. */
 .table-reclaim {
   position: fixed;
-  left: calc(var(--safe-left) + var(--space-3));
+  left: 50%;
+  translate: -50% 0;
+  white-space: nowrap;
   bottom: calc(var(--felt-inset-bottom, var(--safe-bottom)) + var(--space-3));
   z-index: 45;
   min-height: var(--touch-min);
@@ -1976,6 +2104,11 @@
 
 @media (prefers-reduced-motion: reduce) {
   /* Keep the information (which suit is trump now), drop the travel. */
+  .ttop__trump--on,
+  .ttop__trump--on::after {
+    animation: none;
+  }
+
   .declflash__wash {
     animation: none;
     display: none;

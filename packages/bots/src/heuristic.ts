@@ -17,6 +17,8 @@
  *            still slipping on some card plays.
  *   hard   — the same calibrated EV bidding with no caution margin, the
  *            EV-optimal contract, and flawless memory-aware play.
+ *   (medium and up also CONTEST an opponent's bid when they'd probably make
+ *   a contract at the next price — see `contestConfidence`.)
  *   expert — hard's bidding plus determinized Monte Carlo search
  *            (search.ts) for every card play and the contract: it imagines
  *            the hidden hands consistent with everything it has seen, plays
@@ -60,7 +62,7 @@ import {
   winningPlay,
 } from '@hp/engine';
 import type { Actor } from './actor.js';
-import { bestContract, bidValues, estimateForContract } from './evaluate.js';
+import { bestContract, bidValues, estimateForContract, makeProbability } from './evaluate.js';
 import { ALL_CARDS, DealMemory, type Knowledge, knowledgeOf } from './memory.js';
 import { smartFollow, smartLead } from './play.js';
 import { type Prng, pick } from './prng.js';
@@ -94,6 +96,22 @@ export interface SkillProfile {
   sloppiness: number;
   /** Determinizations per search decision (expert). */
   samples: number;
+  /**
+   * Competitive bidding, the way people actually bid: when an OPPONENT holds
+   * the high bid, raise whenever we'd probably make a contract at the next
+   * price — P(raw total ≥ price) ≥ this. 0 = pure expected value only, which
+   * under illisoft scoring almost never contests (defending a capped declarer
+   * is worth more), so the auction would be one-sided. The arena puts the
+   * cost of realistic contesting at a few points per deal.
+   */
+  contestConfidence: number;
+  /** Points knocked off our estimate because an opponent is bidding. */
+  contestDiscount: number;
+  /**
+   * Smear ("lahjoitus") points onto the partner's winning trick when it holds
+   * with at least this probability (1 = only when certain).
+   */
+  smearConfidence: number;
 }
 
 const SKILL: Record<BotDifficulty | 'rollout', SkillProfile> = {
@@ -107,6 +125,9 @@ const SKILL: Record<BotDifficulty | 'rollout', SkillProfile> = {
     play: 'basic',
     sloppiness: 0.55,
     samples: 0,
+    contestConfidence: 0,
+    contestDiscount: 15,
+    smearConfidence: 0.75,
   },
   medium: {
     bidding: 'model',
@@ -118,6 +139,9 @@ const SKILL: Record<BotDifficulty | 'rollout', SkillProfile> = {
     play: 'smart',
     sloppiness: 0.15,
     samples: 0,
+    contestConfidence: 0.7,
+    contestDiscount: 15,
+    smearConfidence: 0.75,
   },
   hard: {
     bidding: 'model',
@@ -129,6 +153,9 @@ const SKILL: Record<BotDifficulty | 'rollout', SkillProfile> = {
     play: 'smart',
     sloppiness: 0,
     samples: 0,
+    contestConfidence: 0.75,
+    contestDiscount: 15,
+    smearConfidence: 0.75,
   },
   expert: {
     bidding: 'model',
@@ -140,6 +167,9 @@ const SKILL: Record<BotDifficulty | 'rollout', SkillProfile> = {
     play: 'search',
     sloppiness: 0,
     samples: 24,
+    contestConfidence: 0.75,
+    contestDiscount: 15,
+    smearConfidence: 0.75,
   },
   /** The policy that plays out the expert's imagined deals. */
   rollout: {
@@ -152,6 +182,9 @@ const SKILL: Record<BotDifficulty | 'rollout', SkillProfile> = {
     play: 'smart',
     sloppiness: 0,
     samples: 0,
+    contestConfidence: 0,
+    contestDiscount: 15,
+    smearConfidence: 0.75,
   },
 };
 
@@ -406,7 +439,18 @@ export class HeuristicBot implements Actor {
         bonus = this.skill.partnerBidBonus;
       }
     }
-    const values = bidValues(deal.hand, config, hint.min, bonus);
+    const phase = deal.phase;
+    const contested =
+      view.viewer !== 'spectator' &&
+      phase.name === 'bidding' &&
+      phase.highBid !== null &&
+      sideOf(phase.highBid.seat, config.players) !== sideOf(view.viewer, config.players);
+    if (contested && this.skill.contestConfidence > 0) {
+      // An opponent's bid means strength against us: discount our estimate.
+      const p = makeProbability(deal.hand, config, hint.min, bonus - this.skill.contestDiscount);
+      if (p !== null && p >= this.skill.contestConfidence) return true;
+    }
+    const values = bidValues(deal.hand, config, hint.min, bonus, contested);
     if (!values) return null;
     return values.declare - values.pass >= this.skill.bidMargin;
   }
@@ -496,7 +540,7 @@ export class HeuristicBot implements Actor {
     const phase = deal.phase;
     if (this.skill.play !== 'basic') {
       const know = injected ?? knowledgeOf(view, this.memory);
-      const ctx = { deal, me, config, know, reserved };
+      const ctx = { deal, me, config, know, reserved, smearConfidence: this.skill.smearConfidence };
       if (phase.name === 'follow' && phase.plays.length > 0) {
         return smartFollow(ctx, legal, phase.plays);
       }

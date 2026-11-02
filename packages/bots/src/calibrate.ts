@@ -81,6 +81,8 @@ const CONFIGS: Record<2 | 3 | 4, RuleConfig[]> = {
 interface Sample {
   /** The scripted seat (forced declarer / forced passer). */
   focus: Seat;
+  /** Whether an opponent of `focus` ended up declaring. */
+  opponentDeclared: boolean;
   bidX: Map<Seat, number[]>;
   contractX: number[] | null;
   contractSize: number;
@@ -178,6 +180,9 @@ export function playDeal(
   }
   return {
     focus: declarer,
+    opponentDeclared:
+      deal.declarer !== null &&
+      sideOf(deal.declarer, config.players) !== sideOf(declarer, config.players),
     bidX,
     contractX,
     contractSize,
@@ -220,7 +225,7 @@ function main(): void {
   const deals = Number(values.deals ?? 20000);
   const seed = Number(values.seed ?? 7);
   const rng = mulberry32(seed);
-  const out: Calibration = { bid: {}, contract: {}, declare: {}, pass: {} };
+  const out: Calibration = { bid: {}, contract: {}, declare: {}, pass: {}, passContested: {} };
   const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / Math.max(1, xs.length);
 
   for (const players of [4, 3, 2] as const) {
@@ -264,13 +269,22 @@ function main(): void {
     const allX = p0.flatMap((s) => [...s.bidX.values()]);
     const allY = p0.flatMap((s) => [...s.bidX.keys()].map((k) => s.delta.get(k) as number));
     let passModel = round(fitLinear(allX, allY));
+    let last: Sample[] = [];
     for (let round_ = 0; round_ < 3; round_++) {
       CALIBRATION.pass[key] = passModel;
-      const p3 = collect(rng, players, half, 'pass', true);
-      passModel = round(fitLinear(p3.map(focusX), p3.map(focusDelta)));
+      last = collect(rng, players, half, 'pass', true);
+      passModel = round(fitLinear(last.map(focusX), last.map(focusDelta)));
     }
     out.pass[key] = passModel;
     CALIBRATION.pass[key] = passModel;
+    // Passing when an OPPONENT is the one bidding: the alternative to bidding
+    // on is no longer a likely contract-less deal but that opponent declaring.
+    const contested = last.filter((s) => s.opponentDeclared);
+    if (contested.length >= 500) {
+      const table = out.passContested ?? {};
+      table[key] = round(fitLinear(contested.map(focusX), contested.map(focusDelta)));
+      out.passContested = table;
+    }
     console.log(
       `[calibrate] ${players}p in ${Date.now() - t0}ms — R̄=${mean(p1.map((s) => s.raw)).toFixed(1)} ` +
         `σ_bid=${out.bid[key]?.sigma} declareΔ̄=${mean(p2.map(focusDelta)).toFixed(1)} ` +

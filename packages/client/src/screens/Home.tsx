@@ -32,6 +32,8 @@ import { useStore } from '../store';
 
 const NICKNAME_KEY = 'hp:nickname';
 const DIFFICULTY_KEY = 'hp:botDifficulty';
+const PLAYERS_KEY = 'hp:players';
+const RANKED_KEY = 'hp:ranked';
 
 export function savedNickname(): string {
   try {
@@ -52,6 +54,36 @@ function savedDifficulty(): BotDifficulty {
     // Private mode — fall through to the default.
   }
   return 'medium';
+}
+
+/**
+ * Home selections (game mode, ranked toggle) survive leaving a game: returning
+ * from a 3-player bot game shows "3" selected again instead of the default.
+ */
+function savedPlayers(): 2 | 3 | 4 {
+  try {
+    const v = Number(localStorage.getItem(PLAYERS_KEY));
+    if (v === 2 || v === 3 || v === 4) return v;
+  } catch {
+    // Private mode — fall through to the default.
+  }
+  return 4;
+}
+
+function savedRanked(): boolean {
+  try {
+    return localStorage.getItem(RANKED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function persist(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Private mode: the choice simply isn't remembered.
+  }
 }
 
 /** Persist a nickname (trimmed) for reuse across sessions; no-op if blank. */
@@ -82,10 +114,18 @@ export function Home() {
   const [code, setCode] = useState('');
   const [pending, setPending] = useState<Pending | null>(null);
   /** Game mode (2/3/4 players) — shared by every start flow. */
-  const [players, setPlayers] = useState<2 | 3 | 4>(4);
+  const [players, setPlayersState] = useState<2 | 3 | 4>(savedPlayers);
   /** Pikapeli bot skill level. */
   const [difficulty, setDifficulty] = useState<BotDifficulty>(savedDifficulty);
-  const [ranked, setRanked] = useState(false);
+  const [ranked, setRankedState] = useState(savedRanked);
+  const setPlayers = (n: 2 | 3 | 4): void => {
+    setPlayersState(n);
+    persist(PLAYERS_KEY, String(n));
+  };
+  const setRanked = (on: boolean): void => {
+    setRankedState(on);
+    persist(RANKED_KEY, on ? '1' : '0');
+  };
   const [buckets, setBuckets] = useState<MatchmakingBucket[]>([]);
   const canInstall = useSyncExternalStore(subscribeInstall, installAvailable);
   const createdCode = useStore((s) => s.server.room?.code);
@@ -114,10 +154,9 @@ export function Home() {
     navigate(`/r/${createdCode}`);
   }, [pending, createdCode, difficulty, navigate]);
 
-  // Ranked needs a signed-in account; drop the toggle on sign-out.
-  useEffect(() => {
-    if (!signedIn) setRanked(false);
-  }, [signedIn]);
+  // Ranked needs a signed-in account: `effectiveRanked` (below) ignores the
+  // remembered toggle while signed out, so the choice survives sign-in/out and
+  // the moment before auth has loaded.
 
   // Poll live waiting counts per bucket while on Home.
   useEffect(() => {

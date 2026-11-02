@@ -408,12 +408,15 @@
     "us": "Me",
     "them": "He",
     "noTrump": "Ei valttia",
+    "trumpLabel": "Valtti:",
+    "sideScore": "{{name}}: {{score}}",
     "contract": "Tarjous",
     "bid": "Huuto",
     "dealer": "Jakaja",
     "deal": "Jako {{n}}",
     "seat": "Paikka {{seat}}",
     "yourTurn": "Sinun vuorosi",
+    "turnOf": "Vuorossa: {{name}}",
     "tapAgain": "Pelaa napauttamalla nostettua korttia uudelleen",
     "pending": "Odotetaan palvelinta…",
     "porvoo": "Ei tikkiä!",
@@ -438,7 +441,8 @@
     "leaveTitle": "Poistutaanko pelistä?",
     "leaveConfirm": "Botti pelaa korttisi. Voit palata milloin tahansa huonelinkillä.",
     "imBack": "Olen takaisin",
-    "standings": "Näytä tilanne"
+    "standings": "Näytä tilanne",
+    "highBidLine": "Korkein huuto: {{amount}} — {{name}}"
   },
   "bubble": {
     "bid": "{{amount}}!",
@@ -452,7 +456,6 @@
     "trump": "Valtti <suit>{{suit}}</suit> +{{points}}"
   },
   "sheet": {
-    "highBid": "Korkein huuto {{amount}} — {{name}}",
     "noBids": "Ei vielä huutoja",
     "bidBanSkipped": "Huutokiellossa: {{names}}",
     "biddingReopened": "Kukaan ei huutanut — huuto avataan uudelleen",

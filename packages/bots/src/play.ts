@@ -34,6 +34,9 @@ import {
 } from '@hp/engine';
 import { ALL_CARDS, type Knowledge } from './memory.js';
 
+/** Smear onto the partner's trick when it holds with at least this probability. */
+export const SMEAR_CONFIDENCE = 0.75;
+
 export interface PlayContext {
   deal: DealView;
   me: Seat;
@@ -41,6 +44,8 @@ export interface PlayContext {
   know: Knowledge;
   /** Cards to keep for a declaration whenever a choice exists. */
   reserved: ReadonlySet<Card>;
+  /** Smear onto the partner's trick when it holds with at least this probability. */
+  smearConfidence?: number;
 }
 
 function isOpponent(ctx: PlayContext, seat: Seat): boolean {
@@ -85,6 +90,80 @@ function seatsAfterMe(ctx: PlayContext, plays: readonly TrickPlay[]): Seat[] {
     out.push(s);
   }
   return out;
+}
+
+/**
+ * A K or Q whose marriage could still be made: its suit is not yet declared
+ * and the other half has not been played (it may be in our or our partner's
+ * hand). Such a card is worth far more than its 3–4 points — giving it away
+ * can cost a 40–100 point trump — so it is never smeared or dumped while
+ * anything else will do.
+ */
+function liveMarriageHalf(ctx: PlayContext, c: Card): boolean {
+  const r = rankOf(c);
+  if (r !== 'K' && r !== 'Q') return false;
+  const suit = suitOf(c);
+  if (ctx.deal.declarations.some((d) => d.suit === suit)) return false;
+  const other = `${suit}${r === 'K' ? 'Q' : 'K'}` as Card;
+  return !ctx.know.played.has(other);
+}
+
+/** P(a hand of `h` cards drawn from a pool of `pool` holds none of `m` given cards). */
+function noneOf(pool: number, m: number, h: number): number {
+  if (m <= 0) return 1;
+  if (m + h > pool) return 0;
+  let p = 1;
+  for (let i = 0; i < h; i++) p *= (pool - m - i) / (pool - i);
+  return p;
+}
+
+/**
+ * Probability that `top` (now winning) survives every later OPPONENT, from the
+ * cards they could still hold (memory exclusions) and their hand sizes:
+ * an opponent beats it by holding a higher card of the led suit, or by being
+ * void in the led suit and holding a trump that beats it. Hypergeometric over
+ * the unknown pool; seats treated as independent (a fair approximation).
+ * Exactly 1 when nobody can beat it, so it generalizes `stands`.
+ */
+function standProbability(
+  ctx: PlayContext,
+  top: Card,
+  later: readonly Seat[],
+  led: Suit,
+  trump: Suit | null,
+): number {
+  const pool = outstanding(ctx, () => true).length;
+  let p = 1;
+  for (const s of later) {
+    if (!isOpponent(ctx, s)) continue;
+    const known = [...ctx.know.held[s]];
+    if (
+      known.some(
+        (c) =>
+          beats(c, top, led, trump) && (suitOf(c) === led || !known.some((k) => suitOf(k) === led)),
+      )
+    ) {
+      return 0;
+    }
+    const h = Math.max(0, (ctx.deal.handCounts[s] ?? 0) - known.length);
+    const higher = outstanding(ctx, (c) => suitOf(c) === led && beats(c, top, led, trump)).filter(
+      (c) => couldHold(ctx, s, c) && !known.includes(c),
+    ).length;
+    const ledLeft = outstanding(ctx, (c) => suitOf(c) === led).filter(
+      (c) => couldHold(ctx, s, c) && !known.includes(c),
+    ).length;
+    let pRuff = 0;
+    if (trump !== null && led !== trump && !known.some((c) => suitOf(c) === led)) {
+      const ruffers = outstanding(
+        ctx,
+        (c) => suitOf(c) === trump && beats(c, top, led, trump),
+      ).filter((c) => couldHold(ctx, s, c) && !known.includes(c)).length;
+      pRuff = noneOf(pool, ledLeft, h) * (1 - noneOf(pool, ruffers, h));
+    }
+    const pHigh = 1 - noneOf(pool, higher, h);
+    p *= (1 - pHigh) * (1 - pRuff);
+  }
+  return p;
 }
 
 /** Would `top` (now winning) stand against every later opponent? */
@@ -190,6 +269,7 @@ function lowestLoss(ctx: PlayContext, cards: readonly Card[]): Card {
     let v = cardPoints(c, config) * 10;
     if (isMaster(ctx, c)) v += 60;
     if (suit === trump) v += 40;
+    if (liveMarriageHalf(ctx, c)) v += 200;
     // Leading low under an unguarded ten exposes it.
     const ten = `${suit}10` as Card;
     if (c !== ten && deal.hand.includes(ten) && !isMaster(ctx, ten)) v += 25;
@@ -224,13 +304,21 @@ export function smartFollow(
 
   if (winners.length === 0) {
     const pool = preferFree(ctx, legal);
-    const partnerStands = partnerWinning && stands(ctx, win.card, later, led, trump);
+    // Give the partner points ("lahjoitus") whenever their card will probably
+    // hold — not only when it is certain, which early in a deal (no voids
+    // known yet) would almost never be the case.
+    const partnerStands =
+      partnerWinning &&
+      standProbability(ctx, win.card, later, led, trump) >=
+        (ctx.smearConfidence ?? SMEAR_CONFIDENCE);
     if (partnerStands) {
-      // Smear: points onto the partner's trick, keeping masters for later.
+      // Smear: points onto the partner's trick, keeping masters for later
+      // and never a K/Q whose marriage could still be made.
       const val = (c: Card): number =>
         cardPoints(c, config) -
         (isMaster(ctx, c) && suitOf(c) !== led ? 12 : 0) -
-        (suitOf(c) === trump ? 8 : 0);
+        (suitOf(c) === trump ? 8 : 0) -
+        (liveMarriageHalf(ctx, c) ? 100 : 0);
       return pool.reduce((a, b) => (val(b) > val(a) ? b : a));
     }
     return lowestLoss(ctx, pool);

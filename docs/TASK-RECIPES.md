@@ -131,7 +131,13 @@ than the one below it.
 illisoft rules an all-pass deal is played contract-less and every side keeps
 its uncapped raw points, while a declarer is capped at its contract. Measured
 in the arena, extra bidding (and bidding-up to bait an opponent) *loses* points
-at every tested margin, so the calibrated levels pass most hands on purpose.
+at every tested margin, so the calibrated levels rarely OPEN. They do CONTEST
+like people do: when an opponent holds the bid, medium/hard/expert raise while
+they'd probably make a contract at the next price (`contestConfidence`, with a
+`contestDiscount` for the opponent's signalled strength; marriage halves count
+via the calibrated estimate). That realism costs ~2 points/deal against an
+eager opener in the arena — a deliberate product choice (the user wanted
+auctions to be contested), not an EV optimum.
 
 ---
 

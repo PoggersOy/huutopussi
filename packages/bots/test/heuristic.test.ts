@@ -305,6 +305,48 @@ describe('HeuristicBot bidding', () => {
     expect(bot().onTurn(view, hints)).toEqual({ type: 'pass' });
   });
 
+  // The user's scenario: an opponent opens 60 and a strong hand with marriage
+  // halves (likely completed by the exchange) fights for the contract.
+  it("hard and expert contest an opponent's 60 with a strong, completable hand", () => {
+    const hand: Card[] = ['HA', 'HK', 'H10', 'DA', 'DQ', 'D10', 'SA', 'CA', 'C10'];
+    const contestedPhase: DealPhase = {
+      name: 'bidding',
+      turn: 0,
+      highBid: { seat: 1, amount: 60 },
+      passed: [],
+      firstTurnTaken: [1],
+      excluded: [],
+    };
+    const view = {
+      ...makeView(hand, contestedPhase, { bid: null, declarer: null }),
+      config: ILLISOFT_RULES,
+    };
+    const hints = bidHint({ min: 65, max: 420 });
+    for (const level of ['hard', 'expert'] as const) {
+      expect(new HeuristicBot(mulberry32(1), level).onTurn(view, hints)).toEqual({
+        type: 'bid',
+        amount: 65,
+      });
+    }
+  });
+
+  it("does not contest an opponent's bid with a weak hand", () => {
+    const junk: Card[] = ['H9', 'H8', 'H7', 'D9', 'D8', 'C9', 'C8', 'S9', 'S8'];
+    const contestedPhase: DealPhase = {
+      name: 'bidding',
+      turn: 0,
+      highBid: { seat: 1, amount: 60 },
+      passed: [],
+      firstTurnTaken: [1],
+      excluded: [],
+    };
+    const view = {
+      ...makeView(junk, contestedPhase, { bid: null, declarer: null }),
+      config: ILLISOFT_RULES,
+    };
+    expect(sharpBot().onTurn(view, bidHint({ min: 65, max: 420 }))).toEqual({ type: 'pass' });
+  });
+
   it('calibrated levels bid a dominant hand and pass junk', () => {
     const strong: Card[] = ['HA', 'HK', 'HQ', 'H10', 'DA', 'D10', 'SA', 'CA', 'C10'];
     const junk: Card[] = ['H9', 'H8', 'H7', 'D9', 'D8', 'C9', 'C8', 'S9', 'S8'];
@@ -375,6 +417,23 @@ describe('HeuristicBot trick play', () => {
     });
     const hints: ActionHint[] = [{ type: 'playCard', legal: hand }];
     expect(sharpBot().onTurn(view, hints)).toEqual({ type: 'playCard', card: 'D10' });
+  });
+
+  it('never smears a K/Q whose marriage could still be made', () => {
+    // Partner's ace holds; the heart king's marriage is still live (HQ unseen),
+    // so the bot smears the club jack instead of the king.
+    const hand: Card[] = ['HK', 'CJ', 'C6'];
+    const view = makeView(hand, {
+      name: 'follow',
+      leader: 1,
+      plays: [
+        { seat: 1, card: 'S9' },
+        { seat: 2, card: 'SA' },
+        { seat: 3, card: 'S6' },
+      ],
+    });
+    const hints: ActionHint[] = [{ type: 'playCard', legal: hand }];
+    expect(sharpBot().onTurn(view, hints)).toEqual({ type: 'playCard', card: 'CJ' });
   });
 
   it('keeps a master ace instead of smearing it', () => {

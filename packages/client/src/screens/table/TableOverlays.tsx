@@ -19,6 +19,7 @@ import { type CSSProperties, type ReactElement, useEffect, useState } from 'reac
 import { useTranslation } from 'react-i18next';
 import { Confetti } from '../../components/Confetti';
 import { DealBreakdownTable, DealContractLine } from '../../components/DealBreakdownTable';
+import { useDismiss } from '../../components/useDismiss';
 import { useCountUp } from '../../countUp';
 import { sendLobby } from '../../socket';
 import { useStore } from '../../store';
@@ -161,6 +162,7 @@ export function StandingsOverlay({
   onClose: () => void;
 }) {
   const { t } = useTranslation();
+  const dismiss = useDismiss(onClose);
   const sideMembers = (side: Side): string =>
     SEATS.slice(0, players)
       .filter((s) => sideOf(s, players) === side)
@@ -171,7 +173,7 @@ export function StandingsOverlay({
   const MEDALS = ['🥇', '🥈', '🥉'];
 
   return (
-    <div className="overlay" role="dialog" aria-modal="true">
+    <div className="overlay" role="dialog" aria-modal="true" {...dismiss}>
       <div className="overlay__panel stack">
         <h2>{t('overlay.standingsTitle')}</h2>
         <ul className="overlay__standings">

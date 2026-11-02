@@ -306,3 +306,19 @@ test('reclaimSeat is a harmless no-op when the seat is not bot-filled', async ()
 
   host.close();
 });
+
+test('Pikapeli (solo vs bots) has no turn time limit', async () => {
+  const host = await TestClient.connect(port);
+  await host.hello({ nickname: 'solo' });
+  const code = host.roomCode;
+  const started = host.next((m) => m.t === 'update' && m.view.deal !== null, 10_000, 'match start');
+  host.lobby({ type: 'fillBotsAndStart', difficulty: 'hard' });
+  await started;
+
+  const room = server.rooms.get(code) as Room;
+  expect(room.tableSettings.autoplay).toBe(false);
+  // When the solo player's turn comes, it carries no deadline.
+  await waitHostTurn(host);
+  expect(host.lastTurn?.deadline ?? null).toBeNull();
+  host.close();
+});

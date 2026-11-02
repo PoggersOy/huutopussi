@@ -137,7 +137,8 @@ describe('bidding sheet', () => {
     );
     render(<Table />, { wrapper: MemoryRouter });
 
-    expect(screen.getByText('High bid 60 — p1')).toBeTruthy();
+    // The high bid now sits as a quiet line in the felt's centre, not in the sheet.
+    expect(screen.getByText('High bid: 60 — p1')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '+5' }));
     fireEvent.click(screen.getByRole('button', { name: 'Bid 70' }));
     expect(sendAction).toHaveBeenCalledWith({ type: 'bid', amount: 70 });
@@ -187,8 +188,8 @@ describe('bidding sheet', () => {
     );
     render(<Table />, { wrapper: MemoryRouter });
 
-    // Appears both in the top bar and in the passive bidding sheet.
-    expect(screen.getAllByText('No bids yet').length).toBeGreaterThan(0);
+    // Appears both in the top bar and in the felt's auction centre.
+    expect(screen.getAllByText('No bids yet').length).toBe(2);
     expect(screen.getByText('Waiting for p2')).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Bid/ })).toBeNull();
   });
@@ -815,8 +816,8 @@ describe('standings', () => {
     applyWelcome(makeView(makeDeal(), { scores: [130, -70] }), null);
     render(<Table />, { wrapper: MemoryRouter });
 
-    // Bold "<me> <my side score>", and the centred trump label still renders.
-    expect(screen.getByText('p0 130')).toBeTruthy();
+    // Bold "<my partnership>: <side score>" (4p), and the trump label still renders.
+    expect(screen.getByText('p0 & p2: 130')).toBeTruthy();
     expect(screen.getByText('No trump')).toBeTruthy();
     // The old per-side "Us …/Them …" listing is gone from the header.
     expect(screen.queryByText(/Us\s+130/)).toBeNull();
