@@ -137,7 +137,11 @@ they'd probably make a contract at the next price (`contestConfidence`, with a
 `contestDiscount` for the opponent's signalled strength; marriage halves count
 via the calibrated estimate). That realism costs ~2 points/deal against an
 eager opener in the arena — a deliberate product choice (the user wanted
-auctions to be contested), not an EV optimum.
+auctions to be contested), not an EV optimum. 3-player games use a lower bar
+(`contestConfidence3p` = 0.6): with no partner a half completes only from the
+talon, and at the 4p bar the bots raised a human's 60 in ~43% of 3p deals vs
+~75% in 4p. At 0.6 it is ~60%, costing hard bots ~9 points/deal of their edge
+against a 60-opener (measured, accepted for livelier auctions).
 
 ---
 

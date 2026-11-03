@@ -330,6 +330,34 @@ describe('HeuristicBot bidding', () => {
     }
   });
 
+  it('contests more readily in 3p, where halves complete only from the talon', () => {
+    // Heart K, diamond marriage, two loose queens, one ace: P(make 65) ≈ 0.67 —
+    // under the 4p bar (0.75), over the 3p one (0.6).
+    const threeP: RuleConfig = { ...ILLISOFT_RULES, players: 3, talonSize: 3 };
+    const hand: Card[] = ['SQ', 'CQ', 'DQ', 'HK', 'H8', 'DK', 'H7', 'S9', 'SJ', 'CA', 'D7', 'D9'];
+    const contestedPhase: DealPhase = {
+      name: 'bidding',
+      turn: 0,
+      highBid: { seat: 1, amount: 60 },
+      passed: [],
+      firstTurnTaken: [1],
+      excluded: [],
+    };
+    const view = {
+      ...makeView(hand, contestedPhase, { bid: null, declarer: null }),
+      config: threeP,
+    };
+    const hints = bidHint({ min: 65, max: 420 });
+    for (const level of ['medium', 'hard', 'expert'] as const) {
+      expect(new HeuristicBot(mulberry32(1), level).onTurn(view, hints)).toEqual({
+        type: 'bid',
+        amount: 65,
+      });
+    }
+    const strict = new HeuristicBot(mulberry32(1), 'hard', { contestConfidence3p: 0.75 });
+    expect(strict.onTurn(view, hints)).toEqual({ type: 'pass' });
+  });
+
   it("does not contest an opponent's bid with a weak hand", () => {
     const junk: Card[] = ['H9', 'H8', 'H7', 'D9', 'D8', 'C9', 'C8', 'S9', 'S8'];
     const contestedPhase: DealPhase = {

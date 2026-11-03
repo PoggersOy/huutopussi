@@ -105,6 +105,12 @@ export interface SkillProfile {
    * cost of realistic contesting at a few points per deal.
    */
   contestConfidence: number;
+  /**
+   * The same threshold for 3-player games. With no partner a marriage half
+   * only completes from the talon, so the make probability rarely clears the
+   * 4p bar and 3p auctions went one-sided; a lower bar keeps them lively.
+   */
+  contestConfidence3p: number;
   /** Points knocked off our estimate because an opponent is bidding. */
   contestDiscount: number;
   /**
@@ -126,6 +132,7 @@ const SKILL: Record<BotDifficulty | 'rollout', SkillProfile> = {
     sloppiness: 0.55,
     samples: 0,
     contestConfidence: 0,
+    contestConfidence3p: 0,
     contestDiscount: 15,
     smearConfidence: 0.75,
   },
@@ -140,6 +147,7 @@ const SKILL: Record<BotDifficulty | 'rollout', SkillProfile> = {
     sloppiness: 0.15,
     samples: 0,
     contestConfidence: 0.7,
+    contestConfidence3p: 0.6,
     contestDiscount: 15,
     smearConfidence: 0.75,
   },
@@ -154,6 +162,7 @@ const SKILL: Record<BotDifficulty | 'rollout', SkillProfile> = {
     sloppiness: 0,
     samples: 0,
     contestConfidence: 0.75,
+    contestConfidence3p: 0.6,
     contestDiscount: 15,
     smearConfidence: 0.75,
   },
@@ -168,6 +177,7 @@ const SKILL: Record<BotDifficulty | 'rollout', SkillProfile> = {
     sloppiness: 0,
     samples: 24,
     contestConfidence: 0.75,
+    contestConfidence3p: 0.6,
     contestDiscount: 15,
     smearConfidence: 0.75,
   },
@@ -183,6 +193,7 @@ const SKILL: Record<BotDifficulty | 'rollout', SkillProfile> = {
     sloppiness: 0,
     samples: 0,
     contestConfidence: 0,
+    contestConfidence3p: 0,
     contestDiscount: 15,
     smearConfidence: 0.75,
   },
@@ -445,10 +456,12 @@ export class HeuristicBot implements Actor {
       phase.name === 'bidding' &&
       phase.highBid !== null &&
       sideOf(phase.highBid.seat, config.players) !== sideOf(view.viewer, config.players);
-    if (contested && this.skill.contestConfidence > 0) {
+    const confidence =
+      config.players === 3 ? this.skill.contestConfidence3p : this.skill.contestConfidence;
+    if (contested && confidence > 0) {
       // An opponent's bid means strength against us: discount our estimate.
       const p = makeProbability(deal.hand, config, hint.min, bonus - this.skill.contestDiscount);
-      if (p !== null && p >= this.skill.contestConfidence) return true;
+      if (p !== null && p >= confidence) return true;
     }
     const values = bidValues(deal.hand, config, hint.min, bonus, contested);
     if (!values) return null;
